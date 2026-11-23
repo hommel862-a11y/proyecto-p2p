@@ -1,0 +1,612 @@
+<div class="f360-vaults-shell">
+  <!-- TOP DECK: Bóvedas Tri-Monetarias -->
+  <section class="vaults-deck-section" aria-label="Bóvedas tri-monetarias">
+    @if (assets().length === 0) {
+      <div class="f360-content-card zero-seed-empty" data-testid="vaults-zero-seed-empty">
+        <span class="empty-emblem" aria-hidden="true">
+          <svg
+            width="28"
+            height="28"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="2" y="5" width="20" height="14" rx="2.5" />
+            <path d="M2 10h20" />
+            <circle cx="17" cy="14.5" r="1.5" />
+          </svg>
+        </span>
+        <h2 class="empty-heading">Portafolio en cero (Zero-Seed)</h2>
+        <p class="empty-text">
+          No sembramos saldos ficticios automáticamente. Crea tu primera bóveda en USD, USDT, VES o EUR para iniciar la contabilidad en partida doble.
+        </p>
+        <button
+          type="button"
+          class="f360-btn-primary"
+          data-testid="zero-seed-create-vault-btn"
+          (click)="openNewVault.emit()"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 5v14" />
+            <path d="M5 12h14" />
+          </svg>
+          <span>Crear primera bóveda</span>
+        </button>
+      </div>
+    } @else {
+      <div class="vaults-grid">
+        @for (vault of assets(); track vault.id) {
+          <article
+            class="f360-content-card vault-card"
+            [class]="'f360-content-card vault-card ' + currencyClass(vault)"
+            [attr.data-testid]="'vault-card-' + vault.id"
+          >
+            <div class="vault-card-top">
+              <div class="vault-identity">
+                <span class="vault-icon-chip" aria-hidden="true">
+                  @if (vault.channel === 'bs_bank') {
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M3 21h18" />
+                      <path d="M3 10h18" />
+                      <path d="M5 6l7-3 7 3" />
+                      <path d="M6 10v11" />
+                      <path d="M10 10v11" />
+                      <path d="M14 10v11" />
+                      <path d="M18 10v11" />
+                    </svg>
+                  } @else if (vault.channel === 'crypto') {
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <polygon points="12 2 20 7 20 17 12 22 4 17 4 7 12 2" />
+                      <path d="M12 22V12" />
+                      <path d="m20 7-8 5-8-5" />
+                    </svg>
+                  } @else if (vault.channel === 'cash') {
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="2" y="6" width="20" height="12" rx="2" />
+                      <circle cx="12" cy="12" r="2.5" />
+                    </svg>
+                  } @else {
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="2" y="5" width="20" height="14" rx="2" />
+                      <path d="M2 10h20" />
+                    </svg>
+                  }
+                </span>
+                <div class="vault-name-group">
+                  <strong class="vault-name">{{ vault.name }}</strong>
+                  <span class="vault-scope-tag">{{ scopeLabel(vault.scope) }}</span>
+                </div>
+              </div>
+
+              <div class="vault-top-trailing">
+                <span class="currency-pill f360-tabular">{{ vault.currency }}</span>
+
+                <div class="f360-menu-anchor">
+                  <button
+                    type="button"
+                    class="f360-icon-btn card-menu-btn"
+                    [attr.data-testid]="'vault-menu-' + vault.id"
+                    [attr.aria-label]="'Opciones de bóveda ' + vault.name"
+                    aria-haspopup="menu"
+                    [attr.aria-expanded]="openVaultMenuId() === vault.id"
+                    (click)="toggleVaultMenu(vault.id)"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="12" cy="12" r="1" />
+                      <circle cx="19" cy="12" r="1" />
+                      <circle cx="5" cy="12" r="1" />
+                    </svg>
+                  </button>
+
+                  @if (openVaultMenuId() === vault.id) {
+                    <div class="f360-liquid-glass contextual-popover" role="menu">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="popover-action"
+                        [attr.data-testid]="'vault-action-reconcile-' + vault.id"
+                        (click)="startVaultReconcile(vault)"
+                      >
+                        Arqueo / Conciliar
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="popover-action"
+                        [attr.data-testid]="'vault-action-edit-' + vault.id"
+                        (click)="startEditVaultBalance(vault)"
+                      >
+                        Editar saldo
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="popover-action"
+                        [attr.data-testid]="'vault-action-transfer-' + vault.id"
+                        (click)="handleVaultTransfer(vault.id)"
+                      >
+                        Transferir
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="popover-action is-danger"
+                        [attr.data-testid]="'vault-action-delete-' + vault.id"
+                        (click)="handleDeleteVault(vault.id)"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+
+            @if (editingVaultId() === vault.id) {
+              <div class="vault-inline-edit">
+                <label class="sr-only" [for]="'vault-bal-' + vault.id">
+                  Nuevo saldo para {{ vault.name }}
+                </label>
+                <input
+                  [id]="'vault-bal-' + vault.id"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="f360-input f360-tabular"
+                  [attr.data-testid]="'vault-balance-input-' + vault.id"
+                  [value]="editingVaultBalanceText()"
+                  (input)="onVaultBalanceInput($event)"
+                />
+                <div class="inline-edit-actions">
+                  <button
+                    type="button"
+                    class="f360-btn-primary compact-cta"
+                    [attr.data-testid]="'vault-balance-save-' + vault.id"
+                    (click)="saveVaultBalance(vault)"
+                  >
+                    Guardar
+                  </button>
+                  <button
+                    type="button"
+                    class="f360-btn-ghost compact-cta"
+                    (click)="cancelVaultBalanceEdit()"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            } @else {
+              <div class="vault-balance-block">
+                <strong class="vault-balance f360-tabular privacy-mask">
+                  {{ vault.currency }} {{ formatAmount(vault.balance) }}
+                </strong>
+                <span
+                  class="vault-equiv f360-tabular"
+                  [class.privacy-mask]="bcvRate() > 0"
+                  [class.is-offline]="bcvRate() <= 0"
+                >
+                  {{ vaultEquivalentLabel(vault) }}
+                </span>
+              </div>
+            }
+
+            <div class="vault-share-footer">
+              <div class="share-label-row">
+                <span>Peso en cartera</span>
+                <strong class="f360-tabular">{{ vaultSharePercent(vault) }}%</strong>
+              </div>
+              <div class="share-track" aria-hidden="true">
+                <div class="share-fill" [style.width.%]="vaultSharePercent(vault)"></div>
+              </div>
+            </div>
+          </article>
+        }
+      </div>
+    }
+  </section>
+
+  <!-- MIDDLE TELEMETRY STRIP: Blindaje Cambiario -->
+  <section class="f360-content-card exposure-strip" aria-label="Telemetría de blindaje cambiario">
+    <div class="exposure-metrics">
+      <div class="exposure-head">
+        <h2 class="section-title">Blindaje Cambiario</h2>
+        <div class="exposure-chips f360-tabular">
+          <span class="f360-status-pill tone-emerald">
+            Moneda Dura {{ hardCurrencyPct() }}%
+          </span>
+          <span
+            class="f360-status-pill"
+            [class.tone-danger]="vesExposure().isHighExposure"
+            [class.tone-warn]="!vesExposure().isHighExposure"
+          >
+            Exposición VES {{ vesExposureClampedPct() }}%
+          </span>
+          <span class="exposure-gap-chip">
+            Brecha BCV / Paralelo: <strong>{{ rateGapDisplay() }}</strong>
+          </span>
+        </div>
+      </div>
+
+      <div class="segmented-bar" aria-label="Distribución moneda dura frente a bolívares">
+        <div class="seg-hard" [style.width.%]="hardCurrencyPct()"></div>
+        <div
+          class="seg-ves"
+          [class.is-high]="vesExposure().isHighExposure"
+          [style.width.%]="vesExposureClampedPct()"
+        ></div>
+      </div>
+    </div>
+
+    <div class="exposure-actions">
+      <button
+        type="button"
+        class="f360-btn-glass"
+        data-testid="strip-reconcile-btn"
+        [disabled]="assets().length === 0"
+        (click)="focusFirstVaultReconcile()"
+      >
+        Conciliar / Arqueo
+      </button>
+      <button
+        type="button"
+        class="f360-btn-glass"
+        data-testid="strip-transfer-btn"
+        [disabled]="assets().length < 2"
+        (click)="openTransfer.emit(undefined)"
+      >
+        Transferir FX
+      </button>
+      <button
+        type="button"
+        class="f360-btn-primary"
+        data-testid="strip-new-vault-btn"
+        (click)="openNewVault.emit()"
+      >
+        + Nueva Bóveda
+      </button>
+    </div>
+  </section>
+
+  <!-- BOTTOM SPLIT: 68% Chronological Double-Entry Ledger / 32% Floating Frosted Arqueo Inspector -->
+  <section class="ledger-split-grid" aria-label="Libro mayor y conciliación de bóvedas">
+    <!-- Left 68%: Libro Mayor -->
+    <article class="f360-content-card ledger-card">
+      <header class="ledger-header">
+        <div>
+          <h2 class="section-title">Libro Mayor Cronológico (Partida Doble)</h2>
+          <p class="section-subtitle f360-tabular">{{ pageRangeLabel() }}</p>
+        </div>
+
+        <div class="ledger-controls">
+          <div class="filter-pills" role="group" aria-label="Filtrar movimientos por tipo">
+            @for (opt of filterOptions; track opt.id) {
+              <button
+                type="button"
+                class="filter-pill"
+                [attr.data-testid]="'ledger-filter-' + opt.id"
+                [class.is-active]="activeFilter() === opt.id"
+                [attr.aria-pressed]="activeFilter() === opt.id"
+                (click)="selectFilter(opt.id)"
+              >
+                {{ opt.label }}
+              </button>
+            }
+          </div>
+
+          <div class="ledger-search-wrap">
+            <label for="f360-ledger-search" class="sr-only">Buscar en el libro mayor</label>
+            <input
+              id="f360-ledger-search"
+              type="search"
+              class="f360-input ledger-search-input"
+              placeholder="Filtrar concepto, bóveda o ref..."
+              [value]="searchQuery()"
+              (input)="onSearchInput($event)"
+            />
+          </div>
+        </div>
+      </header>
+
+      @if (paginatedRows().length === 0) {
+        <div class="ledger-empty-state" data-testid="ledger-empty-state">
+          <span>No hay asientos que coincidan con el filtro actual.</span>
+        </div>
+      } @else {
+        <div class="table-scroll-wrap">
+          <table class="f360-hairline-table">
+            <thead>
+              <tr>
+                <th scope="col">Fecha</th>
+                <th scope="col">Concepto &amp; Ámbito</th>
+                <th scope="col">Bóveda</th>
+                <th scope="col">Tasa Congelada</th>
+                <th scope="col">Ref.</th>
+                <th scope="col" class="col-right">Monto</th>
+                <th scope="col" class="col-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of paginatedRows(); track row.id) {
+                <tr [attr.data-testid]="'ledger-row-' + row.id">
+                  <td class="f360-tabular cell-date">{{ row.date }}</td>
+                  <td>
+                    @if (editingRowId() === row.id) {
+                      <div class="row-inline-editor">
+                        <label class="sr-only" [for]="'edit-title-' + row.id">Concepto</label>
+                        <input
+                          [id]="'edit-title-' + row.id"
+                          type="text"
+                          class="f360-input"
+                          [attr.data-testid]="'ledger-edit-title-' + row.id"
+                          [value]="editingRowTitle()"
+                          (input)="onEditRowTitleInput($event)"
+                        />
+                      </div>
+                    } @else {
+                      <div class="concept-cell">
+                        <strong class="concept-title">{{ row.title }}</strong>
+                        <span class="concept-sub">
+                          {{ row.categoryLabel }} · {{ scopeLabel(row.scope) }}
+                        </span>
+                      </div>
+                    }
+                  </td>
+                  <td class="cell-vault">{{ row.vaultName }}</td>
+                  <td class="f360-tabular cell-rate">
+                    @if (row.bcvRateApplied > 0) {
+                      Bs {{ formatAmount(row.bcvRateApplied) }}
+                    } @else {
+                      —
+                    }
+                  </td>
+                  <td class="f360-tabular cell-ref">{{ row.referenceNumber || '—' }}</td>
+                  <td class="col-right">
+                    @if (editingRowId() === row.id) {
+                      <div class="row-inline-editor">
+                        <label class="sr-only" [for]="'edit-amt-' + row.id">Monto USD</label>
+                        <input
+                          [id]="'edit-amt-' + row.id"
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          class="f360-input f360-tabular amount-edit-input"
+                          [attr.data-testid]="'ledger-edit-amount-' + row.id"
+                          [value]="editingRowAmountText()"
+                          (input)="onEditRowAmountInput($event)"
+                        />
+                      </div>
+                    } @else {
+                      <strong
+                        class="row-amount f360-tabular privacy-mask"
+                        [class.is-income]="row.kind === 'income'"
+                        [class.is-expense]="row.kind === 'expense'"
+                        [class.is-transfer]="row.kind === 'transfer'"
+                      >
+                        @if (row.kind === 'income') {
+                          +${{ formatAmount(row.amountUsd) }}
+                        } @else if (row.kind === 'expense') {
+                          -${{ formatAmount(row.amountUsd) }}
+                        } @else {
+                          ⇄ ${{ formatAmount(row.amountUsd) }}
+                        }
+                      </strong>
+                    }
+                  </td>
+                  <td class="col-right">
+                    @if (editingRowId() === row.id) {
+                      <div class="inline-edit-actions is-end">
+                        <button
+                          type="button"
+                          class="f360-btn-primary compact-cta"
+                          [attr.data-testid]="'ledger-edit-save-' + row.id"
+                          (click)="saveRowEdit()"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          type="button"
+                          class="f360-btn-ghost compact-cta"
+                          (click)="cancelRowEdit()"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    } @else if (row.kind === 'transfer' || row.editable === false) {
+                      <span class="double-entry-tag">Partida doble</span>
+                    } @else {
+                      <div class="f360-menu-anchor is-inline-end">
+                        <button
+                          type="button"
+                          class="f360-icon-btn table-menu-btn"
+                          [attr.data-testid]="'ledger-menu-' + row.id"
+                          [attr.aria-label]="'Acciones para ' + row.title"
+                          aria-haspopup="menu"
+                          [attr.aria-expanded]="openRowMenuId() === row.id"
+                          (click)="toggleRowMenu(row.id)"
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="1" />
+                            <circle cx="19" cy="12" r="1" />
+                            <circle cx="5" cy="12" r="1" />
+                          </svg>
+                        </button>
+
+                        @if (openRowMenuId() === row.id) {
+                          <div class="f360-liquid-glass contextual-popover" role="menu">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              class="popover-action"
+                              [attr.data-testid]="'ledger-edit-' + row.id"
+                              (click)="startEditRow(row)"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              class="popover-action is-danger"
+                              [attr.data-testid]="'ledger-delete-' + row.id"
+                              (click)="handleDeleteRow(row)"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        }
+                      </div>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <footer class="pagination-bar" aria-label="Paginación del libro mayor">
+          <span class="pagination-info f360-tabular">{{ pageRangeLabel() }}</span>
+          <div class="pagination-controls">
+            <button
+              type="button"
+              class="f360-btn-glass compact-cta"
+              data-testid="ledger-prev-page"
+              [disabled]="safeCurrentPage() <= 1"
+              (click)="prevPage()"
+            >
+              Anterior
+            </button>
+            <span class="page-indicator f360-tabular" data-testid="ledger-page-indicator">
+              {{ safeCurrentPage() }} / {{ totalPages() }}
+            </span>
+            <button
+              type="button"
+              class="f360-btn-glass compact-cta"
+              data-testid="ledger-next-page"
+              [disabled]="safeCurrentPage() >= totalPages()"
+              (click)="nextPage()"
+            >
+              Siguiente
+            </button>
+          </div>
+        </footer>
+      }
+    </article>
+
+    <!-- Right 32%: Floating Frosted Arqueo & Conciliación Inspector -->
+    <aside
+      class="f360-liquid-glass reconcile-inspector"
+      aria-label="Inspector de arqueo y conciliación"
+    >
+      <header class="inspector-header">
+        <h2 class="section-title">Arqueo &amp; Conciliación</h2>
+        <p class="section-subtitle">Ajusta discrepancias de banco o caja sin alterar tasas históricas.</p>
+      </header>
+
+      @if (effectiveReconcileVault(); as vault) {
+        <form class="reconcile-form" (submit)="submitReconciliation($event)">
+          <div class="field-group">
+            <label for="f360-reconcile-vault" class="field-label">Bóveda</label>
+            <select
+              id="f360-reconcile-vault"
+              class="f360-input"
+              [value]="vault.id"
+              (change)="onReconcileVaultChange($event)"
+            >
+              @for (item of assets(); track item.id) {
+                <option [value]="item.id">{{ item.name }} ({{ item.currency }})</option>
+              }
+            </select>
+          </div>
+
+          <div class="book-balance-box">
+            <span class="book-label">Saldo en libros</span>
+            <strong class="book-value f360-tabular privacy-mask">
+              {{ vault.currency }} {{ formatAmount(vault.balance) }}
+            </strong>
+          </div>
+
+          <div class="field-group">
+            <label for="f360-reconcile-actual" class="field-label">
+              Saldo real en banco / caja ({{ vault.currency }})
+            </label>
+            <input
+              id="f360-reconcile-actual"
+              type="number"
+              step="0.01"
+              min="0"
+              class="f360-input f360-tabular"
+              placeholder="0.00"
+              [value]="reconcileActualText()"
+              (input)="onReconcileActualInput($event)"
+            />
+          </div>
+
+          <div class="delta-preview-box">
+            <span class="delta-caption">Estado del arqueo</span>
+            <span
+              class="f360-status-pill f360-tabular"
+              data-testid="reconcile-delta-badge"
+              [class.tone-emerald]="reconcilePreview().tone === 'emerald'"
+              [class.tone-cyan]="reconcilePreview().tone === 'cyan'"
+              [class.tone-danger]="reconcilePreview().tone === 'danger'"
+            >
+              {{ reconcilePreview().badgeLabel }}
+            </span>
+          </div>
+
+          <button
+            type="submit"
+            class="f360-btn-primary full-width-btn"
+            data-testid="reconcile-submit-btn"
+            [disabled]="!reconcilePreview().hasInput"
+          >
+            Confirmar Arqueo
+          </button>
+        </form>
+      } @else {
+        <div class="ledger-empty-state">
+          <span>Crea una bóveda para realizar conciliaciones de saldo.</span>
+        </div>
+      }
+
+      <div class="history-section">
+        <h3 class="history-title">Historial de Arqueos</h3>
+        @if (recentReconciliations().length === 0) {
+          <p class="history-empty">Sin arqueos registrados aún.</p>
+        } @else {
+          <ul class="history-list">
+            @for (rec of recentReconciliations(); track rec.id) {
+              <li class="history-item" [attr.data-testid]="'reconcile-history-' + rec.id">
+                <div class="history-top">
+                  <strong class="history-vault">{{ rec.vaultName }}</strong>
+                  <span class="history-date f360-tabular">{{ rec.date }}</span>
+                </div>
+                <div class="history-bottom f360-tabular">
+                  <span class="privacy-mask">
+                    {{ formatAmount(rec.expectedBalance) }} → {{ formatAmount(rec.actualBalance) }} {{ rec.currency }}
+                  </span>
+                  <span
+                    class="history-delta"
+                    [class.is-balanced]="rec.deltaInCurrency === 0"
+                    [class.is-positive]="rec.deltaInCurrency > 0"
+                    [class.is-negative]="rec.deltaInCurrency < 0"
+                  >
+                    @if (rec.deltaInCurrency === 0) {
+                      Cuadrado
+                    } @else if (rec.deltaInCurrency > 0) {
+                      +{{ formatAmount(rec.deltaInCurrency) }}
+                    } @else {
+                      -{{ formatAmount(rec.deltaInCurrency * -1) }}
+                    }
+                  </span>
+                </div>
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    </aside>
+  </section>
+</div>

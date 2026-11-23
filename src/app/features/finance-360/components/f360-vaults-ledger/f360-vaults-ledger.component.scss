@@ -1,0 +1,725 @@
+@use '../../styles/f360-glass-tokens';
+
+:host {
+  display: block;
+  width: 100%;
+}
+
+.f360-vaults-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+// Top Deck: Zero-Seed & Tri-Monetary Vault Cards
+.zero-seed-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 36px 20px;
+}
+
+.empty-emblem {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--f360-scope-accent) 14%, var(--f360-surface-2));
+  border: 1px solid var(--f360-hairline);
+  color: var(--f360-scope-accent);
+}
+
+.empty-heading {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--f360-text);
+}
+
+.empty-text {
+  margin: 0 0 6px;
+  max-width: 440px;
+  font-size: 13px;
+  color: var(--f360-muted);
+  line-height: 1.45;
+}
+
+.vaults-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 14px;
+}
+
+.vault-card {
+  position: relative;
+  overflow: visible;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(
+      135deg,
+      var(--vault-sheen, color-mix(in srgb, var(--f360-accent-2) 12%, transparent)) 0%,
+      transparent 55%
+    );
+  }
+
+  &.curr-usd {
+    --vault-sheen: color-mix(in srgb, var(--f360-accent) 14%, transparent);
+  }
+
+  &.curr-usdt {
+    --vault-sheen: color-mix(in srgb, var(--f360-accent-2) 16%, transparent);
+  }
+
+  &.curr-ves {
+    --vault-sheen: color-mix(in srgb, var(--f360-gold) 15%, transparent);
+  }
+
+  &.curr-eur {
+    --vault-sheen: color-mix(in srgb, var(--f360-violet) 16%, transparent);
+  }
+}
+
+.vault-card-top,
+.vault-balance-block,
+.vault-share-footer,
+.vault-inline-edit {
+  position: relative;
+  z-index: 1;
+}
+
+.vault-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vault-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.vault-icon-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--f360-surface-2);
+  border: 1px solid var(--f360-hairline);
+  color: var(--f360-text);
+  flex-shrink: 0;
+}
+
+.vault-name-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vault-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--f360-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vault-scope-tag {
+  font-size: 11px;
+  color: var(--f360-muted);
+}
+
+.vault-top-trailing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.currency-pill {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  border: 1px solid var(--f360-hairline);
+  background: var(--f360-surface-2);
+  color: var(--f360-text);
+}
+
+.card-menu-btn,
+.table-menu-btn {
+  min-width: 32px;
+  min-height: 32px;
+}
+
+.f360-menu-anchor {
+  position: relative;
+
+  &.is-inline-end {
+    display: inline-flex;
+    justify-content: flex-end;
+  }
+}
+
+.contextual-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 164px;
+  padding: 5px;
+  border-radius: var(--f360-radius);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 40;
+}
+
+.popover-action {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--f360-text);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--f360-row-hover);
+  }
+
+  &.is-danger {
+    color: var(--f360-danger);
+    font-weight: 600;
+  }
+}
+
+.vault-balance-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.vault-balance {
+  font-family: var(--font-display, inherit);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--f360-text);
+  letter-spacing: -0.02em;
+}
+
+.vault-equiv {
+  font-size: 11.5px;
+  color: var(--f360-muted);
+
+  &.is-offline {
+    color: var(--f360-warn);
+    font-weight: 600;
+  }
+}
+
+.vault-inline-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inline-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  &.is-end {
+    justify-content: flex-end;
+  }
+}
+
+.compact-cta {
+  min-height: 32px;
+  padding: 0 11px;
+  font-size: 12px;
+}
+
+.vault-share-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.share-label-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--f360-muted);
+
+  strong {
+    color: var(--f360-text);
+  }
+}
+
+.share-track {
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--f360-hairline);
+  overflow: hidden;
+}
+
+.share-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--f360-scope-accent);
+}
+
+// Middle Telemetry Strip: Blindaje Cambiario
+.exposure-strip {
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.exposure-metrics {
+  flex: 1 1 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.exposure-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--f360-text);
+}
+
+.section-subtitle {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--f360-muted);
+}
+
+.exposure-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.exposure-gap-chip {
+  font-size: 12px;
+  color: var(--f360-muted);
+
+  strong {
+    color: var(--f360-text);
+  }
+}
+
+.segmented-bar {
+  display: flex;
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--f360-hairline);
+  overflow: hidden;
+}
+
+.seg-hard {
+  height: 100%;
+  background: var(--f360-accent);
+  transition: width 220ms ease;
+}
+
+.seg-ves {
+  height: 100%;
+  background: var(--f360-warn);
+  transition: width 220ms ease;
+
+  &.is-high {
+    background: var(--f360-danger);
+  }
+}
+
+.exposure-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+// Bottom Split: 68% Ledger / 32% Floating Frosted Inspector
+.ledger-split-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2.1fr) minmax(290px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.ledger-card {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ledger-header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ledger-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.filter-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--f360-surface-2);
+  border: 1px solid var(--f360-hairline);
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.filter-pill {
+  min-height: 30px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--f360-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover:not(.is-active) {
+    color: var(--f360-text);
+  }
+
+  &.is-active {
+    background: var(--f360-pill-active-bg);
+    color: var(--f360-pill-active-fg);
+  }
+}
+
+.ledger-search-wrap {
+  flex: 1 1 220px;
+  max-width: 300px;
+}
+
+.table-scroll-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.col-right {
+  text-align: right !important;
+}
+
+.cell-date,
+.cell-rate,
+.cell-ref {
+  white-space: nowrap;
+  color: var(--f360-muted);
+  font-size: 12px;
+}
+
+.cell-vault {
+  font-size: 12.5px;
+  color: var(--f360-text);
+  white-space: nowrap;
+}
+
+.concept-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.concept-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--f360-text);
+}
+
+.concept-sub {
+  font-size: 11px;
+  color: var(--f360-muted);
+}
+
+.row-amount {
+  font-size: 13px;
+  white-space: nowrap;
+
+  &.is-income {
+    color: var(--f360-accent);
+  }
+
+  &.is-expense {
+    color: var(--f360-danger);
+  }
+
+  &.is-transfer {
+    color: var(--f360-accent-2);
+  }
+}
+
+.double-entry-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--f360-muted);
+  border: 1px solid var(--f360-hairline);
+  white-space: nowrap;
+}
+
+.amount-edit-input {
+  max-width: 110px;
+  margin-left: auto;
+}
+
+.ledger-empty-state {
+  padding: 26px 14px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--f360-muted);
+  border-radius: var(--f360-radius);
+  border: 1px dashed var(--f360-hairline);
+}
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--f360-hairline);
+  flex-wrap: wrap;
+}
+
+.pagination-info {
+  font-size: 12px;
+  color: var(--f360-muted);
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-indicator {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--f360-text);
+  min-width: 44px;
+  text-align: center;
+}
+
+// Floating Frosted Arqueo Inspector
+.reconcile-inspector {
+  position: sticky;
+  top: 14px;
+  padding: 18px;
+  border-radius: var(--f360-radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.reconcile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--f360-muted);
+}
+
+.book-balance-box,
+.delta-preview-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--f360-radius);
+  background: var(--f360-surface-2);
+  border: 1px solid var(--f360-hairline);
+}
+
+.book-label,
+.delta-caption {
+  font-size: 12px;
+  color: var(--f360-muted);
+}
+
+.book-value {
+  font-size: 13.5px;
+  color: var(--f360-text);
+}
+
+.full-width-btn {
+  width: 100%;
+}
+
+.history-section {
+  padding-top: 12px;
+  border-top: 1px solid var(--f360-hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-title {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--f360-text);
+}
+
+.history-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--f360-muted);
+}
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-item {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--f360-surface-2);
+  border: 1px solid var(--f360-hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.history-top,
+.history-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px;
+}
+
+.history-vault {
+  color: var(--f360-text);
+}
+
+.history-date {
+  color: var(--f360-muted);
+}
+
+.history-delta {
+  font-weight: 700;
+
+  &.is-balanced {
+    color: var(--f360-accent);
+  }
+
+  &.is-positive {
+    color: var(--f360-accent-2);
+  }
+
+  &.is-negative {
+    color: var(--f360-danger);
+  }
+}
+
+@media (max-width: 1080px) {
+  .ledger-split-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reconcile-inspector {
+    position: static;
+  }
+}
+
+@media (max-width: 768px) {
+  .exposure-strip,
+  .ledger-card,
+  .reconcile-inspector {
+    padding: 14px;
+  }
+
+  .ledger-search-wrap {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .filter-pill,
+  .popover-action {
+    min-height: 44px;
+  }
+
+  .card-menu-btn,
+  .table-menu-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

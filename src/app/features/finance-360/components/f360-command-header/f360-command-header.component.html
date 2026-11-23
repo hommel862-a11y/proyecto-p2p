@@ -1,0 +1,310 @@
+<header class="f360-header-shell">
+  <!-- 1. Floating Liquid Glass Top Command Bar -->
+  <div class="f360-liquid-glass command-bar">
+    <!-- Leading: Monochrome Emblem + Title + Chameleon Scope Switch -->
+    <div class="header-leading">
+      <div class="brand-lockup">
+        <span class="brand-emblem" aria-hidden="true">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 3a9 9 0 0 1 6.36 15.36" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </span>
+        <span class="brand-title">Finanzas 360</span>
+      </div>
+
+      <div class="scope-capsule" role="tablist" aria-label="Ámbito financiero">
+        @for (scope of scopeOptions; track scope.id) {
+          <button
+            type="button"
+            role="tab"
+            class="scope-pill"
+            [attr.data-testid]="'scope-tab-' + scope.id"
+            [attr.aria-selected]="activeScope() === scope.id"
+            [attr.title]="scope.hint"
+            [class.is-active]="activeScope() === scope.id"
+            (click)="selectScope(scope.id)"
+          >
+            <span class="scope-dot" aria-hidden="true"></span>
+            <span>{{ scope.label }}</span>
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- Center: Search Command Palette Pill -->
+    <div class="header-center">
+      <button
+        type="button"
+        class="search-trigger-pill"
+        data-testid="f360-search-trigger"
+        aria-label="Buscar movimientos y bóvedas con paleta de comandos"
+        (click)="openPalette.emit()"
+      >
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <span class="search-placeholder">Buscar movimientos, bóvedas...</span>
+        <kbd class="kbd-chip">⌘K</kbd>
+      </button>
+    </div>
+
+    <!-- Trailing: Horizon Dropdown + Single Primary CTA + Overflow Menu -->
+    <div class="header-trailing">
+      <!-- Horizon Selector -->
+      <div class="f360-popover-anchor">
+        <button
+          type="button"
+          class="f360-btn-glass horizon-btn"
+          data-testid="f360-horizon-trigger"
+          aria-label="Seleccionar horizonte temporal"
+          aria-haspopup="menu"
+          [attr.aria-expanded]="activePopover() === 'horizon'"
+          [class.is-active]="activePopover() === 'horizon'"
+          (click)="togglePopover('horizon')"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <path d="M16 2v4" />
+            <path d="M8 2v4" />
+            <path d="M3 10h18" />
+          </svg>
+          <span class="f360-tabular">{{ activeHorizonLabel() }}</span>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+
+        @if (activePopover() === 'horizon') {
+          <div class="f360-liquid-glass glass-popover" role="menu" aria-label="Horizonte de análisis">
+            @for (opt of horizonOptions; track opt.id) {
+              <button
+                type="button"
+                role="menuitemradio"
+                class="popover-item"
+                [attr.data-testid]="'horizon-opt-' + opt.id"
+                [attr.aria-checked]="horizon() === opt.id"
+                [class.is-selected]="horizon() === opt.id"
+                (click)="selectHorizon(opt.id)"
+              >
+                <span class="item-short f360-tabular">{{ opt.shortLabel }}</span>
+                <span class="item-label">{{ opt.fullLabel }}</span>
+              </button>
+            }
+          </div>
+        }
+      </div>
+
+      <!-- Single Primary CTA: + Registrar -->
+      <div class="f360-popover-anchor">
+        <button
+          type="button"
+          class="f360-btn-primary register-cta"
+          data-testid="f360-register-trigger"
+          aria-haspopup="menu"
+          [attr.aria-expanded]="activePopover() === 'register'"
+          (click)="togglePopover('register')"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 5v14" />
+            <path d="M5 12h14" />
+          </svg>
+          <span>Registrar</span>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+
+        @if (activePopover() === 'register') {
+          <div class="f360-liquid-glass glass-popover is-wide" role="menu" aria-label="Acciones rápidas de registro">
+            @for (action of quickActionOptions; track action.id) {
+              <button
+                type="button"
+                role="menuitem"
+                class="popover-item is-detailed"
+                [attr.data-testid]="'quick-action-' + action.id"
+                (click)="triggerQuickAction(action.id)"
+              >
+                <span class="item-title">{{ action.label }}</span>
+                <span class="item-hint">{{ action.hint }}</span>
+              </button>
+            }
+          </div>
+        }
+      </div>
+
+      <!-- Single Overflow Menu -->
+      <div class="f360-popover-anchor">
+        <button
+          type="button"
+          class="f360-icon-btn"
+          data-testid="f360-overflow-trigger"
+          aria-label="Más opciones del portafolio"
+          aria-haspopup="menu"
+          [attr.aria-expanded]="activePopover() === 'overflow'"
+          [class.is-active]="activePopover() === 'overflow' || privacyMode()"
+          (click)="togglePopover('overflow')"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="1" />
+            <circle cx="19" cy="12" r="1" />
+            <circle cx="5" cy="12" r="1" />
+          </svg>
+        </button>
+
+        @if (activePopover() === 'overflow') {
+          <div class="f360-liquid-glass glass-popover is-wide" role="menu" aria-label="Herramientas, respaldo y portafolio">
+            @for (opt of overflowActionOptions; track opt.id) {
+              @if (opt.id === 'export_json' || opt.id === 'request_reset') {
+                <div class="popover-divider" role="separator"></div>
+              }
+              <button
+                type="button"
+                role="menuitem"
+                class="popover-item"
+                [class.is-danger]="opt.group === 'danger'"
+                [attr.data-testid]="'overflow-action-' + opt.id"
+                [disabled]="opt.id === 'sync_drive' && driveSyncing()"
+                (click)="triggerOverflowAction(opt.id)"
+              >
+                <span class="item-label">{{ overflowLabelFor(opt) }}</span>
+              </button>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Recessed Floating 5-Pill Navigation Capsule -->
+  <nav class="nav-capsule-row" aria-label="Secciones de Finanzas 360">
+    <div class="f360-liquid-glass nav-capsule">
+      @for (item of navOptions; track item.id) {
+        <button
+          type="button"
+          class="nav-pill"
+          [attr.data-testid]="'nav-tab-' + item.id"
+          [class.is-active]="activeTab() === item.id"
+          [attr.aria-current]="activeTab() === item.id ? 'page' : null"
+          (click)="selectTab(item.id)"
+        >
+          @switch (item.id) {
+            @case ('overview') {
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="7" height="9" rx="1.5" />
+                <rect x="14" y="3" width="7" height="5" rx="1.5" />
+                <rect x="14" y="12" width="7" height="9" rx="1.5" />
+                <rect x="3" y="16" width="7" height="5" rx="1.5" />
+              </svg>
+            }
+            @case ('vaults') {
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="2" y="5" width="20" height="14" rx="2.5" />
+                <path d="M2 10h20" />
+                <circle cx="17" cy="14.5" r="1.5" />
+              </svg>
+            }
+            @case ('analytics') {
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 3v18h18" />
+                <path d="m7 14 4-4 3 3 6-7" />
+              </svg>
+            }
+            @case ('cashea') {
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <path d="M8 10h8" />
+                <path d="M8 14h5" />
+              </svg>
+            }
+            @case ('pyme_quotes') {
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 20h16" />
+                <path d="M6 20V8l6-4 6 4v12" />
+                <path d="M10 12h4" />
+                <path d="M10 16h4" />
+              </svg>
+            }
+          }
+          <span>{{ item.label }}</span>
+          @if (navBadgeFor(item.id) > 0) {
+            <span class="nav-badge f360-tabular" [class.is-danger]="isDangerBadge(item.id)">
+              {{ navBadgeFor(item.id) }}
+            </span>
+          }
+        </button>
+      }
+    </div>
+  </nav>
+</header>

@@ -1,0 +1,731 @@
+<div class="f360-overview-shell">
+  <!-- ROW 1: 4 Hero KPI Bento Cards -->
+  <section class="hero-kpi-grid" aria-label="Indicadores principales del portafolio">
+    <!-- 1. Patrimonio Neto -->
+    <article class="f360-kpi-aura tone-cyan kpi-card" data-testid="kpi-net-worth">
+      <div class="kpi-head">
+        <span class="kpi-label">Patrimonio Neto</span>
+        <span class="kpi-badge f360-tabular">USD</span>
+      </div>
+      <div class="kpi-body-row">
+        <div class="kpi-values">
+          <strong class="kpi-primary f360-tabular privacy-mask">
+            ${{ formatAmount(netWorthUsd()) }}
+          </strong>
+          <span
+            class="kpi-secondary f360-tabular"
+            [class.privacy-mask]="bcvRate() > 0"
+            [class.is-offline]="bcvRate() <= 0"
+          >
+            {{ netWorthVesLabel() }}
+          </span>
+        </div>
+        <svg class="kpi-sparkline is-cyan" viewBox="0 0 112 32" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="f360SparkCyan" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="var(--f360-accent-2)" stop-opacity="0.32" />
+              <stop offset="100%" stop-color="var(--f360-accent-2)" stop-opacity="0" />
+            </linearGradient>
+          </defs>
+          <path [attr.d]="netWorthSpark().areaPath" fill="url(#f360SparkCyan)" />
+          <path [attr.d]="netWorthSpark().linePath" fill="none" stroke="var(--f360-accent-2)" stroke-width="1.8" stroke-linecap="round" />
+        </svg>
+      </div>
+    </article>
+
+    <!-- 2. Flujo Neto -->
+    <article
+      class="f360-kpi-aura kpi-card"
+      [class.tone-emerald]="periodNetUsd() >= 0"
+      [class.tone-danger]="periodNetUsd() < 0"
+      data-testid="kpi-net-flow"
+    >
+      <div class="kpi-head">
+        <span class="kpi-label">Flujo Neto</span>
+        <span class="kpi-badge f360-tabular">{{ horizonBadge() }}</span>
+      </div>
+      <div class="kpi-body-row">
+        <div class="kpi-values">
+          <strong
+            class="kpi-primary f360-tabular privacy-mask"
+            [class.is-positive]="periodNetUsd() >= 0"
+            [class.is-negative]="periodNetUsd() < 0"
+          >
+            {{ formatSignedUsd(periodNetUsd()) }}
+          </strong>
+          <span class="kpi-secondary f360-tabular">{{ savingsRateLabel() }}</span>
+        </div>
+        <svg class="kpi-sparkline is-emerald" viewBox="0 0 112 32" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="f360SparkEmerald" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="var(--f360-accent)" stop-opacity="0.32" />
+              <stop offset="100%" stop-color="var(--f360-accent)" stop-opacity="0" />
+            </linearGradient>
+          </defs>
+          <path [attr.d]="netFlowSpark().areaPath" fill="url(#f360SparkEmerald)" />
+          <path [attr.d]="netFlowSpark().linePath" fill="none" stroke="var(--f360-accent)" stroke-width="1.8" stroke-linecap="round" />
+        </svg>
+      </div>
+    </article>
+
+    <!-- 3. Egresos -->
+    <article class="f360-kpi-aura tone-violet kpi-card" data-testid="kpi-expenses">
+      <div class="kpi-head">
+        <span class="kpi-label">Egresos</span>
+        <span class="kpi-badge f360-tabular">{{ horizonBadge() }}</span>
+      </div>
+      <div class="kpi-body-row">
+        <div class="kpi-values">
+          <strong class="kpi-primary f360-tabular privacy-mask">
+            ${{ formatAmount(periodExpenseUsd()) }}
+          </strong>
+          <span class="kpi-secondary f360-tabular">
+            {{ periodExpenseCount() }} {{ periodExpenseCount() === 1 ? 'movimiento' : 'movimientos' }}
+          </span>
+        </div>
+        <svg class="kpi-sparkline is-violet" viewBox="0 0 112 32" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="f360SparkViolet" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="var(--f360-violet)" stop-opacity="0.32" />
+              <stop offset="100%" stop-color="var(--f360-violet)" stop-opacity="0" />
+            </linearGradient>
+          </defs>
+          <path [attr.d]="expenseSpark().areaPath" fill="url(#f360SparkViolet)" />
+          <path [attr.d]="expenseSpark().linePath" fill="none" stroke="var(--f360-violet)" stroke-width="1.8" stroke-linecap="round" />
+        </svg>
+      </div>
+    </article>
+
+    <!-- 4. Liquidez 14D (Radial SVG ring + Overdue Badge) -->
+    <article
+      class="f360-kpi-aura kpi-card"
+      [class]=" 'f360-kpi-aura kpi-card ' + liquidityToneClass() "
+      data-testid="kpi-liquidity"
+    >
+      <div class="kpi-head">
+        <span class="kpi-label">Liquidez 14D</span>
+        @if (liquidity().overdueCount > 0) {
+          <span
+            class="f360-status-pill tone-danger f360-tabular"
+            data-testid="liquidity-overdue-badge"
+          >
+            {{ liquidity().overdueCount }} {{ liquidity().overdueCount === 1 ? 'vencido' : 'vencidos' }}
+          </span>
+        } @else {
+          <span
+            class="f360-status-pill"
+            [class.tone-emerald]="liquidity().status === 'optimal'"
+            [class.tone-warn]="liquidity().status === 'warning'"
+            [class.tone-danger]="liquidity().status === 'critical'"
+          >
+            {{ liquidityStatusLabel() }}
+          </span>
+        }
+      </div>
+
+      <div class="liquidity-body">
+        <div class="radial-wrap" aria-hidden="true">
+          <svg width="56" height="56" viewBox="0 0 56 56">
+            <circle
+              cx="28"
+              cy="28"
+              [attr.r]="ringRadius"
+              fill="none"
+              stroke="var(--f360-hairline)"
+              stroke-width="5"
+            />
+            <circle
+              cx="28"
+              cy="28"
+              [attr.r]="ringRadius"
+              fill="none"
+              class="radial-arc"
+              [class.is-optimal]="liquidity().status === 'optimal'"
+              [class.is-warning]="liquidity().status === 'warning'"
+              [class.is-critical]="liquidity().status === 'critical'"
+              stroke-width="5"
+              stroke-linecap="round"
+              [attr.stroke-dasharray]="ringCircumference"
+              [attr.stroke-dashoffset]="liquidityRingOffset()"
+              transform="rotate(-90 28 28)"
+            />
+          </svg>
+          <span class="radial-pct f360-tabular">{{ liquidity().ratioPct }}%</span>
+        </div>
+
+        <div class="kpi-values">
+          <strong class="kpi-status-heading">{{ liquidityStatusLabel() }}</strong>
+          <span class="kpi-secondary f360-tabular privacy-mask">
+            Disp. ${{ formatAmount(liquidity().liquidUsd) }} · 14D ${{ formatAmount(liquidity().due14DaysUsd) }}
+          </span>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <!-- ROW 2: 65% Cashflow Dual-Spline Chart / 35% Structured P&L -->
+  <section class="mid-split-grid" aria-label="Flujo de caja y estado de resultados">
+    <!-- Left 65%: Cashflow Chart -->
+    <article class="f360-content-card panel-card">
+      <header class="card-header">
+        <div>
+          <h2 class="card-title">Flujo de Caja (Ingresos vs Egresos)</h2>
+          <p class="card-subtitle">Evolución real del periodo · {{ horizonBadge() }}</p>
+        </div>
+        <div class="chart-legend" aria-label="Leyenda de series">
+          <span class="legend-item">
+            <span class="legend-dot is-income" aria-hidden="true"></span>
+            <span>Ingresos</span>
+          </span>
+          <span class="legend-item">
+            <span class="legend-dot is-expense" aria-hidden="true"></span>
+            <span>Egresos</span>
+          </span>
+        </div>
+      </header>
+
+      @if (!hasCashflowData()) {
+        <div class="empty-chart-state" data-testid="cashflow-empty">
+          <svg
+            width="28"
+            height="28"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M3 3v18h18" />
+            <path d="m7 15 4-4 3 3 5-6" />
+          </svg>
+          <p class="empty-title">Sin movimientos en este horizonte</p>
+          <p class="empty-copy">
+            Registra ingresos o gastos para trazar tu curva de liquidez real sin proyecciones sintéticas.
+          </p>
+          <button
+            type="button"
+            class="f360-btn-glass"
+            (click)="quickAction.emit('income')"
+          >
+            Registrar movimiento
+          </button>
+        </div>
+      } @else {
+        <div class="chart-stage" (mouseleave)="setHoveredPoint(null)">
+          <svg
+            class="cashflow-svg"
+            data-testid="cashflow-svg"
+            [attr.viewBox]="'0 0 ' + chartWidth + ' ' + chartHeight"
+            preserveAspectRatio="none"
+            role="img"
+            aria-label="Gráfico comparativo de ingresos y egresos"
+          >
+            <defs>
+              <linearGradient id="f360CashIncomeGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--f360-accent)" stop-opacity="0.28" />
+                <stop offset="100%" stop-color="var(--f360-accent)" stop-opacity="0.02" />
+              </linearGradient>
+              <linearGradient id="f360CashExpenseGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--f360-danger)" stop-opacity="0.22" />
+                <stop offset="100%" stop-color="var(--f360-danger)" stop-opacity="0.02" />
+              </linearGradient>
+            </defs>
+
+            @for (grid of chartGridLines(); track grid.y) {
+              <line
+                x1="46"
+                [attr.x2]="chartWidth - 18"
+                [attr.y1]="grid.y"
+                [attr.y2]="grid.y"
+                stroke="var(--f360-hairline)"
+                stroke-dasharray="3 4"
+              />
+              <text
+                x="40"
+                [attr.y]="grid.y + 4"
+                text-anchor="end"
+                class="chart-axis-text"
+              >
+                {{ grid.label }}
+              </text>
+            }
+
+            <path [attr.d]="incomeAreaPath()" fill="url(#f360CashIncomeGrad)" />
+            <path [attr.d]="expenseAreaPath()" fill="url(#f360CashExpenseGrad)" />
+
+            <path
+              [attr.d]="incomeLinePath()"
+              fill="none"
+              stroke="var(--f360-accent)"
+              stroke-width="2.2"
+              stroke-linecap="round"
+            />
+            <path
+              [attr.d]="expenseLinePath()"
+              fill="none"
+              stroke="var(--f360-danger)"
+              stroke-width="2.2"
+              stroke-linecap="round"
+            />
+
+            @if (activeTooltipPoint(); as active) {
+              <line
+                [attr.x1]="active.x"
+                [attr.x2]="active.x"
+                y1="16"
+                [attr.y2]="chartHeight - 30"
+                stroke="var(--f360-glass-border)"
+                stroke-width="1.2"
+              />
+              <circle [attr.cx]="active.x" [attr.cy]="active.yIncome" r="4.5" fill="var(--f360-accent)" />
+              <circle [attr.cx]="active.x" [attr.cy]="active.yExpense" r="4.5" fill="var(--f360-danger)" />
+            }
+
+            @for (pt of chartPoints(); track pt.id) {
+              <text
+                [attr.x]="pt.x"
+                [attr.y]="chartHeight - 8"
+                text-anchor="middle"
+                class="chart-axis-text"
+              >
+                {{ pt.label }}
+              </text>
+            }
+          </svg>
+
+          <!-- Interactive Accessible Hover/Focus Targets -->
+          <div class="chart-hit-layer" aria-label="Puntos de datos del flujo de caja">
+            @for (pt of chartPoints(); track pt.id) {
+              <button
+                type="button"
+                class="chart-hit-btn"
+                [attr.data-testid]="'cashflow-point-' + pt.index"
+                [attr.aria-label]="pt.label + ': Ingresos $' + formatAmount(pt.incomeUsd) + ', Egresos $' + formatAmount(pt.expenseUsd)"
+                (mouseenter)="setHoveredPoint(pt.index)"
+                (focus)="setHoveredPoint(pt.index)"
+                (click)="setHoveredPoint(pt.index)"
+              ></button>
+            }
+          </div>
+
+          @if (activeTooltipPoint(); as tip) {
+            <div
+              class="f360-liquid-glass chart-tooltip"
+              data-testid="cashflow-tooltip"
+              [style.left.%]="tip.xPct"
+            >
+              <div class="tooltip-date">{{ tip.label }} · {{ tip.dateIso }}</div>
+              <div class="tooltip-row">
+                <span class="tooltip-key is-income">Ingresos</span>
+                <strong class="f360-tabular privacy-mask">${{ formatAmount(tip.incomeUsd) }}</strong>
+              </div>
+              <div class="tooltip-row">
+                <span class="tooltip-key is-expense">Egresos</span>
+                <strong class="f360-tabular privacy-mask">${{ formatAmount(tip.expenseUsd) }}</strong>
+              </div>
+              <div class="tooltip-row is-net">
+                <span>Neto</span>
+                <strong class="f360-tabular privacy-mask">{{ formatSignedUsd(tip.netUsd) }}</strong>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </article>
+
+    <!-- Right 35%: Structured P&L Card -->
+    <article class="f360-content-card panel-card pnl-card" data-testid="pnl-card">
+      <header class="card-header">
+        <div>
+          <h2 class="card-title">Estado de Resultados (P&amp;L)</h2>
+          <p class="card-subtitle">Estructura operativa · {{ horizonBadge() }}</p>
+        </div>
+      </header>
+
+      <div class="pnl-list">
+        @for (line of pnlBodyLines(); track line.id) {
+          <div class="pnl-row">
+            <div class="pnl-label-group">
+              <span class="pnl-label">{{ line.label }}</span>
+              @if (line.sublabel) {
+                <span class="pnl-sublabel">{{ line.sublabel }}</span>
+              }
+            </div>
+            <strong
+              class="pnl-amount f360-tabular privacy-mask"
+              [class.is-positive]="line.tone === 'positive'"
+              [class.is-negative]="line.tone === 'negative'"
+            >
+              @if (line.tone === 'negative') {
+                -${{ formatAmount(line.amountUsd) }}
+              } @else {
+                ${{ formatAmount(line.amountUsd) }}
+              }
+            </strong>
+          </div>
+        }
+      </div>
+
+      @if (pnlFooterLine(); as netLine) {
+        <div
+          class="pnl-footer-row"
+          data-testid="pnl-net-row"
+          [class.is-loss]="netLine.amountUsd < 0"
+        >
+          <div class="pnl-label-group">
+            <span class="pnl-net-label">{{ netLine.label }}</span>
+            @if (netLine.sharePct !== undefined) {
+              <span class="pnl-margin f360-tabular">Margen {{ netLine.sharePct.toFixed(1) }}%</span>
+            }
+          </div>
+          <strong class="pnl-net-value f360-tabular privacy-mask">
+            {{ formatSignedUsd(netLine.amountUsd) }}
+          </strong>
+        </div>
+      }
+    </article>
+  </section>
+
+  <!-- ROW 3: 3 Balanced Action/Obligation/Activity Cards -->
+  <section class="tri-grid" aria-label="Acciones rápidas, vencimientos y actividad reciente">
+    <!-- 1. Acciones Rápidas (2x2) -->
+    <article class="f360-content-card panel-card">
+      <header class="card-header">
+        <div>
+          <h2 class="card-title">Acciones Rápidas</h2>
+          <p class="card-subtitle">Captura inmediata y puente P2P aislado</p>
+        </div>
+      </header>
+
+      <div class="quick-grid">
+        <button
+          type="button"
+          class="quick-tile"
+          data-testid="quick-action-movement"
+          (click)="quickAction.emit('expense')"
+        >
+          <span class="tile-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 5v14" />
+              <path d="M5 12h14" />
+            </svg>
+          </span>
+          <span class="tile-title">Nuevo Movimiento</span>
+          <span class="tile-sub">Ingreso o gasto tri-monetario</span>
+        </button>
+
+        <button
+          type="button"
+          class="quick-tile"
+          data-testid="quick-action-transfer"
+          (click)="quickAction.emit('transfer')"
+        >
+          <span class="tile-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m17 2 4 4-4 4" />
+              <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+              <path d="m7 22-4-4 4-4" />
+              <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+            </svg>
+          </span>
+          <span class="tile-title">Transferencia FX</span>
+          <span class="tile-sub">Asiento pareado entre bóvedas</span>
+        </button>
+
+        <button
+          type="button"
+          class="quick-tile"
+          [class.is-highlighted]="todayP2pProfitUsd() > 0 && !isP2pImportedToday()"
+          data-testid="quick-action-p2p"
+          (click)="quickAction.emit('import_p2p')"
+        >
+          <span class="tile-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3v12" />
+              <path d="m7 10 5 5 5-5" />
+              <path d="M5 21h14" />
+            </svg>
+          </span>
+          <span class="tile-title">Traer Profit P2P</span>
+          <span class="tile-sub f360-tabular privacy-mask">{{ p2pQuickLabel() }}</span>
+        </button>
+
+        <button
+          type="button"
+          class="quick-tile"
+          data-testid="quick-action-audio"
+          (click)="quickAction.emit('audio')"
+        >
+          <span class="tile-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="2" width="6" height="12" rx="3" />
+              <path d="M5 10a7 7 0 0 0 14 0" />
+              <path d="M12 19v3" />
+            </svg>
+          </span>
+          <span class="tile-title">Dictar / Escanear IA</span>
+          <span class="tile-sub">Voz o recibo OCR seguro</span>
+        </button>
+      </div>
+    </article>
+
+    <!-- 2. Vencimientos y Mora (14D) -->
+    <article class="f360-content-card panel-card">
+      <header class="card-header">
+        <div>
+          <h2 class="card-title">Vencimientos y Mora (14D)</h2>
+          <p class="card-subtitle">Compromisos vencidos y próximos</p>
+        </div>
+        <button
+          type="button"
+          class="f360-btn-ghost compact-btn"
+          data-testid="overview-add-liability-btn"
+          (click)="quickAction.emit('new_liability')"
+        >
+          + Pasivo
+        </button>
+      </header>
+
+      @if (upcomingItems().length === 0) {
+        <div class="compact-empty">
+          <span>Sin vencimientos ni mora en los próximos 14 días.</span>
+        </div>
+      } @else {
+        <div class="upcoming-list">
+          @for (item of upcomingItems(); track item.id) {
+            <div class="upcoming-row" [attr.data-testid]="'upcoming-row-' + item.id">
+              <div class="upcoming-main">
+                <div class="upcoming-top">
+                  <span class="upcoming-title">{{ item.title }}</span>
+                  <span
+                    class="f360-status-pill f360-tabular"
+                    [attr.data-testid]="'upcoming-badge-' + item.id"
+                    [class.tone-danger]="item.status === 'overdue' || item.daysDelta < 0"
+                    [class.tone-warn]="item.status !== 'overdue' && item.daysDelta >= 0 && item.daysDelta <= 3"
+                    [class.tone-cyan]="item.status !== 'overdue' && item.daysDelta > 3"
+                  >
+                    {{ upcomingDueBadge(item) }}
+                  </span>
+                </div>
+                <span class="upcoming-meta">{{ item.creditor }} · {{ item.dueDate }}</span>
+              </div>
+
+              <div class="upcoming-trailing">
+                <strong class="upcoming-amount f360-tabular privacy-mask">
+                  ${{ formatAmount(item.remainingUsd) }}
+                </strong>
+
+                <div class="f360-row-menu-anchor">
+                  <button
+                    type="button"
+                    class="f360-icon-btn row-menu-btn"
+                    [attr.data-testid]="'upcoming-menu-' + item.id"
+                    [attr.aria-label]="'Opciones para ' + item.title"
+                    aria-haspopup="menu"
+                    [attr.aria-expanded]="openUpcomingMenuId() === item.id"
+                    (click)="toggleUpcomingMenu(item.id)"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="12" cy="12" r="1" />
+                      <circle cx="19" cy="12" r="1" />
+                      <circle cx="5" cy="12" r="1" />
+                    </svg>
+                  </button>
+
+                  @if (openUpcomingMenuId() === item.id) {
+                    <div class="f360-liquid-glass row-popover" role="menu">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="row-popover-item"
+                        [attr.data-testid]="'upcoming-pay-' + item.id"
+                        (click)="handlePayLiability(item)"
+                      >
+                        Liquidar
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="row-popover-item is-danger"
+                        [attr.data-testid]="'upcoming-delete-' + item.id"
+                        (click)="handleDeleteLiability(item)"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </article>
+
+    <!-- 3. Actividad Reciente -->
+    <article class="f360-content-card panel-card">
+      <header class="card-header">
+        <div>
+          <h2 class="card-title">Actividad Reciente</h2>
+          <p class="card-subtitle">Últimos asientos del libro mayor</p>
+        </div>
+        <button
+          type="button"
+          class="f360-btn-ghost compact-btn"
+          data-testid="view-full-ledger-btn"
+          (click)="navigateTab.emit('vaults')"
+        >
+          Ver libro completo
+        </button>
+      </header>
+
+      @if (visibleActivity().length === 0) {
+        <div class="compact-empty">
+          <span>Aún no hay movimientos registrados en este ámbito.</span>
+        </div>
+      } @else {
+        <ul class="activity-feed">
+          @for (entry of visibleActivity(); track entry.id) {
+            <li class="activity-row" [attr.data-testid]="'activity-row-' + entry.id">
+              <span
+                class="activity-dir"
+                [class.is-income]="entry.kind === 'income'"
+                [class.is-expense]="entry.kind === 'expense'"
+                [class.is-transfer]="entry.kind === 'transfer'"
+                aria-hidden="true"
+              >
+                @if (entry.kind === 'income') {
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 5v14" />
+                    <path d="m19 12-7 7-7-7" />
+                  </svg>
+                } @else if (entry.kind === 'expense') {
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 19V5" />
+                    <path d="m5 12 7-7 7 7" />
+                  </svg>
+                } @else {
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m17 7 4 4-4 4" />
+                    <path d="M3 11h18" />
+                    <path d="m7 17-4-4 4-4" />
+                  </svg>
+                }
+              </span>
+
+              <div class="activity-meta">
+                <span class="activity-title">{{ entry.title }}</span>
+                <span class="activity-sub">{{ entry.vaultName }} · {{ entry.date }}</span>
+              </div>
+
+              <strong
+                class="activity-amount f360-tabular privacy-mask"
+                [class.is-income]="entry.kind === 'income'"
+                [class.is-expense]="entry.kind === 'expense'"
+                [class.is-transfer]="entry.kind === 'transfer'"
+              >
+                @if (entry.kind === 'income') {
+                  +${{ formatAmount(entry.amountUsd) }}
+                } @else if (entry.kind === 'expense') {
+                  -${{ formatAmount(entry.amountUsd) }}
+                } @else {
+                  ${{ formatAmount(entry.amountUsd) }}
+                }
+              </strong>
+            </li>
+          }
+        </ul>
+      }
+    </article>
+  </section>
+
+  <!-- ROW 4: Compact Full-Width Strip — Metas y Fondos Blindados -->
+  <section class="f360-content-card goals-strip" aria-label="Metas y fondos blindados">
+    <header class="card-header">
+      <div>
+        <h2 class="card-title">Metas y Fondos Blindados</h2>
+        <p class="card-subtitle f360-tabular privacy-mask">
+          Reservas etiquetadas: ${{ formatAmount(totalEarmarkedGoalsUsd()) }} USD
+        </p>
+      </div>
+      <button
+        type="button"
+        class="f360-btn-glass"
+        data-testid="overview-add-goal-btn"
+        (click)="quickAction.emit('new_goal')"
+      >
+        + Meta
+      </button>
+    </header>
+
+    @if (goals().length === 0) {
+      <div class="compact-empty">
+        <span>Crea una meta para blindar reservas etiquetadas sin afectar tu flujo de gastos.</span>
+      </div>
+    } @else {
+      <div class="goals-grid">
+        @for (goal of goals(); track goal.id) {
+          <div class="goal-card" [attr.data-testid]="'goal-card-' + goal.id">
+            <div class="goal-top">
+              <div class="goal-info">
+                <strong class="goal-title">{{ goal.title }}</strong>
+                <span class="goal-balance f360-tabular privacy-mask">
+                  ${{ formatAmount(goal.currentAmountUsd) }} / ${{ formatAmount(goal.targetAmountUsd) }}
+                </span>
+              </div>
+
+              <div class="goal-actions">
+                <span class="goal-pct f360-tabular">{{ goalProgressPct(goal) }}%</span>
+                <button
+                  type="button"
+                  class="f360-btn-glass goal-contribute-btn"
+                  [attr.data-testid]="'goal-contribute-' + goal.id"
+                  (click)="contributeGoal.emit(goal)"
+                >
+                  Abonar
+                </button>
+                <div class="f360-row-menu-anchor">
+                  <button
+                    type="button"
+                    class="f360-icon-btn row-menu-btn"
+                    [attr.data-testid]="'goal-menu-' + goal.id"
+                    [attr.aria-label]="'Opciones para meta ' + goal.title"
+                    aria-haspopup="menu"
+                    [attr.aria-expanded]="openGoalMenuId() === goal.id"
+                    (click)="toggleGoalMenu(goal.id)"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="12" cy="12" r="1" />
+                      <circle cx="19" cy="12" r="1" />
+                      <circle cx="5" cy="12" r="1" />
+                    </svg>
+                  </button>
+
+                  @if (openGoalMenuId() === goal.id) {
+                    <div class="f360-liquid-glass row-popover" role="menu">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="row-popover-item is-danger"
+                        [attr.data-testid]="'goal-delete-' + goal.id"
+                        (click)="handleDeleteGoal(goal)"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+
+            <div class="goal-bar-track" aria-hidden="true">
+              <div class="goal-bar-fill" [style.width.%]="goalProgressPct(goal)"></div>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </section>
+</div>
