@@ -862,6 +862,20 @@
               (ngModelChange)="gatewayUrlInput.set($event)"
             />
           </div>
+          <div class="m-field">
+            <label class="m-label" for="gateway-auth-token-input">
+              Token Bearer del Gateway (Opcional — INBOUND_GATEWAY_AUTH_TOKEN)
+            </label>
+            <input
+              id="gateway-auth-token-input"
+              type="password"
+              autocomplete="off"
+              class="crm-input"
+              placeholder="Dejar vacío si el gateway no exige autenticación..."
+              [ngModel]="gatewayAuthTokenInput()"
+              (ngModelChange)="gatewayAuthTokenInput.set($event)"
+            />
+          </div>
           <div class="gateway-presets">
             <button
               type="button"

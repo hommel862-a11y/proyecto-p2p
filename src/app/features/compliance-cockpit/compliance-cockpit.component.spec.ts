@@ -980,6 +980,49 @@ describe('ComplianceCockpitComponent', () => {
         (window as unknown as { electron?: unknown }).electron = prevElectron;
       }
     });
+
+    it('saves optional Gateway Bearer auth token before reconnecting URL and refreshes storage health', () => {
+      const setAuthToken = vi.fn();
+      const fetchStorageHealth = vi.fn(async () => ({
+        ok: true,
+        mode: 'POSTGRES_PGVECTOR',
+        postgresConnected: true,
+        rlsActive: true,
+        pgvectorAvailable: true,
+      }));
+      const extendedGateway = {
+        ...inboundGatewayMock,
+        getAuthToken: vi.fn(() => 'existing-token'),
+        setAuthToken,
+        fetchStorageHealth,
+      };
+      const injector = Injector.create({
+        providers: [
+          { provide: StorageService, useValue: storageMock },
+          { provide: ToastService, useValue: toastMock },
+          { provide: Router, useValue: routerMock },
+          { provide: Finance360Service, useValue: finance360Mock },
+          { provide: InboundGatewayService, useValue: extendedGateway },
+          ComplianceCockpitComponent,
+        ],
+      });
+      const gwComponent = injector.get(ComplianceCockpitComponent);
+      try {
+        gwComponent.onGatewayPillClick();
+        expect(gwComponent.gatewayAuthTokenInput()).toBe('existing-token');
+
+        gwComponent.gatewayUrlInput.set('http://127.0.0.1:3030');
+        gwComponent.gatewayAuthTokenInput.set('  new-bearer-secret  ');
+        gwComponent.saveAndConnectGateway();
+
+        expect(setAuthToken).toHaveBeenCalledWith('new-bearer-secret');
+        expect(inboundGatewayMock.setGatewayUrl).toHaveBeenCalledWith('http://127.0.0.1:3030');
+        expect(fetchStorageHealth).toHaveBeenCalledWith('http://127.0.0.1:3030');
+        expect(gwComponent.showGatewayConfigModal()).toBe(false);
+      } finally {
+        gwComponent.ngOnDestroy();
+      }
+    });
   });
 });
 

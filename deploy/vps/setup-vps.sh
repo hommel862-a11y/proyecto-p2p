@@ -37,20 +37,33 @@ if [ ! -f .env ]; then
     echo "⚠️ Por favor editá el archivo .env con tus credenciales: nano .env"
 fi
 
-# 5. Compilar e iniciar el daemon con PM2
+# 5. Compilar, migrar (si DATABASE_URL está configurado) e iniciar ambos servicios con PM2
 echo "═══════════════════════════════════════════════════════════════════════"
-echo "  COMPILANDO Y DESPLEGANDO EL SERVICIO..."
+echo "  COMPILANDO Y DESPLEGANDO SERVICIOS (SENTINEL + INBOUND GATEWAY)..."
 echo "═══════════════════════════════════════════════════════════════════════"
 
 npm install
 npm run telegram:daemon:build
+npm run inbound:build
+
+if grep -qE '^DATABASE_URL=.+' .env 2>/dev/null || [ -n "${DATABASE_URL:-}" ]; then
+    echo "Aplicando migraciones PostgreSQL (sin Docker ni psql)..."
+    npm run inbound:migrate
+else
+    echo "ℹ️ DATABASE_URL no configurado: p2p-inbound-gateway arrancará en modo MEMORY_FALLBACK."
+fi
 
 pm2 stop p2p-telegram-sentinel 2>/dev/null || true
 pm2 start packages/telegram-daemon/dist/index.js --name "p2p-telegram-sentinel"
+
+pm2 stop p2p-inbound-gateway 2>/dev/null || true
+pm2 start packages/inbound-gateway/dist/index.js --name "p2p-inbound-gateway"
+
 pm2 save
 sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u $USER --hp $HOME || true
 
 echo "═══════════════════════════════════════════════════════════════════════"
-echo "  ¡DESPLIEGUE EXITOSO! Tu bot ya está corriendo 24/7 en la nube."
-echo "  Ver logs en vivo con: pm2 logs p2p-telegram-sentinel"
+echo "  ¡DESPLIEGUE EXITOSO! Bot e Inbound Gateway corriendo 24/7 con PM2."
+echo "  Ver logs: pm2 logs p2p-telegram-sentinel | pm2 logs p2p-inbound-gateway"
+echo "  Salud DB: curl -s 'http://127.0.0.1:3030/api/arm/health/storage?verbose=1'"
 echo "═══════════════════════════════════════════════════════════════════════"

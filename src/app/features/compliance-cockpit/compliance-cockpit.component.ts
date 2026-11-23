@@ -223,11 +223,13 @@ export class ComplianceCockpitComponent implements OnDestroy {
 
   readonly showGatewayConfigModal = signal<boolean>(false);
   readonly gatewayUrlInput = signal<string>(this.inboundGateway.getGatewayUrl());
+  readonly gatewayAuthTokenInput = signal<string>(this.inboundGateway.getAuthToken?.() ?? '');
   readonly gatewayTesting = signal<boolean>(false);
   readonly gatewayTestResult = signal<{ ok: boolean; message: string } | null>(null);
 
   onGatewayPillClick(): void {
     this.gatewayUrlInput.set(this.inboundGateway.getGatewayUrl());
+    this.gatewayAuthTokenInput.set(this.inboundGateway.getAuthToken?.() ?? '');
     this.gatewayTestResult.set(null);
 
     if (this.inboundGateway.status() === 'CONNECTED') {
@@ -264,7 +266,9 @@ export class ComplianceCockpitComponent implements OnDestroy {
   saveAndConnectGateway(): void {
     const targetUrl = this.gatewayUrlInput().trim();
     if (!targetUrl) return;
+    this.inboundGateway.setAuthToken?.(this.gatewayAuthTokenInput().trim());
     this.inboundGateway.setGatewayUrl(targetUrl);
+    void this.inboundGateway.fetchStorageHealth?.(targetUrl);
     this.showGatewayConfigModal.set(false);
     this.toast.success(`Guardada URL del Gateway: ${targetUrl}`, 'Gateway Configurado');
   }
