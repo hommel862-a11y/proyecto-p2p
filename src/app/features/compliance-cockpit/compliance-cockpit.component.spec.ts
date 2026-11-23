@@ -1029,6 +1029,73 @@ describe('ComplianceCockpitComponent', () => {
         gwComponent.ngOnDestroy();
       }
     });
+
+    it('ingests live WhatsApp QR inbound SSE messages into Inbox & Kanban and dispatches outbound replies', async () => {
+      const localArmEvent$ = new Subject<unknown>();
+      const sendOutboundMessage = vi.fn(async () => ({
+        ok: true,
+        mode: 'LIVE_WHATSAPP_QR',
+        metaMessageId: 'waqr-out-1',
+      }));
+      const extendedGateway = {
+        ...inboundGatewayMock,
+        armEvent$: localArmEvent$.asObservable(),
+        sendOutboundMessage,
+      };
+      const injector = Injector.create({
+        providers: [
+          { provide: StorageService, useValue: storageMock },
+          { provide: ToastService, useValue: toastMock },
+          { provide: Router, useValue: routerMock },
+          { provide: Finance360Service, useValue: finance360Mock },
+          { provide: InboundGatewayService, useValue: extendedGateway },
+          ComplianceCockpitComponent,
+        ],
+      });
+      const waComponent = injector.get(ComplianceCockpitComponent);
+      try {
+        localArmEvent$.next({
+          id: 901,
+          workspaceId: 'P2P_DESK',
+          eventType: 'message_received',
+          aggregateId: '+584141234567',
+          payload: {
+            direction: 'INBOUND',
+            channel: 'WHATSAPP',
+            transport: 'WHATSAPP_QR',
+            senderPhone: '+584141234567',
+            senderName: 'Cliente Prueba',
+            text: 'Hola quiero cotizar 200 USDT',
+            timestamp: Date.now(),
+          },
+          timestamp: Date.now(),
+        });
+
+        const conv = waComponent.conversations().find((c) => c.recipientPhoneOrIgId === '+584141234567');
+        expect(conv).toBeDefined();
+        expect(conv?.contactName).toBe('Cliente Prueba');
+        expect(conv?.messages[0]?.text).toBe('Hola quiero cotizar 200 USDT');
+
+        const card = waComponent.armKanbanCards().find((c) => c.id === 'wa-lead-584141234567');
+        expect(card).toBeDefined();
+        expect(card?.estimatedValueNum).toBe(0);
+        expect(card?.movedByAgentBadge).toBe('WhatsApp QR');
+
+        waComponent.selectedConversationId.set(conv!.id);
+        waComponent.chatDraftText.set('¡Hola! Tasa actual 84.50 Bs/USDT.');
+        waComponent.sendChatMessage();
+        await Promise.resolve();
+
+        expect(sendOutboundMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            recipientPhone: '+584141234567',
+            text: '¡Hola! Tasa actual 84.50 Bs/USDT.',
+          }),
+        );
+      } finally {
+        waComponent.ngOnDestroy();
+      }
+    });
   });
 });
 

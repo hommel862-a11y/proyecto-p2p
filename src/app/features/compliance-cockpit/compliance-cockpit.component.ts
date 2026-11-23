@@ -2532,6 +2532,37 @@ export class ComplianceCockpitComponent implements OnDestroy {
 
     this.appendMessageToConversation(conv.id, newMsg);
     this.chatDraftText.set('');
+
+    if (
+      conv.channel === 'WHATSAPP' &&
+      conv.recipientPhoneOrIgId &&
+      typeof this.inboundGateway.sendOutboundMessage === 'function'
+    ) {
+      void this.inboundGateway
+        .sendOutboundMessage({
+          workspaceId: this.activeArmSilo(),
+          recipientPhone: conv.recipientPhoneOrIgId,
+          text,
+          lastInboundTimestampMs: conv.lastInboundTimestamp || Date.now(),
+        })
+        .then((res) => {
+          if (res.ok && (res.mode === 'LIVE_WHATSAPP_QR' || res.mode === 'LIVE_META_GRAPH')) {
+            this.toast.success(
+              `Enviado por WhatsApp en vivo (${conv.recipientPhoneOrIgId}).`,
+              'WhatsApp Saliente',
+            );
+          } else if (!res.ok) {
+            this.toast.warn(
+              `Guardado en Inbox, pero falló envío WhatsApp: ${res.error || 'Sin conexión'}`,
+              'WhatsApp Saliente',
+            );
+          } else {
+            this.toast.info('Mensaje registrado en Inbox (modo local).', 'Chat Omnicanal');
+          }
+        });
+      return;
+    }
+
     this.toast.success('Mensaje despachado.', 'Chat Omnicanal');
   }
 
@@ -4578,6 +4609,9 @@ export class ComplianceCockpitComponent implements OnDestroy {
   }
 
   private handleIncomingArmOutboxEvent(evt: ArmOutboxSseEvent): void {
+    if (evt.eventType === 'message_received' && evt.payload['direction'] === 'INBOUND') {
+      this.ingestLiveWhatsAppInboundEvent(evt);
+    }
     if (evt.eventType === 'approval_requested' && evt.payload['approval']) {
       const approval = evt.payload['approval'] as ArmApprovalQueueItem;
       const exists = this.armApprovalQueue().some((a) => a.id === approval.id);
@@ -4601,6 +4635,146 @@ export class ComplianceCockpitComponent implements OnDestroy {
       };
       this.armAutonomousFeed.set([feedEvt, ...this.armAutonomousFeed()].slice(0, 60));
     }
+  }
+
+  private ingestLiveWhatsAppInboundEvent(evt: ArmOutboxSseEvent): void {
+    const senderPhone = String(evt.payload['senderPhone'] || evt.aggregateId || '').trim();
+    const text = String(evt.payload['text'] || '').trim();
+    if (!senderPhone || !text) return;
+
+    const senderName = String(evt.payload['senderName'] || senderPhone).trim();
+    const digits = senderPhone.replace(/\D/g, '') || senderPhone;
+    const timestamp = Number(evt.payload['timestamp'] || evt.timestamp || Date.now());
+    const msgId = `sse-wa-${evt.id}`;
+    const targetScope: WorkspaceScope =
+      evt.workspaceId === 'FINANCE_360' ? 'FINANCE_360' : 'P2P_DESK';
+
+    // 1. Upsert into Omnichannel Inbox conversations
+    const existingConvs = this.conversations();
+    const existingConv = existingConvs.find(
+      (c) => (c.recipientPhoneOrIgId || '').replace(/\D/g, '') === digits,
+    );
+    const inboundMsg: OmnichannelMessage = {
+      id: msgId,
+      conversationId: existingConv ? existingConv.id : `conv-wa-${digits}`,
+      channel: 'WHATSAPP',
+      direction: 'INBOUND',
+      senderHandle: senderPhone,
+      text,
+      timestamp,
+    };
+
+    if (existingConv) {
+      const alreadyHas = existingConv.messages.some((m) => m.id === msgId);
+      if (!alreadyHas) {
+        const updated = existingConvs.map((c) =>
+          c.id === existingConv.id
+            ? {
+                ...c,
+                contactName:
+                  c.contactName === c.recipientPhoneOrIgId && senderName !== senderPhone
+                    ? senderName
+                    : c.contactName,
+                lastInboundTimestamp: Math.max(c.lastInboundTimestamp ?? 0, timestamp),
+                unreadCount: (c.unreadCount || 0) + 1,
+                messages: [...c.messages, inboundMsg],
+              }
+            : c,
+        );
+        this.conversations.set(updated);
+        this.saveConversations();
+      }
+    } else {
+      const newConv: OmnichannelConversation = {
+        id: `conv-wa-${digits}`,
+        scope: targetScope,
+        contactId: null,
+        contactName: senderName,
+        channel: 'WHATSAPP',
+        recipientPhoneOrIgId: senderPhone,
+        lastInboundTimestamp: timestamp,
+        unreadCount: 1,
+        linkedDealId: null,
+        messages: [inboundMsg],
+      };
+      this.conversations.set([newConv, ...existingConvs]);
+      this.saveConversations();
+      if (!this.selectedConversationId()) {
+        this.selectedConversationId.set(newConv.id);
+      }
+    }
+
+    // 2. Upsert into ARM Kanban cards (real lead, $0.00 until quoted)
+    const leadId = `wa-lead-${digits}`;
+    const existingCards = this.armKanbanCards();
+    const existingCard = existingCards.find((c) => c.id === leadId);
+    const mediaBadge = `WA QR ${new Date(timestamp).toLocaleTimeString('es-VE', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
+
+    if (existingCard) {
+      const lastExisting = existingCard.messages[existingCard.messages.length - 1];
+      const alreadyHas = lastExisting?.sender === 'LEAD' && lastExisting?.text === text;
+      if (!alreadyHas) {
+        const updatedCards = existingCards.map((c) =>
+          c.id === leadId
+            ? {
+                ...c,
+                lastMessagePreview: text.slice(0, 120),
+                freeWindowLabel: 'WhatsApp QR En Vivo',
+                messages: [
+                  ...c.messages,
+                  {
+                    sender: 'LEAD' as const,
+                    text,
+                    mediaBadge,
+                  },
+                ],
+              }
+            : c,
+        );
+        this.armKanbanCards.set(updatedCards);
+        this.persistArmState();
+      }
+    } else {
+      const firstStage =
+        evt.workspaceId === 'P2P_DESK'
+          ? 'orden-p2p-creada'
+          : evt.workspaceId === 'FINANCE_360'
+            ? 'nuevo-pedido'
+            : 'prospecto-entrante';
+      const newCard: ArmKanbanCardVm = {
+        id: leadId,
+        workspaceId: evt.workspaceId,
+        leadName: senderName,
+        companyName: senderPhone,
+        stageSlug: firstStage,
+        qualificationScore: 35,
+        painPointSummary: text.slice(0, 120),
+        lastMessagePreview: text.slice(0, 120),
+        assignedAgentRole: 'SDR_QUALIFIER',
+        movedByAgentBadge: 'WhatsApp QR',
+        dealValueLabel: '$0.00 USD',
+        estimatedValueNum: 0,
+        freeWindowLabel: 'WhatsApp QR En Vivo',
+        messages: [
+          {
+            sender: 'LEAD',
+            text,
+            mediaBadge,
+          },
+        ],
+        toolTraces: [],
+      };
+      this.armKanbanCards.set([newCard, ...existingCards]);
+      if (!this.selectedArmLeadId()) {
+        this.selectedArmLeadId.set(leadId);
+      }
+      this.persistArmState();
+    }
+
+    this.toast.info(`${senderName}: ${text.slice(0, 70)}`, 'WhatsApp Entrante');
   }
 }
 

@@ -643,6 +643,50 @@ export class InboundGatewayService implements OnDestroy {
     }
   }
 
+  async sendOutboundMessage(
+    payload: {
+      workspaceId: string;
+      recipientPhone: string;
+      text: string;
+      lastInboundTimestampMs?: number | null;
+      templateName?: string;
+    },
+    targetUrl?: string,
+  ): Promise<{
+    ok: boolean;
+    mode?: string;
+    metaMessageId?: string | null;
+    error?: string;
+  }> {
+    const url = (targetUrl || this.baseUrl).trim().replace(/\/+$/, '');
+    try {
+      const res = await fetch(`${url}/api/arm/outbound/send`, {
+        method: 'POST',
+        headers: this.buildHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(8000),
+      });
+      const data = (await res.json().catch(() => null)) as {
+        success?: boolean;
+        error?: string;
+        delivery?: { mode?: string; metaMessageId?: string | null; delivered?: boolean };
+      } | null;
+      if (!res.ok) {
+        return { ok: false, error: data?.error || `HTTP ${res.status}` };
+      }
+      return {
+        ok: Boolean(data?.success),
+        mode: data?.delivery?.mode,
+        metaMessageId: data?.delivery?.metaMessageId ?? null,
+      };
+    } catch (err: unknown) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : 'Error de conexión',
+      };
+    }
+  }
+
   ngOnDestroy(): void {
     this.disconnect();
     this.receiptSubject.complete();
