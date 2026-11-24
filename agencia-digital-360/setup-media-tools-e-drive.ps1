@@ -25,6 +25,7 @@ Remove-Item -Force $TempZip
 
 $ExtractedBin = Get-ChildItem -Path $TargetRoot -Directory | Where-Object { $_.Name -like "ffmpeg-*" } | Select-Object -First 1
 if ($ExtractedBin) {
+  New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
   Copy-Item -Path (Join-Path $ExtractedBin.FullName "bin\*") -Destination $BinDir -Recurse -Force
   Remove-Item -Recurse -Force $ExtractedBin.FullName
 }
