@@ -1,31 +1,32 @@
-<section class="ag360-shell" aria-label="Agencia Digital 360 — Módulo de Ejecución">
+<section class="ag360-shell" aria-label="Agencia Digital 360 — Módulo de Ejecución Real">
   <!-- Apple HIG Layer 1: Floating Liquid Glass Command Header -->
   <header class="ag360-command-bar ag360-liquid-glass">
     <div class="cmd-left">
       <div class="title-lockup">
         <div class="title-row">
           <h1>AGENCIA DIGITAL 360</h1>
-          <span class="ag360-status-pill cyan font-mono">DESACOPLADO ARM · REST/WEBHOOK</span>
+          <span class="ag360-status-pill cyan font-mono">ZERO-SEED · SQLITE E:\</span>
         </div>
         <p class="subtitle">
-          Producción Creativa 9:16, Clips Virales Quirúrgicos, Nano Banana Flyers y Pauta Multi-Marca · VET (UTC-4)
+          Producción Real (Gemini 3.8 + Omni 1.2 + Nano Banana 2.1 + Google Flow) &amp; Pauta CTWA · VET (UTC-4)
         </p>
       </div>
 
-      <!-- Brand Asset Isolation Selector -->
-      <div class="brand-switcher-wrap">
-        <label for="ag360-brand-select" class="sr-only">Marca Aislada</label>
-        <select
-          id="ag360-brand-select"
-          class="brand-select font-mono"
-          [ngModel]="selectedBrandId()"
-          (ngModelChange)="selectBrand($event)"
-        >
-          @for (b of brands(); track b.id) {
-            <option [value]="b.id">{{ b.displayName }} ({{ b.vertical }})</option>
-          }
-        </select>
-      </div>
+      @if (brands().length > 0) {
+        <div class="brand-switcher-wrap">
+          <label for="ag360-brand-select" class="sr-only">Marca Activa</label>
+          <select
+            id="ag360-brand-select"
+            class="brand-select font-mono"
+            [ngModel]="selectedBrandId()"
+            (ngModelChange)="selectBrand($event)"
+          >
+            @for (b of brands(); track b.id) {
+              <option [value]="b.id">{{ b.displayName }} ({{ b.vertical }})</option>
+            }
+          </select>
+        </div>
+      }
     </div>
 
     <button
@@ -34,36 +35,37 @@
       (click)="toggleScopedPalette()"
       aria-label="Abrir paleta de comandos de Agencia Digital 360"
     >
-      <span>Buscar sub-pestaña, brief, clip o campaña...</span>
+      <span>Buscar comando, API o sub-pestaña...</span>
       <kbd class="font-mono">Ctrl+K</kbd>
     </button>
 
     <div class="cmd-right">
+      <button type="button" class="ag360-btn-glass" (click)="openConnectionsModal()">
+        Conexiones &amp; APIs ({{ connections().length }})
+      </button>
+      <button type="button" class="ag360-btn-primary" (click)="openNewBrandModal()">
+        + Nueva Marca
+      </button>
       <button
         type="button"
         class="ag360-status-pill font-mono"
         [class.emerald]="backendOnline()"
-        [class.cyan]="!backendOnline()"
+        [class.gold]="!backendOnline()"
         (click)="refreshBackendStatus()"
       >
-        {{ backendOnline() ? 'FastAPI :8090 ONLINE' : 'FastAPI :8090 OFFLINE (Local)' }}
+        {{ backendOnline() ? 'FastAPI :8090 ONLINE' : 'FastAPI :8090 OFFLINE' }}
       </button>
-      <span class="ag360-status-pill emerald font-mono">
-        Worker Video: {{ workerConcurrencyLimit }}/1 IDLE
-      </span>
-      @if (isLowBalanceAlert20Pct()) {
-        <span class="ag360-status-pill danger font-mono">
-          ALERTA BÓVEDA {{ remainingSpendCapRatioPct() }}% (&le;20%)
-        </span>
-      } @else {
-        <span class="ag360-status-pill gold font-mono">
-          HITL Pendientes: {{ pendingHitlCount() }}
-        </span>
-      }
     </div>
   </header>
 
-  <!-- Apple HIG Layer 1: 6-Pill Floating Navigation Capsule (Overview + 5 Execution Sub-Tabs) -->
+  @if (statusMessage()) {
+    <div class="ag360-status-banner font-mono" role="status">
+      <span>{{ statusMessage() }}</span>
+      <button type="button" class="ag360-btn-glass" (click)="statusMessage.set('')">Cerrar</button>
+    </div>
+  }
+
+  <!-- Apple HIG Layer 1: 6-Pill Floating Navigation Capsule -->
   <div class="ag360-nav-row">
     <nav class="ag360-nav-capsule ag360-liquid-glass" role="tablist" aria-label="Sub-pestañas de Ejecución">
       @for (tab of subTabs; track tab.id) {
@@ -82,354 +84,571 @@
     </nav>
   </div>
 
-  <!-- Top 4 KPI Aura Strip -->
-  <section class="ag360-kpi-grid" aria-label="Indicadores clave de bóveda y atribución">
+  <!-- Top 4 Honest Zero-Seed KPI Cards -->
+  <section class="ag360-kpi-grid" aria-label="Métricas reales de bóveda y producción">
     <article class="ag360-kpi-aura tone-emerald">
       <div class="kpi-head">
-        <span class="kpi-label">Bóveda de Pauta ({{ activeBrand().displayName }})</span>
-        <span class="ag360-status-pill emerald font-mono">{{ remainingSpendCapRatioPct() }}% Cap Libre</span>
-      </div>
-      <div class="kpi-value font-mono">${{ activeBrand().vaultBalanceUsd | number: '1.2-2' }} USDT</div>
-      <div class="kpi-meta font-mono">
-        Pixel: {{ activeBrand().metaPixelId }} · Ad Account: {{ activeBrand().metaAdAccountId }}
-      </div>
-    </article>
-
-    <article class="ag360-kpi-aura" [class.tone-danger]="isLowBalanceAlert20Pct()" [class.tone-cyan]="!isLowBalanceAlert20Pct()">
-      <div class="kpi-head">
-        <span class="kpi-label">Gasto Acumulado vs Spend Cap</span>
-        <span class="ag360-status-pill font-mono" [class.danger]="isLowBalanceAlert20Pct()" [class.cyan]="!isLowBalanceAlert20Pct()">
-          {{ isLowBalanceAlert20Pct() ? 'ALERTA 20% ACTIVA' : 'Hard Lock OK' }}
+        <span class="kpi-label">Bóveda Espejo de Tarjeta</span>
+        <span class="ag360-status-pill font-mono" [class.emerald]="cardKillswitchStatus() === 'SAFE'" [class.gold]="cardKillswitchStatus() === 'ALERT_80PCT'" [class.danger]="cardKillswitchStatus() === 'KILLSWITCH_95PCT'">
+          {{ cardKillswitchStatus() }}
         </span>
       </div>
-      <div class="kpi-value font-mono">
-        ${{ activeBrand().accumulatedSpendUsd | number: '1.2-2' }} / ${{ activeBrand().spendCapUsd | number: '1.2-2' }}
-      </div>
+      <div class="kpi-value font-mono">${{ (activeBrand()?.vaultBalanceUsd ?? 0) | number: '1.2-2' }} USD</div>
       <div class="kpi-meta font-mono">
-        Reservado HITL: ${{ activeBrand().reservedSpendUsd | number: '1.2-2' }} · Umbral Alerta: {{ activeBrand().alertThresholdPct }}%
-      </div>
-    </article>
-
-    <article class="ag360-kpi-aura tone-gold">
-      <div class="kpi-head">
-        <span class="kpi-label">ROAS Real Atribuido (Webhook ARM)</span>
-        <span class="ag360-status-pill gold font-mono">{{ activeBrandRoas() }}x ROAS</span>
-      </div>
-      <div class="kpi-value font-mono">${{ activeBrand().attributedRevenueUsd | number: '1.2-2' }} USD</div>
-      <div class="kpi-meta font-mono">
-        {{ activeBrand().closedWonCount }} ventas closed_won recibidas vía Webhook ARM → Meta CAPI
+        @if (activeBrand()?.cardLabel) {
+          {{ activeBrand()?.cardLabel }} *{{ activeBrand()?.cardLast4 || '----' }} · Alerta 80% / Pausa 95%
+        } @else {
+          Sin tarjeta fondeada todavía (Zero-Seed $0.00)
+        }
       </div>
     </article>
 
     <article class="ag360-kpi-aura tone-cyan">
       <div class="kpi-head">
-        <span class="kpi-label">Cola Asíncrona Celery &amp; Sandbox</span>
-        <span class="ag360-status-pill cyan font-mono">CONCURRENCIA = {{ workerConcurrencyLimit }}</span>
+        <span class="kpi-label">Gasto Real vs Spend Cap</span>
+        <span class="ag360-status-pill cyan font-mono">{{ cardConsumedPct() }}% Consumido</span>
       </div>
-      <div class="kpi-value font-mono">1 / 1 WORKER AISLADO</div>
+      <div class="kpi-value font-mono">
+        ${{ (activeBrand()?.accumulatedSpendUsd ?? 0) | number: '1.2-2' }} / ${{ (activeBrand()?.spendCapUsd ?? 0) | number: '1.2-2' }}
+      </div>
       <div class="kpi-meta font-mono">
-        MoneyPrinterTurbo Docker · Inbox: {{ authorizedInboxDir }} (Read-Only)
+        Pauta CTWA pausada hasta firma Human-in-the-Loop
+      </div>
+    </article>
+
+    <article class="ag360-kpi-aura tone-gold">
+      <div class="kpi-head">
+        <span class="kpi-label">ROAS Real (Webhook ARM)</span>
+        <span class="ag360-status-pill gold font-mono">{{ activeBrandRoas() }}x ROAS</span>
+      </div>
+      <div class="kpi-value font-mono">${{ (activeBrand()?.attributedRevenueUsd ?? 0) | number: '1.2-2' }} USD</div>
+      <div class="kpi-meta font-mono">
+        {{ activeBrand()?.closedWonCount ?? 0 }} ventas closed_won reales recibidas del ARM
+      </div>
+    </article>
+
+    <article class="ag360-kpi-aura tone-cyan">
+      <div class="kpi-head">
+        <span class="kpi-label">Activos Reales &amp; Motores</span>
+        <span class="ag360-status-pill font-mono" [class.emerald]="ffmpegInstalled()" [class.gold]="!ffmpegInstalled()">
+          FFmpeg: {{ ffmpegInstalled() ? 'OK' : 'Nube Omni 1.2' }}
+        </span>
+      </div>
+      <div class="kpi-value font-mono">{{ uploadedMedia().length }} Archivos Cargados</div>
+      <div class="kpi-meta font-mono">
+        Concurrencia Video = {{ workerConcurrencyLimit }} · Inbox: {{ authorizedInboxDir }}
       </div>
     </article>
   </section>
 
-  <!-- Main Workspace Bento Grid + Persistent 9:16 Smartphone Preview Dock -->
+  <!-- Main Workspace Bento Grid + REAL 9:16 HTML5 Media Preview Dock -->
   <div class="ag360-main-grid">
     <div class="ag360-stage">
-      <!-- 00. OVERVIEW EJECUTIVO & BÓVEDA -->
+      <!-- 00. OVERVIEW & ZERO-SEED ONBOARDING -->
       @if (activeSubTab() === SUB_TAB.OVERVIEW) {
-        <div class="ag360-content-card">
-          <div class="section-head">
-            <h2>Aislamiento Estricto de Activos por Marca (Compliance P2P vs Comercios)</h2>
-            <span class="ag360-status-pill emerald font-mono">RLS + BrandCredentialVault</span>
+        @if (brands().length === 0) {
+          <div class="ag360-content-card onboarding-empty">
+            <h2>Tu Agencia Digital 360 está limpia (Zero-Seed · $0.00)</h2>
+            <p class="muted-sm">
+              No hay marcas inventadas ni saldos ficticios. Creá tu primera marca real, configurá tus APIs (Gemini 3.8 / Omni 1.2 / Meta CTWA / Telegram) y subí tus fotos o videos para empezar a producir.
+            </p>
+            <div class="action-pair">
+              <button type="button" class="ag360-btn-primary" (click)="openNewBrandModal()">
+                + Crear Mi Primera Marca
+              </button>
+              <button type="button" class="ag360-btn-glass" (click)="openConnectionsModal()">
+                Configurar Conexiones &amp; APIs
+              </button>
+            </div>
           </div>
-          <table class="ag360-hairline-table">
-            <thead>
-              <tr>
-                <th>Marca / Vertical</th>
-                <th>Meta Ad Account &amp; Pixel</th>
-                <th>TikTok / YouTube v3</th>
-                <th>Gasto / Spend Cap</th>
-                <th>ROAS ARM</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (b of brands(); track b.id) {
+        } @else {
+          <div class="ag360-content-card">
+            <div class="section-head">
+              <h2>Tus Marcas Aisladas &amp; Bóveda Espejo de Tarjeta</h2>
+              <div class="action-pair">
+                <input
+                  type="number"
+                  class="ag360-inline-input font-mono"
+                  placeholder="Recarga USD"
+                  [ngModel]="topupAmountUsd()"
+                  (ngModelChange)="topupAmountUsd.set($event)"
+                />
+                <button type="button" class="ag360-btn-primary" (click)="registerRealVaultTopup()">
+                  + Registrar Fondeo Tarjeta
+                </button>
+              </div>
+            </div>
+
+            <table class="ag360-hairline-table">
+              <thead>
                 <tr>
-                  <td>
-                    <strong>{{ b.displayName }}</strong>
-                    <div class="font-mono muted-sm">{{ b.vertical }}</div>
-                  </td>
-                  <td class="font-mono">{{ b.metaAdAccountId }} · {{ b.metaPixelId }}</td>
-                  <td class="font-mono">{{ b.tiktokAdvertiserId }} · {{ b.youtubeChannelId }}</td>
-                  <td class="font-mono">${{ b.accumulatedSpendUsd }} / ${{ b.spendCapUsd }}</td>
-                  <td class="font-mono">
-                    {{ (b.attributedRevenueUsd / (b.accumulatedSpendUsd || 1)) | number: '1.2-2' }}x
-                  </td>
-                  <td>
-                    <button type="button" class="ag360-btn-glass" (click)="selectBrand(b.id)">
-                      {{ selectedBrandId() === b.id ? 'Activa' : 'Aislar Contexto' }}
-                    </button>
-                  </td>
+                  <th>Marca / Rubro</th>
+                  <th>Tarjeta Fondeada</th>
+                  <th>Saldo Real</th>
+                  <th>Gasto / Cap</th>
+                  <th>ROAS ARM</th>
+                  <th>Contexto</th>
                 </tr>
-              }
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                @for (b of brands(); track b.id) {
+                  <tr>
+                    <td>
+                      <strong>{{ b.displayName }}</strong>
+                      <div class="font-mono muted-sm">{{ b.vertical }}</div>
+                    </td>
+                    <td class="font-mono">{{ b.cardLabel || 'Sin asignar' }} {{ b.cardLast4 ? '*' + b.cardLast4 : '' }}</td>
+                    <td class="font-mono">${{ b.vaultBalanceUsd | number: '1.2-2' }}</td>
+                    <td class="font-mono">${{ b.accumulatedSpendUsd | number: '1.2-2' }} / ${{ b.spendCapUsd | number: '1.2-2' }}</td>
+                    <td class="font-mono">{{ b.closedWonCount }} ventas</td>
+                    <td>
+                      <button type="button" class="ag360-btn-glass" (click)="selectBrand(b.id)">
+                        {{ selectedBrandId() === b.id ? 'Activa' : 'Seleccionar' }}
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
       }
 
-      <!-- 01. BRIEF & DIRECTOR CREATIVO IA -->
+      <!-- 01. BRIEF & DIRECTOR CREATIVO (GEMINI 3.8 FLASH) -->
       @if (activeSubTab() === SUB_TAB.BRIEF_STUDIO) {
         <div class="ag360-content-card">
           <div class="section-head">
-            <h2>01. Agente Director Creativo (Stack IA Compatible con Venezuela)</h2>
-            <span class="ag360-status-pill cyan font-mono">Gemini 1.5 Pro + OpenAI GPT-4o + Nano Banana</span>
+            <h2>01. Director Creativo IA (Gemini 3.8 Flash + OpenAI GPT-4o)</h2>
+            <span class="ag360-status-pill cyan font-mono">Modelos 2026</span>
           </div>
-          <div class="hooks-grid">
-            @for (hook of hookVariants(); track hook.variant) {
-              <article
-                class="hook-card"
-                role="button"
-                tabindex="0"
-                [class.selected]="selectedHookVariantId() === hook.variant"
-                (click)="selectHookVariant(hook.variant)"
-                (keydown.enter)="selectHookVariant(hook.variant)"
-                (keydown.space)="selectHookVariant(hook.variant)"
-              >
-                <div class="hook-top">
-                  <strong>{{ hook.title }}</strong>
-                  <span class="ag360-status-pill emerald font-mono">Score {{ hook.retentionScore }}/100</span>
-                </div>
-                <p class="hook-script">"{{ hook.script3s }}"</p>
-                <div class="font-mono muted-sm">{{ hook.brollSource }}</div>
-              </article>
-            }
+
+          <div class="form-stack">
+            <input
+              type="text"
+              class="ag360-input"
+              placeholder="Describí tu producto u oferta real (ej. Combo cafetera + molino con envío Caracas)"
+              [ngModel]="briefOfferInput()"
+              (ngModelChange)="briefOfferInput.set($event)"
+            />
+            <input
+              type="text"
+              class="ag360-input"
+              placeholder="Audiencia objetivo (ej. Emprendedores y comercios en Caracas)"
+              [ngModel]="briefAudienceInput()"
+              (ngModelChange)="briefAudienceInput.set($event)"
+            />
+            <div class="action-pair">
+              <button type="button" class="ag360-btn-primary" (click)="generateRealBrief()">
+                Generar 3 Ganchos A/B/C Reales
+              </button>
+            </div>
           </div>
+
+          @if (generatedHooks().length > 0) {
+            <div class="hooks-grid">
+              @for (hook of generatedHooks(); track hook.variant) {
+                <article
+                  class="hook-card"
+                  role="button"
+                  tabindex="0"
+                  [class.selected]="selectedHookVariantId() === hook.variant"
+                  (click)="selectHookVariant(hook.variant)"
+                  (keydown.enter)="selectHookVariant(hook.variant)"
+                  (keydown.space)="selectHookVariant(hook.variant)"
+                >
+                  <div class="hook-top">
+                    <strong>{{ hook.title }}</strong>
+                    <span class="ag360-status-pill emerald font-mono">Score {{ hook.retentionScore }}/100</span>
+                  </div>
+                  <p class="hook-script">"{{ hook.script3s }}"</p>
+                  <div class="font-mono muted-sm">{{ hook.brollSource }}</div>
+                </article>
+              }
+            </div>
+          }
         </div>
       }
 
-      <!-- 02. VIDEO PIPELINE 9:16 (MONEYPRINTERTURBO + CUSTOM_AUDIO_PATH) -->
+      <!-- 02. VIDEO PIPELINE 9:16 (GEMINI OMNI 1.2 FLASH / LOCAL FFMPEG / GOOGLE FLOW) -->
       @if (activeSubTab() === SUB_TAB.VIDEO_PIPELINE) {
         <div class="ag360-content-card">
           <div class="section-head">
-            <h2>02. Pipeline MoneyPrinterTurbo 9:16 (Parche custom_audio_path + faster-whisper)</h2>
-            <span class="ag360-status-pill emerald font-mono">
-              custom_audio_path: {{ customAudioPatchEnabled() ? 'ACTIVO (TTS Saltado)' : 'OFF' }}
-            </span>
+            <h2>02. Producción Real de Video 9:16 (Foto → Video, Voz Propia &amp; Google Flow)</h2>
+            <span class="ag360-status-pill emerald font-mono">Motor: {{ selectedVideoEngine() }}</span>
           </div>
+
+          <div class="mode-buttons">
+            <button
+              type="button"
+              class="ag360-btn-glass"
+              [class.ag360-btn-primary]="selectedVideoEngine() === VIDEO_ENGINE.GEMINI_OMNI_1_2"
+              (click)="setVideoEngine(VIDEO_ENGINE.GEMINI_OMNI_1_2)"
+            >
+              Motor A: Gemini Omni 1.2 Flash (Foto + Prompt → .mp4)
+            </button>
+            <button
+              type="button"
+              class="ag360-btn-glass"
+              [class.ag360-btn-primary]="selectedVideoEngine() === VIDEO_ENGINE.LOCAL_FFMPEG_WHISPER"
+              (click)="setVideoEngine(VIDEO_ENGINE.LOCAL_FFMPEG_WHISPER)"
+            >
+              Motor B: Compositor Local (Voz + Clips + .ass)
+            </button>
+            <button
+              type="button"
+              class="ag360-btn-glass"
+              [class.ag360-btn-primary]="selectedVideoEngine() === VIDEO_ENGINE.GOOGLE_FLOW_HYBRID"
+              (click)="setVideoEngine(VIDEO_ENGINE.GOOGLE_FLOW_HYBRID)"
+            >
+              Motor C: Google Flow Watch-Folder
+            </button>
+          </div>
+
+          <!-- Real Media Upload & Browser Microphone Recorder -->
+          <div class="upload-bar">
+            <label class="ag360-btn-glass upload-label">
+              Subir Foto de Producto
+              <input type="file" accept="image/png,image/jpeg,image/webp" hidden (change)="onMediaFileSelected('photos', $event)" />
+            </label>
+            <label class="ag360-btn-glass upload-label">
+              Subir Video Base (.mp4)
+              <input type="file" accept="video/mp4,video/quicktime,video/webm" hidden (change)="onMediaFileSelected('videos', $event)" />
+            </label>
+            <label class="ag360-btn-glass upload-label">
+              Subir Voz Propia (.wav/.mp3)
+              <input type="file" accept="audio/*" hidden (change)="onMediaFileSelected('voices', $event)" />
+            </label>
+            <button
+              type="button"
+              class="ag360-btn-primary"
+              (click)="toggleMicRecording()"
+            >
+              {{ isRecordingVoice() ? 'Detener Grabación de Voz' : 'Grabar Mi Voz en Navegador' }}
+            </button>
+          </div>
+
           <div class="pipeline-detail-box font-mono">
-            <div>Archivo de Voz Propia: <strong>{{ customAudioFilename() }}</strong> (48kHz WAV)</div>
-            <div>Sincronización Subtítulos: <strong>faster-whisper large-v3-turbo (INT8)</strong></div>
-            <div>Gancho Activo en Preview 9:16: <strong>{{ selectedHook().title }}</strong></div>
-            <div>Cola Celery: <strong>video_heavy (--concurrency=1 · CPU/RAM Limitado)</strong></div>
+            <div>Voz Propia Activa (custom_audio_path): <strong>{{ recordedVoiceName() || 'Ningún audio cargado aún' }}</strong></div>
+            <div>Google Flow Watch-Folder: <strong>{{ googleFlowWatchDir }}</strong></div>
           </div>
-          <div class="hook-selector-bar">
-            @for (hook of hookVariants(); track hook.variant) {
-              <button
-                type="button"
-                class="ag360-btn-glass"
-                [class.ag360-btn-primary]="selectedHookVariantId() === hook.variant"
-                (click)="selectHookVariant(hook.variant)"
-              >
-                Probar {{ hook.variant }} ({{ hook.retentionScore }}%)
-              </button>
-            }
-          </div>
+
+          <textarea
+            class="ag360-input"
+            rows="3"
+            placeholder="Escribí el prompt cinematográfico 9:16 para Gemini Omni 1.2 Flash o Google Flow..."
+            [ngModel]="videoPromptInput()"
+            (ngModelChange)="videoPromptInput.set($event)"
+          ></textarea>
+
+          @if (uploadedMedia().length > 0) {
+            <div class="media-chips">
+              @for (item of uploadedMedia(); track item.id) {
+                <button type="button" class="ag360-btn-glass" (click)="selectPreviewMedia(item)">
+                  [{{ item.category }}] {{ item.filename }}
+                </button>
+              }
+            </div>
+          }
         </div>
       }
 
-      <!-- 03. EXTRACTOR QUIRÚRGICO DE CLIPS VIRALES DUAL -->
+      <!-- 03. CLIPS VIRALES DUAL & GOOGLE FLOW WATCH-FOLDER -->
       @if (activeSubTab() === SUB_TAB.VIRAL_CLIPS) {
         <div class="ag360-content-card">
           <div class="section-head">
-            <h2>03. Extractor Quirúrgico de Clips Virales (Entrada Dual + MediaPipe Kalman 9:16)</h2>
-            <div class="mode-buttons">
-              <button
-                type="button"
-                class="ag360-btn-glass"
-                [class.ag360-btn-primary]="viralClipSourceMode() === CLIP_SOURCE.PC_LOCAL_INBOX"
-                (click)="setViralClipSourceMode(CLIP_SOURCE.PC_LOCAL_INBOX)"
-              >
-                Modo A: PC Local ({{ authorizedInboxDir }})
-              </button>
-              <button
-                type="button"
-                class="ag360-btn-glass"
-                [class.ag360-btn-primary]="viralClipSourceMode() === CLIP_SOURCE.YOUTUBE_SURGICAL"
-                (click)="setViralClipSourceMode(CLIP_SOURCE.YOUTUBE_SURGICAL)"
-              >
-                Modo B: YouTube Quirúrgico (--download-sections)
-              </button>
-            </div>
+            <h2>03. Clips Virales (Inbox PC + YouTube Quirúrgico + Google Flow Exports)</h2>
+            <button type="button" class="ag360-btn-primary" (click)="scanLocalAndFlowFolders()">
+              Escanear E:\Agencia_Inbox\ y flow_exports\
+            </button>
           </div>
 
-          @if (viralClipSourceMode() === CLIP_SOURCE.PC_LOCAL_INBOX) {
-            <div class="pipeline-detail-box font-mono">
-              <div>Directorio Autorizado (Solo Lectura :ro): <strong>{{ authorizedInboxDir }}</strong></div>
-              <div>Guardia Anti-Traversal: <strong>validate_local_inbox_path() ACTIVO</strong></div>
+          <div class="mode-buttons">
+            <button
+              type="button"
+              class="ag360-btn-glass"
+              [class.ag360-btn-primary]="viralClipSourceMode() === CLIP_SOURCE.PC_LOCAL_INBOX"
+              (click)="setViralClipSourceMode(CLIP_SOURCE.PC_LOCAL_INBOX)"
+            >
+              Modo A: PC Local ({{ authorizedInboxDir }})
+            </button>
+            <button
+              type="button"
+              class="ag360-btn-glass"
+              [class.ag360-btn-primary]="viralClipSourceMode() === CLIP_SOURCE.YOUTUBE_SURGICAL"
+              (click)="setViralClipSourceMode(CLIP_SOURCE.YOUTUBE_SURGICAL)"
+            >
+              Modo B: YouTube Quirúrgico (--download-sections)
+            </button>
+            <button
+              type="button"
+              class="ag360-btn-glass"
+              [class.ag360-btn-primary]="viralClipSourceMode() === CLIP_SOURCE.GOOGLE_FLOW_WATCH"
+              (click)="setViralClipSourceMode(CLIP_SOURCE.GOOGLE_FLOW_WATCH)"
+            >
+              Modo C: Google Flow Exports ({{ flowExports().length }})
+            </button>
+          </div>
+
+          @if (viralClipSourceMode() === CLIP_SOURCE.YOUTUBE_SURGICAL) {
+            <div class="form-stack">
+              <input
+                type="url"
+                class="ag360-input font-mono"
+                placeholder="https://www.youtube.com/watch?v=..."
+                [ngModel]="youtubeSurgicalUrl()"
+                (ngModelChange)="youtubeSurgicalUrl.set($event)"
+              />
+              <input
+                type="text"
+                class="ag360-input font-mono"
+                placeholder="Rango exacto HH:MM:SS-HH:MM:SS"
+                [ngModel]="youtubeSurgicalRange()"
+                (ngModelChange)="youtubeSurgicalRange.set($event)"
+              />
+              <div class="pipeline-detail-box font-mono">
+                <code>{{ surgicalYtDlpPreviewCommand() }}</code>
+              </div>
             </div>
           } @else {
             <div class="pipeline-detail-box font-mono">
-              <div>Comando Quirúrgico Generado:</div>
-              <code>{{ surgicalYtDlpPreviewCommand() }}</code>
+              <div>Archivos detectados en E:\Agencia_Inbox\: <strong>{{ inboxFiles().length }}</strong></div>
+              <div>Videos exportados desde Google Flow (flow_exports\): <strong>{{ flowExports().length }}</strong></div>
             </div>
           }
-
-          <table class="ag360-hairline-table">
-            <thead>
-              <tr>
-                <th>Clip</th>
-                <th>Origen</th>
-                <th>Segmento Quirúrgico</th>
-                <th>Score Gemini</th>
-                <th>MediaPipe 9:16</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (clip of viralClipJobs(); track clip.id) {
-                <tr>
-                  <td><strong>{{ clip.title }}</strong></td>
-                  <td class="font-mono">{{ clip.sourceLocator }}</td>
-                  <td class="font-mono">{{ clip.sectionRange }}</td>
-                  <td class="font-mono">{{ clip.viralityScore }}/100</td>
-                  <td class="font-mono">Kalman {{ clip.faceConfidencePct }}%</td>
-                </tr>
-              }
-            </tbody>
-          </table>
         </div>
       }
 
-      <!-- 04. NANO BANANA FLYER STUDIO -->
+      <!-- 04. NANO BANANA 2.1 FLYER STUDIO -->
       @if (activeSubTab() === SUB_TAB.FLYER_STUDIO) {
         <div class="ag360-content-card">
           <div class="section-head">
-            <h2>04. Estudio de Flyers Comerciales (Nano Banana Base + Capa Vectorial Determinista)</h2>
-            <span class="ag360-status-pill gold font-mono">Ratio Texto &lt; 18%</span>
+            <h2>04. Estudio de Flyers Comerciales (Nano Banana 2.1 + Foto Real + Capa 4K)</h2>
+            <span class="ag360-status-pill gold font-mono">gemini-nano-banana-2.1</span>
           </div>
-          <div class="hooks-grid">
-            @for (flyer of flyerAssets(); track flyer.id) {
-              <article class="hook-card">
-                <div class="hook-top">
-                  <span class="ag360-status-pill cyan font-mono">Formato {{ flyer.aspectRatio }}</span>
-                  <span class="ag360-status-pill emerald font-mono">Texto {{ flyer.textDensityPct }}%</span>
-                </div>
-                <h3>{{ flyer.headline }}</h3>
-                <div class="font-mono">{{ flyer.priceBadge }}</div>
-                <div class="font-mono muted-sm">{{ flyer.ctaText }}</div>
-              </article>
-            }
+
+          <div class="form-stack">
+            <label class="ag360-btn-glass upload-label">
+              Subir Foto Real de Producto para Flyer
+              <input type="file" accept="image/png,image/jpeg,image/webp" hidden (change)="onMediaFileSelected('photos', $event)" />
+            </label>
+            <input
+              type="text"
+              class="ag360-input"
+              placeholder="Titular comercial del flyer"
+              [ngModel]="flyerHeadline()"
+              (ngModelChange)="flyerHeadline.set($event)"
+            />
+            <input
+              type="text"
+              class="ag360-input"
+              placeholder="Etiqueta de precio / cuotas (ej. $45 USD · Entrega Hoy)"
+              [ngModel]="flyerPriceBadge()"
+              (ngModelChange)="flyerPriceBadge.set($event)"
+            />
+            <input
+              type="text"
+              class="ag360-input"
+              placeholder="Llamada a la acción (ej. Escríbenos por WhatsApp)"
+              [ngModel]="flyerCtaText()"
+              (ngModelChange)="flyerCtaText.set($event)"
+            />
           </div>
         </div>
       }
 
-      <!-- 05. TRAFFICKER & TELEGRAM HITL -->
+      <!-- 05. TRAFFICKER CTWA (SIN ENTRAR A FACEBOOK ADS MANAGER) & HITL -->
       @if (activeSubTab() === SUB_TAB.TRAFFICKER_HITL) {
         <div class="ag360-content-card">
           <div class="section-head">
-            <h2>05. Trafficker Multi-Plataforma, Auditor Compliance &amp; Aprobación HITL</h2>
-            <span class="ag360-status-pill gold font-mono">Control Human-in-the-Loop</span>
+            <h2>05. Lanzador Directo Click-to-WhatsApp (Meta Marketing API v21.0) &amp; HITL</h2>
+            <span class="ag360-status-pill emerald font-mono">Kill-Switch Tarjeta 95%</span>
           </div>
-          <table class="ag360-hairline-table">
-            <thead>
-              <tr>
-                <th>Campaña / Plataforma</th>
-                <th>Copy Auditado (Agente 2)</th>
-                <th>Presupuesto</th>
-                <th>Estado HITL</th>
-                <th>Acciones HITL</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (prop of hitlProposals(); track prop.approvalId) {
+
+          <div class="form-stack">
+            <input
+              type="text"
+              class="ag360-input"
+              placeholder="Nombre de campaña CTWA (ej. Campaña Reels Caracas)"
+              [ngModel]="ctwaCampaignName()"
+              (ngModelChange)="ctwaCampaignName.set($event)"
+            />
+            <input
+              type="text"
+              class="ag360-input font-mono"
+              placeholder="WhatsApp Business destino (ej. +584121234567)"
+              [ngModel]="ctwaWhatsappPhone()"
+              (ngModelChange)="ctwaWhatsappPhone.set($event)"
+            />
+            <input
+              type="number"
+              class="ag360-input font-mono"
+              placeholder="Presupuesto diario USD"
+              [ngModel]="ctwaDailyBudgetUsd()"
+              (ngModelChange)="ctwaDailyBudgetUsd.set($event)"
+            />
+            <button type="button" class="ag360-btn-primary" (click)="stageCtwaCampaignForHitl()">
+              Preparar Campaña CTWA en Espera de Firma HITL
+            </button>
+          </div>
+
+          @if (hitlProposals().length > 0) {
+            <table class="ag360-hairline-table">
+              <thead>
                 <tr>
-                  <td>
-                    <strong>{{ prop.campaignName }}</strong>
-                    <div class="font-mono muted-sm">{{ prop.platform }} · {{ prop.hookVariant }}</div>
-                  </td>
-                  <td>
-                    <div>{{ prop.approvedCopy }}</div>
-                    <span class="ag360-status-pill emerald font-mono">
-                      {{ prop.complianceStatus }} (Riesgo {{ prop.riskScorePct }}%)
-                    </span>
-                  </td>
-                  <td class="font-mono">${{ prop.dailyBudgetUsd }}/día</td>
-                  <td>
-                    <span class="ag360-status-pill font-mono" [class.emerald]="prop.hitlStatus === 'APPROVED'" [class.gold]="prop.hitlStatus === 'PENDING'" [class.danger]="prop.hitlStatus === 'REJECTED'">
-                      {{ prop.hitlStatus }} · {{ prop.campaignStatus }}
-                    </span>
-                  </td>
-                  <td>
-                    @if (prop.hitlStatus === 'PENDING') {
-                      <div class="action-pair">
-                        <button type="button" class="ag360-btn-primary" (click)="approveHitlProposal(prop.approvalId)">
-                          Aprobar Pauta
-                        </button>
-                        <button type="button" class="ag360-btn-danger" (click)="rejectHitlProposal(prop.approvalId)">
-                          Rechazar
-                        </button>
-                      </div>
-                    } @else {
-                      <span class="font-mono muted-sm">Procesado</span>
-                    }
-                  </td>
+                  <th>Campaña CTWA</th>
+                  <th>WhatsApp &amp; Tracking</th>
+                  <th>Diario</th>
+                  <th>Estado</th>
+                  <th>Aprobación HITL</th>
                 </tr>
-              }
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                @for (prop of hitlProposals(); track prop.approvalId) {
+                  <tr>
+                    <td><strong>{{ prop.campaignName }}</strong></td>
+                    <td class="font-mono">{{ prop.whatsappPhone }} · [{{ prop.trackingCode }}]</td>
+                    <td class="font-mono">${{ prop.dailyBudgetUsd }}/día</td>
+                    <td class="font-mono">{{ prop.hitlStatus }} · {{ prop.campaignStatus }}</td>
+                    <td>
+                      @if (prop.hitlStatus === 'PENDING') {
+                        <div class="action-pair">
+                          <button type="button" class="ag360-btn-primary" (click)="approveHitlProposal(prop.approvalId)">
+                            Aprobar Pauta
+                          </button>
+                          <button type="button" class="ag360-btn-danger" (click)="rejectHitlProposal(prop.approvalId)">
+                            Rechazar
+                          </button>
+                        </div>
+                      } @else {
+                        <span class="font-mono muted-sm">Procesado</span>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
         </div>
       }
     </div>
 
-    <!-- Persistent Right Dock: 9:16 Vertical Smartphone Preview -->
-    <aside class="ag360-content-card ag360-preview-dock" aria-label="Vista Previa Vertical 9:16">
+    <!-- Persistent Right Dock: REAL HTML5 9:16 Video / Image Preview Player -->
+    <aside class="ag360-content-card ag360-preview-dock" aria-label="Reproductor Real Vertical 9:16">
       <div class="section-head">
-        <h2>Preview Nativa 9:16</h2>
+        <h2>Preview Real 9:16</h2>
         <span class="ag360-status-pill emerald font-mono">1080×1920</span>
       </div>
 
       <div class="phone-frame-916">
         <div class="phone-safe-top font-mono">
           <span>SAFE ZONE 9:16</span>
-          <span>{{ selectedHook().variant }}</span>
+          <span>{{ activeBrand()?.displayName || 'Sin Marca' }}</span>
         </div>
 
         <div class="phone-stage-center">
-          <div class="phone-badge font-mono">{{ activeBrand().displayName }}</div>
-          <div class="phone-karaoke-caption">
-            "{{ selectedHook().script3s }}"
-          </div>
-          <div class="phone-audio-tag font-mono">
-            Voz Propia: {{ customAudioFilename() }} · Whisper Sync
-          </div>
+          @if (activePreviewMedia(); as media) {
+            @if (media.category === 'videos') {
+              <video class="real-preview-video" [src]="media.previewUrl" controls playsinline></video>
+            } @else {
+              <img class="real-preview-img" [src]="media.previewUrl" [alt]="media.filename" />
+            }
+            <div class="font-mono muted-sm">{{ media.filename }}</div>
+          } @else if (selectedHook(); as hook) {
+            <div class="phone-karaoke-caption">"{{ hook.script3s }}"</div>
+            <div class="font-mono muted-sm">Subí una foto o video para ver el reproductor real aquí</div>
+          } @else {
+            <div class="muted-sm">
+              Subí una foto de producto o un video .mp4 en <strong>Video &amp; Google Flow</strong> para previsualizar tu pieza real 9:16.
+            </div>
+          }
         </div>
 
         <div class="phone-safe-bottom font-mono">
-          <div>utm_campaign={{ activeBrand().slug }}</div>
-          <div>Webhook Outbound → ARM (ad_id)</div>
+          <div>Motor: {{ selectedVideoEngine() }}</div>
+          <div>Voz: {{ recordedVoiceName() || 'Sin audio' }}</div>
         </div>
       </div>
     </aside>
   </div>
 
-  <!-- Scoped Ctrl+K Command Palette Modal -->
+  <!-- Modal 1: Create New Real Brand (Zero-Seed Onboarding) -->
+  @if (newBrandModalOpen()) {
+    <div class="ag360-palette-backdrop" tabindex="-1" (click)="closeNewBrandModal()" (keydown.escape)="closeNewBrandModal()">
+      <div class="ag360-palette-dialog ag360-liquid-glass" role="dialog" tabindex="-1" aria-modal="true" aria-label="Crear Marca Real" (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()">
+        <div class="section-head">
+          <h2>Crear Nueva Marca Aislada (Zero-Seed)</h2>
+          <button type="button" class="ag360-btn-glass" (click)="closeNewBrandModal()">Cerrar</button>
+        </div>
+        <div class="form-stack">
+          <input type="text" class="ag360-input" placeholder="Nombre comercial de tu marca" [ngModel]="newBrandName()" (ngModelChange)="newBrandName.set($event)" />
+          <select class="ag360-input" [ngModel]="newBrandVertical()" (ngModelChange)="newBrandVertical.set($event)">
+            @for (v of VERTICALS; track v) {
+              <option [value]="v">{{ v }}</option>
+            }
+          </select>
+          <input type="text" class="ag360-input" placeholder="Tarjeta asignada (ej. Wally USD, Zinli, Banesco Panamá)" [ngModel]="newBrandCardLabel()" (ngModelChange)="newBrandCardLabel.set($event)" />
+          <input type="text" class="ag360-input font-mono" placeholder="Últimos 4 dígitos de la tarjeta (opcional)" [ngModel]="newBrandCardLast4()" (ngModelChange)="newBrandCardLast4.set($event)" />
+          <input type="number" class="ag360-input font-mono" placeholder="Tope máximo Spend Cap USD" [ngModel]="newBrandSpendCap()" (ngModelChange)="newBrandSpendCap.set($event)" />
+          <input type="number" class="ag360-input font-mono" placeholder="Saldo inicial real fondeado hoy ($0.00 por defecto)" [ngModel]="newBrandInitialFund()" (ngModelChange)="newBrandInitialFund.set($event)" />
+          <button type="button" class="ag360-btn-primary" (click)="createRealBrand()">Guardar Marca en SQLite</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Modal 2: Real API Connections & Live Probe -->
+  @if (connectionsModalOpen()) {
+    <div class="ag360-palette-backdrop" tabindex="-1" (click)="closeConnectionsModal()" (keydown.escape)="closeConnectionsModal()">
+      <div class="ag360-palette-dialog ag360-liquid-glass" role="dialog" tabindex="-1" aria-modal="true" aria-label="Conexiones y APIs de Agencia Digital 360" (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()">
+        <div class="section-head">
+          <h2>Conexiones &amp; APIs Cifradas (Global y Por Marca)</h2>
+          <button type="button" class="ag360-btn-glass" (click)="closeConnectionsModal()">Cerrar</button>
+        </div>
+        <div class="form-stack">
+          <select class="ag360-input" [ngModel]="connProvider()" (ngModelChange)="connProvider.set($event)">
+            <option value="GEMINI_API">Google Gemini API (Gemini 3.8 + Omni 1.2 Video + Nano Banana 2.1)</option>
+            <option value="OPENAI_API">OpenAI API (GPT-4o Copy)</option>
+            <option value="META_ADS">Meta Marketing API v21.0 (Reels &amp; Click-to-WhatsApp)</option>
+            <option value="TELEGRAM_BOT">Telegram Bot HITL (Notas de Voz + Aprobaciones)</option>
+            <option value="ARM_WEBHOOK">ARM Inbound Gateway (Webhook closed_won)</option>
+          </select>
+          <input type="password" class="ag360-input font-mono" placeholder="Pegá tu API Key / System User Token (se cifra en SQLite)" [ngModel]="connTokenInput()" (ngModelChange)="connTokenInput.set($event)" />
+
+          @if (connProvider() === 'META_ADS') {
+            <input type="text" class="ag360-input font-mono" placeholder="Meta Ad Account ID (ej. act_123456789)" [ngModel]="connMetaAccount()" (ngModelChange)="connMetaAccount.set($event)" />
+            <input type="text" class="ag360-input font-mono" placeholder="Facebook Page ID" [ngModel]="connMetaPage()" (ngModelChange)="connMetaPage.set($event)" />
+            <input type="text" class="ag360-input font-mono" placeholder="WhatsApp Business Phone (+58...)" [ngModel]="connWhatsappPhone()" (ngModelChange)="connWhatsappPhone.set($event)" />
+          }
+
+          <button type="button" class="ag360-btn-primary" (click)="saveApiConnection()">
+            Cifrar y Guardar Conexión
+          </button>
+
+          @if (connTestMessage()) {
+            <div class="pipeline-detail-box font-mono">{{ connTestMessage() }}</div>
+          }
+
+          @if (connections().length > 0) {
+            <div class="palette-list">
+              @for (c of connections(); track c.scopeId + c.provider) {
+                <div class="palette-item">
+                  <span class="font-mono">{{ c.provider }} ({{ c.scopeId }}) · {{ c.lastTestStatus }}</span>
+                  <button type="button" class="ag360-btn-glass" (click)="testApiConnection(c.scopeId, c.provider)">
+                    Probar Conexión
+                  </button>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Modal 3: Scoped Ctrl+K Command Palette -->
   @if (scopedPaletteOpen()) {
-    <div
-      class="ag360-palette-backdrop"
-      tabindex="-1"
-      (click)="toggleScopedPalette()"
-      (keydown.escape)="toggleScopedPalette()"
-    >
-      <div
-        class="ag360-palette-dialog ag360-liquid-glass"
-        role="dialog"
-        tabindex="-1"
-        aria-modal="true"
-        aria-label="Paleta de comandos Agencia Digital 360"
-        (click)="$event.stopPropagation()"
-        (keydown)="$event.stopPropagation()"
-      >
+    <div class="ag360-palette-backdrop" tabindex="-1" (click)="toggleScopedPalette()" (keydown.escape)="toggleScopedPalette()">
+      <div class="ag360-palette-dialog ag360-liquid-glass" role="dialog" tabindex="-1" aria-modal="true" aria-label="Paleta de comandos Agencia Digital 360" (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()">
         <input
           type="text"
           class="palette-input"

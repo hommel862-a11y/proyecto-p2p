@@ -1,11 +1,13 @@
 from dataclasses import asdict
 import json
 from pathlib import Path
-from typing import Optional
-from fastapi import FastAPI, HTTPException, Request
+from typing import Any, Optional
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from app.core.config import get_settings, now_vet
+from app.core.database import AgenciaSqliteStore
 from app.core.security import (
     ALLOWED_VIDEO_EXTENSIONS,
     BrandCredentialVault,
@@ -16,22 +18,33 @@ from app.services.treasury import TreasuryService, TreasuryError
 from app.services.video_pipeline import VideoPipelineService
 from app.services.viral_clips import ViralClipsService
 from app.services.flyer_pipeline import FlyerPipelineService
+from app.services.media_vault import MediaVaultService
+from app.services.genai_engines import (
+    GENAI_2026_MODELS,
+    inspect_local_runtime_capabilities,
+    probe_provider_connection,
+)
 from app.agents.creative_director import CreativeDirectorAgent
 from app.agents.compliance_auditor import ComplianceAuditorAgent, ComplianceError
 from app.agents.vault_controller import VaultControllerAgent
 from app.agents.trafficker import TraffickerAgent, TraffickerGateError
 from app.integrations.telegram_bot import TelegramHitlBotService
 from app.integrations.meta_ads import MetaAdsIntegration
+from app.integrations.meta_ctwa_billing import (
+    build_ctwa_5step_plan,
+    evaluate_card_mirror_killswitch,
+)
 from app.integrations.arm_bridge import ArmBridgeService, ArmWebhookAuthError
 from app.workers.tasks import SingleConcurrencyVideoLock, VideoWorkerBusyError
 
 app = FastAPI(
     title="Agencia Digital 360 — Execution Module API",
-    version="1.0.0",
+    version="2.0.0",
     description=(
-        "Decoupled digital marketing, MoneyPrinterTurbo 9:16 video pipeline, "
-        "surgical viral clip extractor, Nano Banana flyer studio, and multi-platform "
-        "ad trafficker for Venezuela & LATAM."
+        "Zero-Seed persistent digital agency engine with SQLite on E:\\, "
+        "encrypted per-brand API vault, real media upload & 9:16 streaming, "
+        "Gemini 3.8 / Nano Banana 2.1 / Omni 1.2 Flash engines, Google Flow watch-folder, "
+        "and Meta Marketing API v21.0 Click-to-WhatsApp + Card Mirror Kill-Switch."
     ),
 )
 
@@ -44,6 +57,8 @@ app.add_middleware(
         "http://127.0.0.1:3030",
         "http://localhost:4173",
         "http://127.0.0.1:4173",
+        "http://localhost:4321",
+        "http://127.0.0.1:4321",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -54,7 +69,29 @@ CONTRACT_PATH = Path(__file__).resolve().parents[2] / "docs" / "arm_webhook_cont
 
 settings_instance = get_settings()
 credential_vault = BrandCredentialVault(master_secret=settings_instance.master_vault_secret)
+sqlite_store = AgenciaSqliteStore(
+    db_path=settings_instance.storage_dir / "agencia360.db",
+    credential_vault=credential_vault,
+)
+media_vault_service = MediaVaultService(
+    storage_root=settings_instance.storage_dir,
+    inbox_root=settings_instance.local_inbox_dir,
+)
 treasury_service = TreasuryService()
+# Hydrate persisted brands from SQLite into TreasuryService on boot (Zero-Seed when empty)
+for persisted_brand in sqlite_store.list_brands():
+    cap = float(persisted_brand["spend_cap_usd"])
+    if cap > 0:
+        treasury_service.register_brand(
+            brand_id=persisted_brand["brand_id"],
+            slug=persisted_brand["slug"],
+            display_name=persisted_brand["display_name"],
+            industry_vertical=persisted_brand["industry_vertical"],
+            spend_cap_usd=cap,
+            initial_vault_usd=float(persisted_brand["vault_balance_usd"]),
+            alert_threshold_pct=float(persisted_brand["alert_threshold_pct"]),
+        )
+
 creative_director_agent = CreativeDirectorAgent()
 compliance_auditor_agent = ComplianceAuditorAgent()
 vault_controller_agent = VaultControllerAgent(treasury_service)
@@ -91,15 +128,29 @@ class BrandVaultRegisterPayload(BaseModel):
     slug: str
     display_name: str
     industry_vertical: str
-    spend_cap_usd: float = Field(..., gt=0)
+    spend_cap_usd: float = Field(default=100.0, gt=0)
     initial_vault_usd: float = Field(default=0.0, ge=0)
     alert_threshold_pct: float = Field(default=20.0, ge=5.0, le=50.0)
+    card_label: str = ""
+    card_last4: str = ""
 
 
 class VaultTopupPayload(BaseModel):
     brand_id: str
     amount_usd: float = Field(..., gt=0)
-    note: str = "USDT Vault Top-up"
+    note: str = "Card / Vault Top-up"
+
+
+class ConnectionSavePayload(BaseModel):
+    scope_id: str = "GLOBAL"
+    provider: str
+    secret_token: str = Field(..., min_length=4)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConnectionTestPayload(BaseModel):
+    scope_id: str = "GLOBAL"
+    provider: str
 
 
 class BriefGeneratePayload(BaseModel):
@@ -143,6 +194,26 @@ class HitlStageCampaignPayload(BaseModel):
     copy_text: str
 
 
+class CtwaPlanPayload(BaseModel):
+    brand_id: str
+    ad_account_id: str
+    page_id: str
+    whatsapp_phone: str
+    campaign_name: str
+    daily_budget_usd: float = Field(..., gt=0)
+    video_public_url: str
+    copy_text: str
+    tracking_code: str = "AD-CTWA-01"
+    country_code: str = "VE"
+
+
+class CardKillswitchPayload(BaseModel):
+    card_funded_usd: float = Field(..., ge=0)
+    meta_amount_spent_usd: float = Field(..., ge=0)
+    alert_pct: float = Field(default=80.0, ge=50.0, le=95.0)
+    killswitch_pct: float = Field(default=95.0, ge=80.0, le=100.0)
+
+
 class TelegramWebhookPayload(BaseModel):
     chat_id: str
     update_type: str  # VOICE_NOTE | CALLBACK_QUERY
@@ -156,17 +227,21 @@ class TelegramWebhookPayload(BaseModel):
 @app.get("/api/v1/health")
 def get_health() -> dict:
     settings = get_settings()
+    caps = inspect_local_runtime_capabilities()
     return {
         "status": "ok",
         "service": settings.app_name,
-        "version": settings.app_version,
+        "version": "2.0.0",
         "timezone": f"{settings.timezone_name} (VET UTC-04:00)",
         "timestamp_vet": now_vet().isoformat(),
         "video_worker_concurrency": settings.video_worker_concurrency,
         "arm_decoupled": settings.arm_decoupled,
         "ai_stack_ve": list(settings.ai_stack_ve),
+        "genai_models_2026": GENAI_2026_MODELS,
+        "ffmpeg_installed": caps["ffmpeg_installed"],
         "local_inbox_dir": str(settings.local_inbox_dir),
         "moneyprinter_custom_audio_patch": settings.moneyprinter_custom_audio_patch,
+        "persistence_mode": "SQLITE_LOCAL_E_DRIVE",
     }
 
 
@@ -218,39 +293,145 @@ def list_authorized_inbox_files() -> dict:
     }
 
 
+# --- Real Media Vault & Google Flow Watch-Folder ---
+@app.post("/api/v1/media/upload")
+async def upload_media_asset(
+    brand_id: str = Form(...),
+    brand_slug: str = Form(...),
+    category: str = Form(...),
+    file: UploadFile = File(...),
+) -> dict:
+    try:
+        raw = await file.read()
+        if not raw:
+            raise HTTPException(status_code=400, detail="Empty file uploaded")
+        saved = media_vault_service.save_uploaded_asset(
+            brand_id=brand_id,
+            brand_slug=brand_slug,
+            category=category,
+            original_filename=file.filename or "upload.bin",
+            content_bytes=raw,
+        )
+        return sqlite_store.record_media_asset(**saved)
+    except SecurityViolationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/media/files/{brand_slug}/{category}/{filename}")
+def serve_media_asset(brand_slug: str, category: str, filename: str) -> FileResponse:
+    try:
+        target = media_vault_service.resolve_served_file(brand_slug, category, filename)
+        return FileResponse(path=str(target))
+    except SecurityViolationError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/media/list/{brand_id}")
+def list_brand_media_assets(brand_id: str) -> dict:
+    return {"assets": sqlite_store.list_media_assets(brand_id)}
+
+
+@app.get("/api/v1/media/flow-exports")
+def list_google_flow_watch_exports() -> dict:
+    return {
+        "watch_folder": str(settings_instance.local_inbox_dir / "flow_exports"),
+        "exports": media_vault_service.scan_google_flow_exports(),
+    }
+
+
+# --- Real Encrypted API Connections Vault & Live Probe ---
+@app.get("/api/v1/connections")
+def list_connections(scope_id: Optional[str] = None) -> dict:
+    return {"connections": sqlite_store.list_connections_masked(scope_id=scope_id)}
+
+
+@app.post("/api/v1/connections")
+def save_api_connection(payload: ConnectionSavePayload) -> dict:
+    try:
+        return sqlite_store.save_connection(
+            scope_id=payload.scope_id,
+            provider=payload.provider,
+            secret_token=payload.secret_token,
+            metadata=payload.metadata,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/connections/test")
+async def test_api_connection(payload: ConnectionTestPayload) -> dict:
+    try:
+        secret, meta = sqlite_store.get_decrypted_connection(payload.scope_id, payload.provider)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    result = await probe_provider_connection(
+        provider=payload.provider,
+        secret_token=secret,
+        metadata=meta,
+    )
+    sqlite_store.update_connection_test_status(
+        scope_id=payload.scope_id,
+        provider=payload.provider,
+        status="CONNECTED" if result["ok"] else "FAILED",
+    )
+    return result
+
+
+# --- Real Persistent Brands & Ad Treasury ---
 @app.get("/api/v1/treasury/brands")
 def list_brand_vaults() -> dict:
+    persisted = sqlite_store.list_brands()
     items = []
-    for state in treasury_service._brands.values():
-        used = state.accumulated_spend_usd + state.reserved_spend_usd
-        rem_ratio = round((max(0.0, state.spend_cap_usd - used) / state.spend_cap_usd) * 100.0, 2)
-        roas = (
-            round(state.attributed_revenue_usd / state.accumulated_spend_usd, 2)
-            if state.accumulated_spend_usd > 0
-            else 0.0
-        )
-        items.append(
-            {
-                "brand_id": state.brand_id,
-                "slug": state.slug,
-                "display_name": state.display_name,
-                "industry_vertical": state.industry_vertical,
-                "vault_balance_usd": state.vault_balance_usd,
-                "spend_cap_usd": state.spend_cap_usd,
-                "accumulated_spend_usd": state.accumulated_spend_usd,
-                "reserved_spend_usd": state.reserved_spend_usd,
-                "attributed_revenue_usd": state.attributed_revenue_usd,
-                "closed_won_count": state.closed_won_count,
-                "roas": roas,
-                "remaining_ratio_pct": rem_ratio,
-                "low_balance_alert_20pct": rem_ratio <= state.alert_threshold_pct,
-            }
-        )
+    for row in persisted:
+        bid = row["brand_id"]
+        if bid in treasury_service._brands:
+            state = treasury_service._brands[bid]
+            used = state.accumulated_spend_usd + state.reserved_spend_usd
+            cap = max(0.01, state.spend_cap_usd)
+            rem_ratio = round((max(0.0, state.spend_cap_usd - used) / cap) * 100.0, 2)
+            roas = (
+                round(state.attributed_revenue_usd / state.accumulated_spend_usd, 2)
+                if state.accumulated_spend_usd > 0
+                else 0.0
+            )
+            items.append(
+                {
+                    "brand_id": state.brand_id,
+                    "slug": state.slug,
+                    "display_name": state.display_name,
+                    "industry_vertical": state.industry_vertical,
+                    "card_label": row.get("card_label", ""),
+                    "card_last4": row.get("card_last4", ""),
+                    "vault_balance_usd": state.vault_balance_usd,
+                    "spend_cap_usd": state.spend_cap_usd,
+                    "accumulated_spend_usd": state.accumulated_spend_usd,
+                    "reserved_spend_usd": state.reserved_spend_usd,
+                    "attributed_revenue_usd": state.attributed_revenue_usd,
+                    "closed_won_count": state.closed_won_count,
+                    "roas": roas,
+                    "remaining_ratio_pct": rem_ratio,
+                    "low_balance_alert_20pct": rem_ratio <= state.alert_threshold_pct,
+                }
+            )
+        else:
+            items.append(row)
     return {"brands": items}
 
 
 @app.post("/api/v1/treasury/brands")
 def register_brand_vault(payload: BrandVaultRegisterPayload) -> dict:
+    sqlite_store.create_brand(
+        brand_id=payload.brand_id,
+        slug=payload.slug,
+        display_name=payload.display_name,
+        industry_vertical=payload.industry_vertical,
+        spend_cap_usd=payload.spend_cap_usd,
+        vault_balance_usd=payload.initial_vault_usd,
+        alert_threshold_pct=payload.alert_threshold_pct,
+        card_label=payload.card_label,
+        card_last4=payload.card_last4,
+    )
     state = treasury_service.register_brand(
         brand_id=payload.brand_id,
         slug=payload.slug,
@@ -263,10 +444,20 @@ def register_brand_vault(payload: BrandVaultRegisterPayload) -> dict:
     return {
         "brand_id": state.brand_id,
         "slug": state.slug,
+        "display_name": state.display_name,
         "spend_cap_usd": state.spend_cap_usd,
         "vault_balance_usd": state.vault_balance_usd,
         "alert_threshold_pct": state.alert_threshold_pct,
+        "card_label": payload.card_label,
+        "card_last4": payload.card_last4,
     }
+
+
+@app.delete("/api/v1/treasury/brands/{brand_id}")
+def delete_brand_vault(brand_id: str) -> dict:
+    deleted = sqlite_store.delete_brand(brand_id)
+    treasury_service._brands.pop(brand_id, None)
+    return {"deleted": deleted, "brand_id": brand_id}
 
 
 @app.post("/api/v1/treasury/topup")
@@ -277,6 +468,8 @@ def topup_brand_vault(payload: VaultTopupPayload) -> dict:
             amount_usd=payload.amount_usd,
             note=payload.note,
         )
+        if sqlite_store.get_brand(payload.brand_id):
+            sqlite_store.update_brand_vault_balance(payload.brand_id, delta_usd=payload.amount_usd)
         return {
             "entry_id": record.entry_id,
             "brand_id": record.brand_id,
@@ -288,6 +481,34 @@ def topup_brand_vault(payload: VaultTopupPayload) -> dict:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+# --- Meta CTWA 5-Step Launcher & Card Mirror Billing Kill-Switch ---
+@app.post("/api/v1/ctwa/plan")
+def generate_ctwa_launch_plan(payload: CtwaPlanPayload) -> dict:
+    return build_ctwa_5step_plan(
+        brand_id=payload.brand_id,
+        ad_account_id=payload.ad_account_id,
+        page_id=payload.page_id,
+        whatsapp_phone=payload.whatsapp_phone,
+        campaign_name=payload.campaign_name,
+        daily_budget_usd=payload.daily_budget_usd,
+        video_public_url=payload.video_public_url,
+        copy_text=payload.copy_text,
+        tracking_code=payload.tracking_code,
+        country_code=payload.country_code,
+    )
+
+
+@app.post("/api/v1/billing/card-killswitch/evaluate")
+def evaluate_card_killswitch(payload: CardKillswitchPayload) -> dict:
+    return evaluate_card_mirror_killswitch(
+        card_funded_usd=payload.card_funded_usd,
+        meta_amount_spent_usd=payload.meta_amount_spent_usd,
+        alert_pct=payload.alert_pct,
+        killswitch_pct=payload.killswitch_pct,
+    )
+
+
+# --- Creative Briefs, Clips, Flyers, HITL, Telegram & ARM Webhooks ---
 @app.post("/api/v1/agents/briefs/generate")
 def generate_ai_creative_brief(payload: BriefGeneratePayload) -> dict:
     try:

@@ -10,10 +10,11 @@ export const AG360_SUB_TAB = {
 export type Ag360SubTab = (typeof AG360_SUB_TAB)[keyof typeof AG360_SUB_TAB];
 
 export const AG360_VERTICAL = {
-  CASHEA_ALLY: 'CASHEA_ALLY',
   RETAIL_COMMERCE: 'RETAIL_COMMERCE',
+  CASHEA_ALLY: 'CASHEA_ALLY',
   FINTECH_P2P: 'FINTECH_P2P',
   B2B_SERVICES: 'B2B_SERVICES',
+  EDUCATION: 'EDUCATION',
 } as const;
 
 export type Ag360Vertical = (typeof AG360_VERTICAL)[keyof typeof AG360_VERTICAL];
@@ -21,9 +22,18 @@ export type Ag360Vertical = (typeof AG360_VERTICAL)[keyof typeof AG360_VERTICAL]
 export const AG360_CLIP_SOURCE = {
   PC_LOCAL_INBOX: 'PC_LOCAL_INBOX',
   YOUTUBE_SURGICAL: 'YOUTUBE_SURGICAL',
+  GOOGLE_FLOW_WATCH: 'GOOGLE_FLOW_WATCH',
 } as const;
 
 export type Ag360ClipSource = (typeof AG360_CLIP_SOURCE)[keyof typeof AG360_CLIP_SOURCE];
+
+export const AG360_VIDEO_ENGINE = {
+  GEMINI_OMNI_1_2: 'GEMINI_OMNI_1_2_FLASH',
+  LOCAL_FFMPEG_WHISPER: 'LOCAL_FFMPEG_WHISPER',
+  GOOGLE_FLOW_HYBRID: 'GOOGLE_FLOW_WATCH_FOLDER',
+} as const;
+
+export type Ag360VideoEngine = (typeof AG360_VIDEO_ENGINE)[keyof typeof AG360_VIDEO_ENGINE];
 
 export interface Ag360SubTabDescriptor {
   id: Ag360SubTab;
@@ -37,10 +47,8 @@ export interface Ag360BrandVault {
   slug: string;
   displayName: string;
   vertical: Ag360Vertical;
-  metaAdAccountId: string;
-  metaPixelId: string;
-  tiktokAdvertiserId: string;
-  youtubeChannelId: string;
+  cardLabel: string;
+  cardLast4: string;
   vaultBalanceUsd: number;
   spendCapUsd: number;
   accumulatedSpendUsd: number;
@@ -48,6 +56,24 @@ export interface Ag360BrandVault {
   attributedRevenueUsd: number;
   closedWonCount: number;
   alertThresholdPct: number;
+}
+
+export interface Ag360ApiConnectionSummary {
+  scopeId: string;
+  provider: string;
+  configured: boolean;
+  lastTestStatus: string;
+  metadata: Record<string, string>;
+}
+
+export interface Ag360UploadedMedia {
+  id: string;
+  brandId: string;
+  category: 'photos' | 'videos' | 'voices' | 'flyers';
+  filename: string;
+  previewUrl: string;
+  mimeType: string;
+  sizeBytes: number;
 }
 
 export interface Ag360HookVariant {
@@ -58,18 +84,6 @@ export interface Ag360HookVariant {
   retentionScore: number;
 }
 
-export interface Ag360ViralClipJob {
-  id: string;
-  title: string;
-  sourceMode: Ag360ClipSource;
-  sourceLocator: string;
-  sectionRange: string;
-  viralityScore: number;
-  faceConfidencePct: number;
-  aspectRatio: '9:16';
-  status: 'CURATED' | 'QUEUED_C1' | 'COMPLETED';
-}
-
 export interface Ag360FlyerAsset {
   id: string;
   brandId: string;
@@ -78,8 +92,7 @@ export interface Ag360FlyerAsset {
   priceBadge: string;
   ctaText: string;
   textDensityPct: number;
-  complianceStatus: 'APPROVED' | 'REWRITTEN_APPROVED';
-  publicHttpsUrl: string;
+  previewUrl: string;
 }
 
 export interface Ag360HitlProposal {
@@ -88,12 +101,10 @@ export interface Ag360HitlProposal {
   brandId: string;
   platform: 'META_ADS' | 'TIKTOK_ADS' | 'YOUTUBE_ADS';
   campaignName: string;
-  hookVariant: 'HOOK_A' | 'HOOK_B' | 'HOOK_C';
+  whatsappPhone: string;
   dailyBudgetUsd: number;
-  originalCopy: string;
   approvedCopy: string;
-  complianceStatus: 'APPROVED' | 'REWRITTEN_APPROVED';
-  riskScorePct: number;
+  trackingCode: string;
   hitlStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
   campaignStatus: 'DRAFT_PENDING_HITL' | 'ACTIVE' | 'PAUSED_BY_OPERATOR';
 }
@@ -104,4 +115,5 @@ export interface Ag360CommandItem {
   category: string;
   shortcut: string;
   tabTarget?: Ag360SubTab;
+  action?: 'OPEN_CONNECTIONS' | 'OPEN_NEW_BRAND';
 }

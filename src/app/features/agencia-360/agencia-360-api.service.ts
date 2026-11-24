@@ -2,10 +2,14 @@ import { Injectable } from '@angular/core';
 
 export interface Ag360ApiHealthResponse {
   status: string;
+  version: string;
   timezone: string;
   video_worker_concurrency: number;
   arm_decoupled: boolean;
+  ffmpeg_installed: boolean;
   local_inbox_dir: string;
+  persistence_mode: string;
+  genai_models_2026: Record<string, string>;
 }
 
 export interface Ag360InboxFileEntry {
@@ -14,10 +18,35 @@ export interface Ag360InboxFileEntry {
   extension: string;
 }
 
-export interface Ag360InboxListResponse {
-  authorized_inbox_dir: string;
-  mode: string;
-  files: Ag360InboxFileEntry[];
+export interface Ag360FlowExportEntry {
+  filename: string;
+  local_path: string;
+  size_mb: number;
+  source: string;
+}
+
+export interface Ag360PersistedBrandDto {
+  brand_id: string;
+  slug: string;
+  display_name: string;
+  industry_vertical: string;
+  card_label: string;
+  card_last4: string;
+  vault_balance_usd: number;
+  spend_cap_usd: number;
+  accumulated_spend_usd: number;
+  reserved_spend_usd: number;
+  attributed_revenue_usd: number;
+  closed_won_count: number;
+  alert_threshold_pct?: number;
+}
+
+export interface Ag360ConnectionTestResult {
+  ok: boolean;
+  provider: string;
+  status_code: number;
+  latency_ms: number;
+  detail: string;
 }
 
 export interface Ag360GeneratedHookDto {
@@ -35,11 +64,14 @@ export interface Ag360GeneratedBriefResponse {
   hooks: Ag360GeneratedHookDto[];
 }
 
-export interface Ag360GeneratedFlyerResponse {
-  flyer_id: string;
-  aspect_ratio: '9:16' | '4:5';
-  text_area_ratio_pct: number;
-  public_https_url: string;
+export interface Ag360CardKillswitchResponse {
+  card_funded_usd: number;
+  meta_amount_spent_usd: number;
+  remaining_usd: number;
+  consumed_pct: number;
+  action: 'SAFE' | 'ALERT_RECHARGE_CARD' | 'AUTO_PAUSE_KILLSWITCH' | 'UNFUNDED_PAUSED';
+  should_alert_telegram: boolean;
+  should_pause_active_adsets: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -56,11 +88,124 @@ export class Agencia360ApiService {
     }
   }
 
-  async listAuthorizedInbox(): Promise<Ag360InboxListResponse | null> {
+  async listBrands(): Promise<Ag360PersistedBrandDto[] | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/treasury/brands`, { method: 'GET' });
+      if (!res.ok) return null;
+      const body = (await res.json()) as { brands: Ag360PersistedBrandDto[] };
+      return body.brands;
+    } catch {
+      return null;
+    }
+  }
+
+  async createBrand(payload: {
+    brand_id: string;
+    slug: string;
+    display_name: string;
+    industry_vertical: string;
+    spend_cap_usd: number;
+    initial_vault_usd: number;
+    card_label: string;
+    card_last4: string;
+  }): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.baseUrl}/treasury/brands`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async topupBrandVault(brandId: string, amountUsd: number, note: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.baseUrl}/treasury/topup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand_id: brandId, amount_usd: amountUsd, note }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async saveConnection(payload: {
+    scope_id: string;
+    provider: string;
+    secret_token: string;
+    metadata: Record<string, string>;
+  }): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.baseUrl}/connections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async testConnection(scopeId: string, provider: string): Promise<Ag360ConnectionTestResult | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/connections/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope_id: scopeId, provider }),
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as Ag360ConnectionTestResult;
+    } catch {
+      return null;
+    }
+  }
+
+  async uploadMedia(
+    brandId: string,
+    brandSlug: string,
+    category: 'photos' | 'videos' | 'voices',
+    file: File,
+  ): Promise<{ asset_id: string; relative_url: string; filename: string } | null> {
+    try {
+      const form = new FormData();
+      form.append('brand_id', brandId);
+      form.append('brand_slug', brandSlug);
+      form.append('category', category);
+      form.append('file', file);
+      const res = await fetch(`${this.baseUrl}/media/upload`, {
+        method: 'POST',
+        body: form,
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as { asset_id: string; relative_url: string; filename: string };
+    } catch {
+      return null;
+    }
+  }
+
+  async listAuthorizedInbox(): Promise<Ag360InboxFileEntry[] | null> {
     try {
       const res = await fetch(`${this.baseUrl}/sandbox/list-inbox`, { method: 'GET' });
       if (!res.ok) return null;
-      return (await res.json()) as Ag360InboxListResponse;
+      const body = (await res.json()) as { files: Ag360InboxFileEntry[] };
+      return body.files;
+    } catch {
+      return null;
+    }
+  }
+
+  async listGoogleFlowExports(): Promise<Ag360FlowExportEntry[] | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/media/flow-exports`, { method: 'GET' });
+      if (!res.ok) return null;
+      const body = (await res.json()) as { exports: Ag360FlowExportEntry[] };
+      return body.exports;
     } catch {
       return null;
     }
@@ -84,23 +229,21 @@ export class Agencia360ApiService {
     }
   }
 
-  async generateFlyer(payload: {
-    brand_id: string;
-    brand_slug: string;
-    headline: string;
-    price_badge: string;
-    cta_text: string;
-    nano_banana_prompt: string;
-    aspect_ratio: '9:16' | '4:5';
-  }): Promise<Ag360GeneratedFlyerResponse | null> {
+  async evaluateCardKillswitch(
+    cardFundedUsd: number,
+    metaAmountSpentUsd: number,
+  ): Promise<Ag360CardKillswitchResponse | null> {
     try {
-      const res = await fetch(`${this.baseUrl}/flyers/generate`, {
+      const res = await fetch(`${this.baseUrl}/billing/card-killswitch/evaluate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          card_funded_usd: cardFundedUsd,
+          meta_amount_spent_usd: metaAmountSpentUsd,
+        }),
       });
       if (!res.ok) return null;
-      return (await res.json()) as Ag360GeneratedFlyerResponse;
+      return (await res.json()) as Ag360CardKillswitchResponse;
     } catch {
       return null;
     }

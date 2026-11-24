@@ -6,46 +6,51 @@ if (process.env['PW_CHANNEL']) {
 
 const THEMES = ['dark', 'apple-dark', 'light', 'neon-pink'] as const;
 
-test.describe('Agencia Digital 360 (/agencia-360) — 4-Theme Spatial Liquid Glass E2E', () => {
-  test('renders Executive Dashboard, 5 Execution sub-tabs, 9:16 preview, and scoped Ctrl+K with 0px overflow across all 4 themes on Desktop (1440x900)', async ({
+test.describe('Agencia Digital 360 (/agencia-360) — Zero-Seed Real Production E2E (4 Themes)', () => {
+  test('starts strictly Zero-Seed ($0.00, 0 fake brands), supports brand creation, Conexiones & APIs, and 0px overflow across 4 themes on Desktop (1440x900)', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/#/agencia-360', { waitUntil: 'networkidle' });
+    await page.evaluate(() => localStorage.clear());
+    await page.reload({ waitUntil: 'networkidle' });
 
     await expect(page.locator('h1', { hasText: 'AGENCIA DIGITAL 360' })).toBeVisible();
+    await expect(page.getByText('Tu Agencia Digital 360 está limpia (Zero-Seed · $0.00)')).toBeVisible();
     await expect(page.locator('.phone-frame-916')).toBeVisible();
 
     for (const theme of THEMES) {
       await page.evaluate((t) => {
         document.documentElement.setAttribute('data-theme', t);
       }, theme);
-
       const overflowPx = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       );
       expect(overflowPx, `Theme ${theme} desktop horizontal overflow`).toBeLessThanOrEqual(0);
     }
 
-    // Switch through Execution sub-tabs
-    await page.getByRole('tab', { name: /Video Pipeline 9:16/i }).click();
-    await expect(page.getByText('custom_audio_path: ACTIVO (TTS Saltado)')).toBeVisible();
+    // 1. Create a real brand via the Zero-Seed Onboarding Modal
+    await page.getByRole('button', { name: /\+ Crear Mi Primera Marca/i }).click();
+    const brandDialog = page.locator('[role="dialog"][aria-label="Crear Marca Real"]');
+    await expect(brandDialog).toBeVisible();
+    await brandDialog.getByPlaceholder('Nombre comercial de tu marca').fill('Mi Tienda Real VE');
+    await brandDialog.getByRole('button', { name: 'Guardar Marca en SQLite' }).click();
+    await expect(brandDialog).toBeHidden();
+    await expect(page.locator('table strong', { hasText: 'Mi Tienda Real VE' })).toBeVisible();
 
-    await page.getByRole('tab', { name: /Clips Virales Dual/i }).click();
-    await page.getByRole('button', { name: /YouTube Quirúrgico/i }).click();
-    await expect(page.locator('code', { hasText: '--download-sections' })).toBeVisible();
+    // 2. Open Conexiones & APIs modal and verify providers
+    await page.getByRole('button', { name: /Conexiones & APIs/i }).click();
+    const connDialog = page.locator('[role="dialog"][aria-label="Conexiones y APIs de Agencia Digital 360"]');
+    await expect(connDialog).toBeVisible();
+    await connDialog.getByRole('button', { name: 'Cerrar' }).click();
+    await expect(connDialog).toBeHidden();
 
-    await page.getByRole('tab', { name: /Trafficker & Telegram HITL/i }).click();
-    await page.getByRole('button', { name: 'Aprobar Pauta' }).first().click();
-    await expect(page.locator('text=APPROVED · ACTIVE').first()).toBeVisible();
+    // 3. Navigate Video & Google Flow and CTWA sub-tabs
+    await page.getByRole('tab', { name: /Video & Google Flow/i }).click();
+    await expect(page.getByText('Motor A: Gemini Omni 1.2 Flash')).toBeVisible();
 
-    // Verify scoped Ctrl+K Command Palette opens and navigates
-    await page.keyboard.press('Control+k');
-    const dialog = page.locator('.ag360-palette-dialog[role="dialog"]');
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole('button', { name: /Flyers Nano Banana/i }).click();
-    await expect(dialog).toBeHidden();
-    await expect(page.getByRole('heading', { name: /Estudio de Flyers Comerciales/i })).toBeVisible();
+    await page.getByRole('tab', { name: /Pauta CTWA & HITL/i }).click();
+    await expect(page.getByText('Lanzador Directo Click-to-WhatsApp')).toBeVisible();
   });
 
   test('renders cleanly with 0px horizontal overflow on Mobile 9:16 (390x844)', async ({ page }) => {

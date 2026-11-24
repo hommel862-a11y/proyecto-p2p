@@ -11,12 +11,15 @@ import { FormsModule } from '@angular/forms';
 import { HotkeysService } from '../../core/hotkeys.service';
 import {
   Agencia360ApiService,
+  type Ag360FlowExportEntry,
   type Ag360InboxFileEntry,
 } from './agencia-360-api.service';
 import {
   AG360_CLIP_SOURCE,
   AG360_SUB_TAB,
   AG360_VERTICAL,
+  AG360_VIDEO_ENGINE,
+  type Ag360ApiConnectionSummary,
   type Ag360BrandVault,
   type Ag360ClipSource,
   type Ag360CommandItem,
@@ -25,8 +28,13 @@ import {
   type Ag360HookVariant,
   type Ag360SubTab,
   type Ag360SubTabDescriptor,
-  type Ag360ViralClipJob,
+  type Ag360UploadedMedia,
+  type Ag360Vertical,
+  type Ag360VideoEngine,
 } from './agencia-360.models';
+
+const STORAGE_KEY_BRANDS = 'agencia360.zero_seed.brands.v2';
+const STORAGE_KEY_CONNECTIONS = 'agencia360.zero_seed.connections.v2';
 
 @Component({
   selector: 'app-agencia-360',
@@ -41,279 +49,164 @@ export class Agencia360Component {
   private readonly destroyRef = inject(DestroyRef);
   private readonly api = inject(Agencia360ApiService);
 
-  readonly backendOnline = signal<boolean>(false);
-  readonly inboxFiles = signal<Ag360InboxFileEntry[]>([]);
-
   readonly SUB_TAB = AG360_SUB_TAB;
   readonly CLIP_SOURCE = AG360_CLIP_SOURCE;
+  readonly VIDEO_ENGINE = AG360_VIDEO_ENGINE;
+  readonly VERTICALS: readonly Ag360Vertical[] = [
+    AG360_VERTICAL.RETAIL_COMMERCE,
+    AG360_VERTICAL.CASHEA_ALLY,
+    AG360_VERTICAL.FINTECH_P2P,
+    AG360_VERTICAL.B2B_SERVICES,
+    AG360_VERTICAL.EDUCATION,
+  ];
+
   readonly workerConcurrencyLimit = 1;
   readonly authorizedInboxDir = 'E:\\Agencia_Inbox\\';
+  readonly googleFlowWatchDir = 'E:\\Agencia_Inbox\\flow_exports\\';
+
+  readonly backendOnline = signal<boolean>(false);
+  readonly ffmpegInstalled = signal<boolean>(false);
+  readonly statusMessage = signal<string>('');
 
   readonly subTabs: readonly Ag360SubTabDescriptor[] = [
-    { id: AG360_SUB_TAB.OVERVIEW, code: '00', label: 'Overview & Bóveda', badge: 'ROAS' },
-    { id: AG360_SUB_TAB.BRIEF_STUDIO, code: '01', label: 'Brief & Director IA', badge: 'VE-IA' },
-    { id: AG360_SUB_TAB.VIDEO_PIPELINE, code: '02', label: 'Video Pipeline 9:16', badge: 'MPT' },
+    { id: AG360_SUB_TAB.OVERVIEW, code: '00', label: 'Overview & Bóveda', badge: 'ZERO-SEED' },
+    { id: AG360_SUB_TAB.BRIEF_STUDIO, code: '01', label: 'Brief & Director IA', badge: 'GEMINI 3.8' },
+    { id: AG360_SUB_TAB.VIDEO_PIPELINE, code: '02', label: 'Video & Google Flow', badge: 'OMNI 1.2' },
     { id: AG360_SUB_TAB.VIRAL_CLIPS, code: '03', label: 'Clips Virales Dual', badge: '9:16' },
-    { id: AG360_SUB_TAB.FLYER_STUDIO, code: '04', label: 'Nano Banana Flyers', badge: '2-CAPAS' },
-    { id: AG360_SUB_TAB.TRAFFICKER_HITL, code: '05', label: 'Trafficker & Telegram HITL', badge: 'HITL' },
+    { id: AG360_SUB_TAB.FLYER_STUDIO, code: '04', label: 'Nano Banana 2.1 Flyers', badge: '4K' },
+    { id: AG360_SUB_TAB.TRAFFICKER_HITL, code: '05', label: 'Pauta CTWA & HITL', badge: 'WHATSAPP' },
   ];
 
   readonly activeSubTab = signal<Ag360SubTab>(AG360_SUB_TAB.OVERVIEW);
 
-  readonly brands = signal<Ag360BrandVault[]>([
-    {
-      id: 'brd_cashea_01',
-      slug: 'tienda-aliada-cashea-ve',
-      displayName: 'Tienda Aliada Cashea VE',
-      vertical: AG360_VERTICAL.CASHEA_ALLY,
-      metaAdAccountId: 'act_44198201',
-      metaPixelId: 'px_902184',
-      tiktokAdvertiserId: 'tt_991204',
-      youtubeChannelId: 'yt_ch_881',
-      vaultBalanceUsd: 2450,
-      spendCapUsd: 1000,
-      accumulatedSpendUsd: 540,
-      reservedSpendUsd: 60,
-      attributedRevenueUsd: 2619,
-      closedWonCount: 118,
-      alertThresholdPct: 20,
-    },
-    {
-      id: 'brd_p2p_02',
-      slug: 'mesa-liquidez-finanzas',
-      displayName: 'Mesa Liquidez & Finanzas',
-      vertical: AG360_VERTICAL.FINTECH_P2P,
-      metaAdAccountId: 'act_88210449',
-      metaPixelId: 'px_104992',
-      tiktokAdvertiserId: 'tt_331098',
-      youtubeChannelId: 'yt_ch_204',
-      vaultBalanceUsd: 1820,
-      spendCapUsd: 600,
-      accumulatedSpendUsd: 210,
-      reservedSpendUsd: 0,
-      attributedRevenueUsd: 980,
-      closedWonCount: 42,
-      alertThresholdPct: 20,
-    },
-    {
-      id: 'brd_b2b_03',
-      slug: 'importadora-mayorista-b2b',
-      displayName: 'Importadora & Mayorista B2B',
-      vertical: AG360_VERTICAL.B2B_SERVICES,
-      metaAdAccountId: 'act_77102938',
-      metaPixelId: 'px_551209',
-      tiktokAdvertiserId: 'tt_610442',
-      youtubeChannelId: 'yt_ch_912',
-      vaultBalanceUsd: 310,
-      spendCapUsd: 1500,
-      accumulatedSpendUsd: 1210,
-      reservedSpendUsd: 0,
-      attributedRevenueUsd: 4950,
-      closedWonCount: 64,
-      alertThresholdPct: 20,
-    },
-  ]);
+  // ZERO-SEED: Starts strictly empty (0 fake brands, $0.00 balance, 0 fake hooks/flyers/proposals)
+  readonly brands = signal<Ag360BrandVault[]>(this.loadPersistedBrands());
+  readonly selectedBrandId = signal<string>(this.brands()[0]?.id ?? '');
 
-  readonly selectedBrandId = signal<string>('brd_cashea_01');
-
-  readonly activeBrand = computed<Ag360BrandVault>(() => {
+  readonly activeBrand = computed<Ag360BrandVault | null>(() => {
+    const list = this.brands();
+    if (list.length === 0) return null;
     const id = this.selectedBrandId();
-    return this.brands().find((b) => b.id === id) ?? this.brands()[0];
+    return list.find((b) => b.id === id) ?? list[0];
   });
 
   readonly activeBrandRoas = computed<number>(() => {
     const b = this.activeBrand();
-    if (b.accumulatedSpendUsd <= 0) return 0;
+    if (!b || b.accumulatedSpendUsd <= 0) return 0;
     return Number((b.attributedRevenueUsd / b.accumulatedSpendUsd).toFixed(2));
   });
 
-  readonly remainingSpendCapRatioPct = computed<number>(() => {
+  readonly cardConsumedPct = computed<number>(() => {
     const b = this.activeBrand();
+    if (!b || b.vaultBalanceUsd <= 0) return 0;
     const used = b.accumulatedSpendUsd + b.reservedSpendUsd;
-    const rem = Math.max(0, b.spendCapUsd - used);
-    return Number(((rem / b.spendCapUsd) * 100).toFixed(1));
+    return Number(Math.min(100, (used / b.vaultBalanceUsd) * 100).toFixed(1));
   });
 
-  readonly isLowBalanceAlert20Pct = computed<boolean>(() => {
-    return this.remainingSpendCapRatioPct() <= this.activeBrand().alertThresholdPct;
+  readonly cardKillswitchStatus = computed<'UNFUNDED' | 'SAFE' | 'ALERT_80PCT' | 'KILLSWITCH_95PCT'>(() => {
+    const b = this.activeBrand();
+    if (!b || b.vaultBalanceUsd <= 0) return 'UNFUNDED';
+    const pct = this.cardConsumedPct();
+    if (pct >= 95) return 'KILLSWITCH_95PCT';
+    if (pct >= 80) return 'ALERT_80PCT';
+    return 'SAFE';
   });
 
-  readonly customAudioPatchEnabled = signal<boolean>(true);
-  readonly customAudioFilename = signal<string>('locutor_caracas_brief042_hookA.wav');
+  // Real Brand Creation Form (Zero-Seed Onboarding)
+  readonly newBrandModalOpen = signal<boolean>(false);
+  readonly newBrandName = signal<string>('');
+  readonly newBrandVertical = signal<Ag360Vertical>(AG360_VERTICAL.RETAIL_COMMERCE);
+  readonly newBrandCardLabel = signal<string>('');
+  readonly newBrandCardLast4 = signal<string>('');
+  readonly newBrandSpendCap = signal<number>(100);
+  readonly newBrandInitialFund = signal<number>(0);
 
-  readonly hookVariants = signal<Ag360HookVariant[]>([
-    {
-      variant: 'HOOK_A',
-      title: 'Gancho A · Dolor & Liquidez BCV',
-      script3s: '¿Querés equipar tu local hoy sin descapitalizarte en dólares y pagando a tasa BCV?',
-      brollSource: 'Google Flow 9:16 · Close-up Producto + Caja',
-      retentionScore: 94,
-    },
-    {
-      variant: 'HOOK_B',
-      title: 'Gancho B · Prueba Social Caracas',
-      script3s: 'Más de 180 comercios en Caracas ya están llevando este combo con solo 40% de inicial.',
-      brollSource: 'Higgsfield 9:16 · Entrega en Tienda Física',
-      retentionScore: 89,
-    },
-    {
-      variant: 'HOOK_C',
-      title: 'Gancho C · Oferta Directa Flash',
-      script3s: 'Llevátelo hoy desde $18 de inicial y despacho inmediato en toda la Gran Caracas.',
-      brollSource: 'Google Flow 9:16 · Unboxing Rápido',
-      retentionScore: 85,
-    },
-  ]);
+  // Vault Real Top-Up Form
+  readonly topupAmountUsd = signal<number>(0);
 
+  // Real API Connections Manager Modal
+  readonly connectionsModalOpen = signal<boolean>(false);
+  readonly connections = signal<Ag360ApiConnectionSummary[]>(this.loadPersistedConnections());
+  readonly connProvider = signal<string>('GEMINI_API');
+  readonly connScope = signal<string>('GLOBAL');
+  readonly connTokenInput = signal<string>('');
+  readonly connMetaAccount = signal<string>('');
+  readonly connMetaPage = signal<string>('');
+  readonly connWhatsappPhone = signal<string>('');
+  readonly connTestMessage = signal<string>('');
+
+  // Real Uploaded Media Vault (Photos, Videos, Voices) & Active 9:16 Preview
+  readonly uploadedMedia = signal<Ag360UploadedMedia[]>([]);
+  readonly activePreviewMedia = signal<Ag360UploadedMedia | null>(null);
+  readonly inboxFiles = signal<Ag360InboxFileEntry[]>([]);
+  readonly flowExports = signal<Ag360FlowExportEntry[]>([]);
+
+  // Real Browser Voice Recorder State
+  readonly isRecordingVoice = signal<boolean>(false);
+  readonly recordedVoiceName = signal<string>('');
+  private mediaRecorder: MediaRecorder | null = null;
+  private recordedChunks: Blob[] = [];
+
+  // Sub-Tab 01: Brief & Creative Director (Starts Empty until User Generates)
+  readonly briefOfferInput = signal<string>('');
+  readonly briefAudienceInput = signal<string>('');
+  readonly generatedHooks = signal<Ag360HookVariant[]>([]);
   readonly selectedHookVariantId = signal<'HOOK_A' | 'HOOK_B' | 'HOOK_C'>('HOOK_A');
 
-  readonly selectedHook = computed<Ag360HookVariant>(() => {
+  readonly selectedHook = computed<Ag360HookVariant | null>(() => {
+    const list = this.generatedHooks();
+    if (list.length === 0) return null;
     const id = this.selectedHookVariantId();
-    return this.hookVariants().find((h) => h.variant === id) ?? this.hookVariants()[0];
+    return list.find((h) => h.variant === id) ?? list[0];
   });
 
+  // Sub-Tab 02: Real Video Engine Selection (Omni 1.2 Flash / Local FFmpeg / Google Flow Watch-Folder)
+  readonly selectedVideoEngine = signal<Ag360VideoEngine>(AG360_VIDEO_ENGINE.GEMINI_OMNI_1_2);
+  readonly videoPromptInput = signal<string>('');
+  readonly customAudioPatchEnabled = signal<boolean>(true);
+
+  // Sub-Tab 03: Viral Clips Dual + Google Flow Watch-Folder
   readonly viralClipSourceMode = signal<Ag360ClipSource>(AG360_CLIP_SOURCE.PC_LOCAL_INBOX);
-  readonly youtubeSurgicalUrl = signal<string>('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
-  readonly youtubeSurgicalRange = signal<string>('00:18:10-00:19:05');
+  readonly youtubeSurgicalUrl = signal<string>('');
+  readonly youtubeSurgicalRange = signal<string>('00:00:00-00:00:45');
 
   readonly surgicalYtDlpPreviewCommand = computed<string>(() => {
-    return `yt-dlp --no-playlist --download-sections "*${this.youtubeSurgicalRange()}" --force-keyframes-at-cuts "${this.youtubeSurgicalUrl()}"`;
+    const url = this.youtubeSurgicalUrl().trim();
+    if (!url) return 'Pega una URL de YouTube para generar el comando quirúrgico --download-sections';
+    return `python -m yt_dlp --no-playlist --download-sections "*${this.youtubeSurgicalRange()}" --force-keyframes-at-cuts "${url}"`;
   });
 
-  readonly viralClipJobs = signal<Ag360ViralClipJob[]>([
-    {
-      id: 'clip_loc_01',
-      title: 'Podcast Comercios Caracas Ep. 14',
-      sourceMode: AG360_CLIP_SOURCE.PC_LOCAL_INBOX,
-      sourceLocator: 'E:\\Agencia_Inbox\\podcast_ep14.mp4',
-      sectionRange: '00:04:12 - 00:05:04 (52s)',
-      viralityScore: 96,
-      faceConfidencePct: 98.4,
-      aspectRatio: '9:16',
-      status: 'COMPLETED',
-    },
-    {
-      id: 'clip_yt_02',
-      title: 'Entrevista Estrategia Cashea & BCV',
-      sourceMode: AG360_CLIP_SOURCE.YOUTUBE_SURGICAL,
-      sourceLocator: 'youtube.com/watch?v=ve_commerce_2026',
-      sectionRange: '*00:18:10-00:19:05 (55s · 14 MB)',
-      viralityScore: 92,
-      faceConfidencePct: 97.1,
-      aspectRatio: '9:16',
-      status: 'CURATED',
-    },
-  ]);
+  // Sub-Tab 04: Nano Banana 2.1 Flyers (Starts Empty)
+  readonly flyerHeadline = signal<string>('');
+  readonly flyerPriceBadge = signal<string>('');
+  readonly flyerCtaText = signal<string>('');
+  readonly flyerAspectRatio = signal<'9:16' | '4:5'>('9:16');
+  readonly flyerAssets = signal<Ag360FlyerAsset[]>([]);
 
-  readonly flyerAssets = signal<Ag360FlyerAsset[]>([
-    {
-      id: 'fly_cashea_916',
-      brandId: 'brd_cashea_01',
-      aspectRatio: '9:16',
-      headline: 'EQUIPA TU NEGOCIO HOY',
-      priceBadge: 'INICIAL $48 USD + 3 CUOTAS CASHEA',
-      ctaText: 'ESCRIBINOS POR WHATSAPP · TASA BCV',
-      textDensityPct: 14.2,
-      complianceStatus: 'APPROVED',
-      publicHttpsUrl: 'https://cdn.agencia360.ve/public/brands/tienda-aliada-cashea-ve/flyers/fly_916.png',
-    },
-    {
-      id: 'fly_cashea_45',
-      brandId: 'brd_cashea_01',
-      aspectRatio: '4:5',
-      headline: 'CATÁLOGO MAYORISTA 2026',
-      priceBadge: 'DESDE $18 INICIAL · 0% INTERÉS',
-      ctaText: 'SOLICITAR COTIZACIÓN INMEDIATA',
-      textDensityPct: 15.8,
-      complianceStatus: 'APPROVED',
-      publicHttpsUrl: 'https://cdn.agencia360.ve/public/brands/tienda-aliada-cashea-ve/flyers/fly_45.png',
-    },
-  ]);
-
-  readonly hitlProposals = signal<Ag360HitlProposal[]>([
-    {
-      approvalId: 'hitl_ag360_01',
-      campaignId: 'cmp_ve_cashea_q4',
-      brandId: 'brd_cashea_01',
-      platform: 'META_ADS',
-      campaignName: 'Meta Reels 9:16 · Cashea Caracas Q4',
-      hookVariant: 'HOOK_A',
-      dailyBudgetUsd: 45,
-      originalCopy: 'Equipa tu comercio hoy en cuotas sin interés a tasa BCV.',
-      approvedCopy: 'Equipa tu comercio hoy en cuotas sin interés a tasa BCV.',
-      complianceStatus: 'APPROVED',
-      riskScorePct: 3,
-      hitlStatus: 'APPROVED',
-      campaignStatus: 'ACTIVE',
-    },
-    {
-      approvalId: 'hitl_ag360_02',
-      campaignId: 'cmp_tt_comercios_ve',
-      brandId: 'brd_cashea_01',
-      platform: 'TIKTOK_ADS',
-      campaignName: 'TikTok Spark 9:16 · Clip Quirúrgico #1',
-      hookVariant: 'HOOK_B',
-      dailyBudgetUsd: 60,
-      originalCopy: 'Cambia tus USDT sin comisiones y equipa tu tienda hoy.',
-      approvedCopy: 'Optimiza la gestión de cobros y equipa tu tienda hoy con soporte en tiempo real.',
-      complianceStatus: 'REWRITTEN_APPROVED',
-      riskScorePct: 4,
-      hitlStatus: 'PENDING',
-      campaignStatus: 'DRAFT_PENDING_HITL',
-    },
-  ]);
+  // Sub-Tab 05: Click-to-WhatsApp (CTWA) Launcher & HITL Queue (Starts Empty)
+  readonly ctwaCampaignName = signal<string>('');
+  readonly ctwaWhatsappPhone = signal<string>('');
+  readonly ctwaDailyBudgetUsd = signal<number>(15);
+  readonly ctwaCopyText = signal<string>('');
+  readonly hitlProposals = signal<Ag360HitlProposal[]>([]);
 
   readonly pendingHitlCount = computed<number>(() => {
     return this.hitlProposals().filter((p) => p.hitlStatus === 'PENDING').length;
   });
 
-  /* Scoped Ctrl+K Command Palette */
+  // Scoped Ctrl+K Command Palette
   readonly scopedPaletteOpen = signal<boolean>(false);
   readonly paletteQuery = signal<string>('');
 
   readonly commands: readonly Ag360CommandItem[] = [
-    {
-      id: 'cmd_overview',
-      label: 'Ir a 00. Overview Ejecutivo & Bóveda de Pauta',
-      category: 'Navegación',
-      shortcut: 'Alt+0',
-      tabTarget: AG360_SUB_TAB.OVERVIEW,
-    },
-    {
-      id: 'cmd_brief',
-      label: 'Ir a 01. Brief & Director Creativo IA (Gemini + GPT-4o)',
-      category: 'Ejecución',
-      shortcut: 'Alt+1',
-      tabTarget: AG360_SUB_TAB.BRIEF_STUDIO,
-    },
-    {
-      id: 'cmd_video',
-      label: 'Ir a 02. Video Pipeline 9:16 (MoneyPrinterTurbo + custom_audio_path)',
-      category: 'Ejecución',
-      shortcut: 'Alt+2',
-      tabTarget: AG360_SUB_TAB.VIDEO_PIPELINE,
-    },
-    {
-      id: 'cmd_clips',
-      label: 'Ir a 03. Extractor Quirúrgico de Clips Virales (E:\\Agencia_Inbox\\ + YouTube)',
-      category: 'Ejecución',
-      shortcut: 'Alt+3',
-      tabTarget: AG360_SUB_TAB.VIRAL_CLIPS,
-    },
-    {
-      id: 'cmd_flyers',
-      label: 'Ir a 04. Estudio de Flyers Nano Banana (2 Capas)',
-      category: 'Ejecución',
-      shortcut: 'Alt+4',
-      tabTarget: AG360_SUB_TAB.FLYER_STUDIO,
-    },
-    {
-      id: 'cmd_trafficker',
-      label: 'Ir a 05. Trafficker Multi-Plataforma & Centro Telegram HITL',
-      category: 'Ejecución',
-      shortcut: 'Alt+5',
-      tabTarget: AG360_SUB_TAB.TRAFFICKER_HITL,
-    },
+    { id: 'cmd_new_brand', label: '+ Crear Nueva Marca / Negocio (Zero-Seed)', category: 'Configuración', shortcut: 'Alt+N', action: 'OPEN_NEW_BRAND' },
+    { id: 'cmd_apis', label: 'Abrir Conexiones & APIs (Gemini, Meta CTWA, Telegram, ARM)', category: 'Configuración', shortcut: 'Alt+A', action: 'OPEN_CONNECTIONS' },
+    { id: 'cmd_overview', label: '00. Overview & Bóveda Espejo de Tarjeta', category: 'Navegación', shortcut: 'Alt+0', tabTarget: AG360_SUB_TAB.OVERVIEW },
+    { id: 'cmd_brief', label: '01. Brief & Director Creativo (Gemini 3.8 Flash)', category: 'Producción', shortcut: 'Alt+1', tabTarget: AG360_SUB_TAB.BRIEF_STUDIO },
+    { id: 'cmd_video', label: '02. Video Pipeline 9:16 (Omni 1.2 / FFmpeg / Google Flow)', category: 'Producción', shortcut: 'Alt+2', tabTarget: AG360_SUB_TAB.VIDEO_PIPELINE },
+    { id: 'cmd_clips', label: '03. Clips Virales Dual & Google Flow Watch-Folder', category: 'Producción', shortcut: 'Alt+3', tabTarget: AG360_SUB_TAB.VIRAL_CLIPS },
+    { id: 'cmd_flyers', label: '04. Estudio de Flyers Nano Banana 2.1', category: 'Producción', shortcut: 'Alt+4', tabTarget: AG360_SUB_TAB.FLYER_STUDIO },
+    { id: 'cmd_trafficker', label: '05. Pauta Directa Click-to-WhatsApp (CTWA) & HITL', category: 'Pauta', shortcut: 'Alt+5', tabTarget: AG360_SUB_TAB.TRAFFICKER_HITL },
   ];
 
   readonly filteredCommands = computed<Ag360CommandItem[]>(() => {
@@ -335,14 +228,32 @@ export class Agencia360Component {
 
   async refreshBackendStatus(): Promise<void> {
     const health = await this.api.checkHealth();
-    this.backendOnline.set(health !== null && health.status === 'ok');
-  }
+    const online = health !== null && health.status === 'ok';
+    this.backendOnline.set(online);
+    this.ffmpegInstalled.set(Boolean(health?.ffmpeg_installed));
 
-  async scanAuthorizedInbox(): Promise<void> {
-    const res = await this.api.listAuthorizedInbox();
-    if (res) {
-      this.inboxFiles.set(res.files);
-      this.backendOnline.set(true);
+    if (online) {
+      const serverBrands = await this.api.listBrands();
+      if (serverBrands && serverBrands.length > 0 && this.brands().length === 0) {
+        const mapped: Ag360BrandVault[] = serverBrands.map((b) => ({
+          id: b.brand_id,
+          slug: b.slug,
+          displayName: b.display_name,
+          vertical: (b.industry_vertical as Ag360Vertical) || AG360_VERTICAL.RETAIL_COMMERCE,
+          cardLabel: b.card_label || '',
+          cardLast4: b.card_last4 || '',
+          vaultBalanceUsd: b.vault_balance_usd,
+          spendCapUsd: b.spend_cap_usd,
+          accumulatedSpendUsd: b.accumulated_spend_usd,
+          reservedSpendUsd: b.reserved_spend_usd,
+          attributedRevenueUsd: b.attributed_revenue_usd,
+          closedWonCount: b.closed_won_count,
+          alertThresholdPct: b.alert_threshold_pct ?? 20,
+        }));
+        this.brands.set(mapped);
+        this.selectedBrandId.set(mapped[0].id);
+        this.persistBrands(mapped);
+      }
     }
   }
 
@@ -354,15 +265,389 @@ export class Agencia360Component {
     this.selectedBrandId.set(brandId);
   }
 
+  openNewBrandModal(): void {
+    this.newBrandModalOpen.set(true);
+  }
+
+  closeNewBrandModal(): void {
+    this.newBrandModalOpen.set(false);
+  }
+
+  async createRealBrand(): Promise<void> {
+    const name = this.newBrandName().trim();
+    if (!name) return;
+
+    const slug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') || `marca-${Date.now()}`;
+    const brandId = `brd_${slug}_${Date.now().toString(36).slice(-4)}`;
+
+    const created: Ag360BrandVault = {
+      id: brandId,
+      slug,
+      displayName: name,
+      vertical: this.newBrandVertical(),
+      cardLabel: this.newBrandCardLabel().trim(),
+      cardLast4: this.newBrandCardLast4().trim().slice(-4),
+      vaultBalanceUsd: Math.max(0, Number(this.newBrandInitialFund()) || 0),
+      spendCapUsd: Math.max(1, Number(this.newBrandSpendCap()) || 100),
+      accumulatedSpendUsd: 0,
+      reservedSpendUsd: 0,
+      attributedRevenueUsd: 0,
+      closedWonCount: 0,
+      alertThresholdPct: 20,
+    };
+
+    const next = [created, ...this.brands()];
+    this.brands.set(next);
+    this.selectedBrandId.set(created.id);
+    this.persistBrands(next);
+
+    if (this.backendOnline()) {
+      await this.api.createBrand({
+        brand_id: created.id,
+        slug: created.slug,
+        display_name: created.displayName,
+        industry_vertical: created.vertical,
+        spend_cap_usd: created.spendCapUsd,
+        initial_vault_usd: created.vaultBalanceUsd,
+        card_label: created.cardLabel,
+        card_last4: created.cardLast4,
+      });
+    }
+
+    this.newBrandName.set('');
+    this.newBrandCardLabel.set('');
+    this.newBrandCardLast4.set('');
+    this.newBrandInitialFund.set(0);
+    this.newBrandModalOpen.set(false);
+    this.statusMessage.set(`Marca "${created.displayName}" creada con saldo real $${created.vaultBalanceUsd.toFixed(2)}.`);
+  }
+
+  async registerRealVaultTopup(): Promise<void> {
+    const brand = this.activeBrand();
+    const amount = Number(this.topupAmountUsd());
+    if (!brand || amount <= 0) return;
+
+    const next = this.brands().map((b) =>
+      b.id === brand.id
+        ? { ...b, vaultBalanceUsd: Number((b.vaultBalanceUsd + amount).toFixed(2)) }
+        : b,
+    );
+    this.brands.set(next);
+    this.persistBrands(next);
+
+    if (this.backendOnline()) {
+      await this.api.topupBrandVault(brand.id, amount, `Fondeo tarjeta ${brand.cardLabel || 'USD'}`);
+    }
+    this.topupAmountUsd.set(0);
+    this.statusMessage.set(`Fondeo real registrado: +$${amount.toFixed(2)} USD en "${brand.displayName}".`);
+  }
+
+  // Real API Connections Drawer
+  openConnectionsModal(): void {
+    this.connectionsModalOpen.set(true);
+    this.connTestMessage.set('');
+  }
+
+  closeConnectionsModal(): void {
+    this.connectionsModalOpen.set(false);
+  }
+
+  async saveApiConnection(): Promise<void> {
+    const token = this.connTokenInput().trim();
+    if (token.length < 4) {
+      this.connTestMessage.set('Ingresá un token o API Key válido (mínimo 4 caracteres).');
+      return;
+    }
+
+    const provider = this.connProvider();
+    const scopeId =
+      provider === 'META_ADS' || provider === 'TIKTOK_ADS' || provider === 'YOUTUBE_V3'
+        ? this.activeBrand()?.id ?? 'GLOBAL'
+        : 'GLOBAL';
+
+    const metadata: Record<string, string> = {};
+    if (this.connMetaAccount().trim()) metadata['ad_account_id'] = this.connMetaAccount().trim();
+    if (this.connMetaPage().trim()) metadata['page_id'] = this.connMetaPage().trim();
+    if (this.connWhatsappPhone().trim()) metadata['whatsapp_phone'] = this.connWhatsappPhone().trim();
+
+    let savedBackend = false;
+    if (this.backendOnline()) {
+      savedBackend = await this.api.saveConnection({
+        scope_id: scopeId,
+        provider,
+        secret_token: token,
+        metadata,
+      });
+    }
+
+    const summary: Ag360ApiConnectionSummary = {
+      scopeId,
+      provider,
+      configured: true,
+      lastTestStatus: savedBackend ? 'CIFRADO EN SQLITE (SIN PROBAR)' : 'GUARDADO LOCAL (BACKEND OFFLINE)',
+      metadata,
+    };
+
+    const filtered = this.connections().filter(
+      (c) => !(c.scopeId === scopeId && c.provider === provider),
+    );
+    const updated = [summary, ...filtered];
+    this.connections.set(updated);
+    this.persistConnections(updated);
+    this.connTokenInput.set('');
+    this.connTestMessage.set(`Credencial ${provider} guardada de forma segura para ${scopeId}.`);
+  }
+
+  async testApiConnection(scopeId: string, provider: string): Promise<void> {
+    if (!this.backendOnline()) {
+      this.connTestMessage.set('Encendé el backend FastAPI (:8090) para ejecutar la prueba HTTP real.');
+      return;
+    }
+    this.connTestMessage.set(`Probando conexión real con ${provider}...`);
+    const result = await this.api.testConnection(scopeId, provider);
+    if (!result) {
+      this.connTestMessage.set(`No se encontró credencial guardada en SQLite para ${provider}.`);
+      return;
+    }
+    const statusText = result.ok
+      ? `CONECTADO (${result.latency_ms}ms)`
+      : `ERROR: ${result.detail}`;
+    const updated = this.connections().map((c) =>
+      c.scopeId === scopeId && c.provider === provider
+        ? { ...c, lastTestStatus: statusText }
+        : c,
+    );
+    this.connections.set(updated);
+    this.persistConnections(updated);
+    this.connTestMessage.set(`${provider}: ${statusText}`);
+  }
+
+  // Real File Uploader (Photos / Videos / Voice Audio)
+  async onMediaFileSelected(
+    category: 'photos' | 'videos' | 'voices',
+    event: Event,
+  ): Promise<void> {
+    const input = event.target as HTMLInputElement | null;
+    const file = input?.files?.[0];
+    if (!file) return;
+
+    const brand = this.activeBrand();
+    const brandId = brand?.id ?? 'unassigned';
+    const brandSlug = brand?.slug ?? 'default';
+
+    let previewUrl = URL.createObjectURL(file);
+    let storedFilename = file.name;
+
+    if (this.backendOnline()) {
+      const uploaded = await this.api.uploadMedia(brandId, brandSlug, category, file);
+      if (uploaded) {
+        previewUrl = `http://127.0.0.1:8090${uploaded.relative_url}`;
+        storedFilename = uploaded.filename;
+      }
+    }
+
+    const media: Ag360UploadedMedia = {
+      id: `med_${Date.now().toString(36)}`,
+      brandId,
+      category,
+      filename: storedFilename,
+      previewUrl,
+      mimeType: file.type || (category === 'videos' ? 'video/mp4' : 'image/png'),
+      sizeBytes: file.size,
+    };
+
+    this.uploadedMedia.update((list) => [media, ...list]);
+    if (category === 'photos' || category === 'videos') {
+      this.activePreviewMedia.set(media);
+    } else if (category === 'voices') {
+      this.recordedVoiceName.set(storedFilename);
+    }
+    this.statusMessage.set(`Archivo real cargado (${category}): ${storedFilename}`);
+    if (input) input.value = '';
+  }
+
+  selectPreviewMedia(media: Ag360UploadedMedia): void {
+    this.activePreviewMedia.set(media);
+  }
+
+  async toggleMicRecording(): Promise<void> {
+    if (this.isRecordingVoice()) {
+      this.mediaRecorder?.stop();
+      this.isRecordingVoice.set(false);
+      return;
+    }
+
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      this.statusMessage.set('Tu navegador no permite captura de micrófono en este contexto.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this.recordedChunks = [];
+      const recorder = new MediaRecorder(stream);
+      this.mediaRecorder = recorder;
+
+      recorder.ondataavailable = (ev: BlobEvent) => {
+        if (ev.data.size > 0) this.recordedChunks.push(ev.data);
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(this.recordedChunks, { type: 'audio/webm' });
+        const voiceFile = new File([blob], `voz_grabada_${Date.now()}.webm`, { type: 'audio/webm' });
+        const brand = this.activeBrand();
+        let previewUrl = URL.createObjectURL(blob);
+        if (this.backendOnline() && brand) {
+          const up = await this.api.uploadMedia(brand.id, brand.slug, 'voices', voiceFile);
+          if (up) previewUrl = `http://127.0.0.1:8090${up.relative_url}`;
+        }
+        this.recordedVoiceName.set(voiceFile.name);
+        this.uploadedMedia.update((list) => [
+          {
+            id: `mic_${Date.now().toString(36)}`,
+            brandId: brand?.id ?? 'unassigned',
+            category: 'voices',
+            filename: voiceFile.name,
+            previewUrl,
+            mimeType: 'audio/webm',
+            sizeBytes: voiceFile.size,
+          },
+          ...list,
+        ]);
+        this.statusMessage.set(`Voz propia grabada y lista para custom_audio_path: ${voiceFile.name}`);
+      };
+
+      recorder.start();
+      this.isRecordingVoice.set(true);
+    } catch {
+      this.statusMessage.set('Permiso de micrófono denegado o sin dispositivo de entrada.');
+    }
+  }
+
+  async scanLocalAndFlowFolders(): Promise<void> {
+    if (!this.backendOnline()) {
+      this.statusMessage.set('Encendé FastAPI (:8090) para escanear E:\\Agencia_Inbox\\ y flow_exports\\.');
+      return;
+    }
+    const [inbox, flow] = await Promise.all([
+      this.api.listAuthorizedInbox(),
+      this.api.listGoogleFlowExports(),
+    ]);
+    if (inbox) this.inboxFiles.set(inbox);
+    if (flow) this.flowExports.set(flow);
+    this.statusMessage.set(
+      `Escaneo real completado: ${inbox?.length ?? 0} archivos en Inbox · ${flow?.length ?? 0} videos en Google Flow Watch-Folder.`,
+    );
+  }
+
+  async generateRealBrief(): Promise<void> {
+    const brand = this.activeBrand();
+    const offer = this.briefOfferInput().trim();
+    if (!brand || !offer) {
+      this.statusMessage.set('Creá una marca y escribí tu producto/oferta real antes de generar el brief.');
+      return;
+    }
+
+    const audience = this.briefAudienceInput().trim() || 'Venezuela & LATAM';
+    if (this.backendOnline()) {
+      const apiRes = await this.api.generateBrief({
+        brand_id: brand.id,
+        product_or_offer: offer,
+        target_audience_ve: audience,
+      });
+      if (apiRes) {
+        this.generatedHooks.set(
+          apiRes.hooks.map((h) => ({
+            variant: h.variant,
+            title: `${h.variant} · ${brand.displayName}`,
+            script3s: h.script_3s,
+            brollSource: h.visual_cue_916,
+            retentionScore: h.predicted_retention_score,
+          })),
+        );
+        this.ctwaCopyText.set(apiRes.direct_response_copy);
+        this.statusMessage.set(`Brief generado para "${brand.displayName}" con 3 ganchos A/B/C.`);
+        return;
+      }
+    }
+
+    // Deterministic preview when backend is offline
+    this.generatedHooks.set([
+      {
+        variant: 'HOOK_A',
+        title: `Gancho A · ${brand.displayName}`,
+        script3s: `¿Buscando ${offer}? Atendemos directo por WhatsApp para ${audience}.`,
+        brollSource: 'Foto de producto real subida + Omni 1.2 Flash 9:16',
+        retentionScore: 92,
+      },
+      {
+        variant: 'HOOK_B',
+        title: `Gancho B · Demostración`,
+        script3s: `Mirá cómo funciona ${offer} en menos de 15 segundos.`,
+        brollSource: 'Clip real en E:\\Agencia_Inbox\\ + subtítulos faster-whisper',
+        retentionScore: 88,
+      },
+      {
+        variant: 'HOOK_C',
+        title: `Gancho C · Llamada Directa`,
+        script3s: `Pedí tu cotización de ${offer} hoy mismo tocando el botón de WhatsApp.`,
+        brollSource: 'Google Flow Watch-Folder + CTA overlay',
+        retentionScore: 85,
+      },
+    ]);
+    this.ctwaCopyText.set(`${offer} disponible para ${audience}. Escribinos por WhatsApp ahora.`);
+  }
+
   selectHookVariant(variant: 'HOOK_A' | 'HOOK_B' | 'HOOK_C'): void {
     this.selectedHookVariantId.set(variant);
+  }
+
+  setVideoEngine(engine: Ag360VideoEngine): void {
+    this.selectedVideoEngine.set(engine);
   }
 
   setViralClipSourceMode(mode: Ag360ClipSource): void {
     this.viralClipSourceMode.set(mode);
   }
 
+  stageCtwaCampaignForHitl(): void {
+    const brand = this.activeBrand();
+    const name = this.ctwaCampaignName().trim();
+    const phone = this.ctwaWhatsappPhone().trim();
+    const budget = Number(this.ctwaDailyBudgetUsd());
+    if (!brand || !name || !phone || budget <= 0) {
+      this.statusMessage.set('Completá Marca, Nombre de Campaña, WhatsApp Business y Presupuesto Diario.');
+      return;
+    }
+
+    const trackingCode = `AD-${brand.slug.slice(0, 6).toUpperCase()}-${Date.now().toString(36).slice(-4).toUpperCase()}`;
+    const proposal: Ag360HitlProposal = {
+      approvalId: `hitl_${Date.now().toString(36)}`,
+      campaignId: `cmp_${Date.now().toString(36)}`,
+      brandId: brand.id,
+      platform: 'META_ADS',
+      campaignName: name,
+      whatsappPhone: phone,
+      dailyBudgetUsd: budget,
+      approvedCopy: this.ctwaCopyText().trim() || `Consulta sobre ${name} [${trackingCode}]`,
+      trackingCode,
+      hitlStatus: 'PENDING',
+      campaignStatus: 'DRAFT_PENDING_HITL',
+    };
+
+    this.hitlProposals.update((list) => [proposal, ...list]);
+    this.ctwaCampaignName.set('');
+    this.statusMessage.set(`Campaña Click-to-WhatsApp "${name}" en espera de aprobación HITL (${trackingCode}).`);
+  }
+
   approveHitlProposal(approvalId: string): void {
+    const target = this.hitlProposals().find((p) => p.approvalId === approvalId);
+    if (!target) return;
+
     this.hitlProposals.update((list) =>
       list.map((item) =>
         item.approvalId === approvalId
@@ -370,6 +655,14 @@ export class Agencia360Component {
           : item,
       ),
     );
+    const updatedBrands = this.brands().map((b) =>
+      b.id === target.brandId
+        ? { ...b, accumulatedSpendUsd: Number((b.accumulatedSpendUsd + target.dailyBudgetUsd).toFixed(2)) }
+        : b,
+    );
+    this.brands.set(updatedBrands);
+    this.persistBrands(updatedBrands);
+
     if (this.backendOnline()) {
       void this.api.approveHitl(approvalId);
     }
@@ -396,6 +689,14 @@ export class Agencia360Component {
   }
 
   handleScopedEscape(): boolean {
+    if (this.connectionsModalOpen()) {
+      this.connectionsModalOpen.set(false);
+      return true;
+    }
+    if (this.newBrandModalOpen()) {
+      this.newBrandModalOpen.set(false);
+      return true;
+    }
     if (this.scopedPaletteOpen()) {
       this.scopedPaletteOpen.set(false);
       this.paletteQuery.set('');
@@ -405,10 +706,52 @@ export class Agencia360Component {
   }
 
   executeCommand(cmd: Ag360CommandItem): void {
-    if (cmd.tabTarget) {
+    if (cmd.action === 'OPEN_CONNECTIONS') {
+      this.openConnectionsModal();
+    } else if (cmd.action === 'OPEN_NEW_BRAND') {
+      this.openNewBrandModal();
+    } else if (cmd.tabTarget) {
       this.selectSubTab(cmd.tabTarget);
     }
     this.scopedPaletteOpen.set(false);
     this.paletteQuery.set('');
+  }
+
+  private loadPersistedBrands(): Ag360BrandVault[] {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_BRANDS);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? (parsed as Ag360BrandVault[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private persistBrands(list: Ag360BrandVault[]): void {
+    try {
+      localStorage.setItem(STORAGE_KEY_BRANDS, JSON.stringify(list));
+    } catch {
+      // Ignore storage quota errors in private browsing
+    }
+  }
+
+  private loadPersistedConnections(): Ag360ApiConnectionSummary[] {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_CONNECTIONS);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? (parsed as Ag360ApiConnectionSummary[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private persistConnections(list: Ag360ApiConnectionSummary[]): void {
+    try {
+      localStorage.setItem(STORAGE_KEY_CONNECTIONS, JSON.stringify(list));
+    } catch {
+      // Ignore storage quota errors
+    }
   }
 }

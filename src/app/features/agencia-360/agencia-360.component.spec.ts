@@ -1,96 +1,101 @@
 import { TestBed } from '@angular/core/testing';
 import { Agencia360Component } from './agencia-360.component';
-import { AG360_CLIP_SOURCE, AG360_SUB_TAB } from './agencia-360.models';
+import { AG360_CLIP_SOURCE, AG360_SUB_TAB, AG360_VIDEO_ENGINE } from './agencia-360.models';
 
-describe('Agencia360Component (Sprint 5 Spatial Liquid Glass Execution Module)', () => {
+describe('Agencia360Component (Zero-Seed Real Production Overhaul)', () => {
   beforeEach(async () => {
+    if (typeof localStorage !== 'undefined' && typeof localStorage.removeItem === 'function') {
+      localStorage.removeItem('agencia360.zero_seed.brands.v2');
+      localStorage.removeItem('agencia360.zero_seed.connections.v2');
+    }
     await TestBed.configureTestingModule({
       imports: [Agencia360Component],
     }).compileComponents();
   });
 
-  it('renders the Executive Dashboard and 5 Execution sub-tabs with isolated brand vaults', () => {
+  it('enforces strict Zero-Seed on first launch (0 fake brands, $0.00 balance, 0 fake hooks/proposals)', () => {
     const fixture = TestBed.createComponent(Agencia360Component);
     const comp = fixture.componentInstance;
     fixture.detectChanges();
 
-    expect(comp.subTabs.length).toBe(6);
-    expect(comp.activeSubTab()).toBe(AG360_SUB_TAB.OVERVIEW);
-    expect(comp.activeBrand().id).toBe('brd_cashea_01');
-    expect(comp.workerConcurrencyLimit).toBe(1);
-    expect(comp.customAudioPatchEnabled()).toBe(true);
-    expect(comp.activeBrandRoas()).toBeCloseTo(4.85, 2);
+    expect(comp.brands().length).toBe(0);
+    expect(comp.activeBrand()).toBeNull();
+    expect(comp.activeBrandRoas()).toBe(0);
+    expect(comp.cardKillswitchStatus()).toBe('UNFUNDED');
+    expect(comp.generatedHooks().length).toBe(0);
+    expect(comp.hitlProposals().length).toBe(0);
   });
 
-  it('switches isolated brand assets without cross-brand leakage and flags 20% low-balance warning', () => {
+  it('creates a real brand, funds its Card Mirror vault, and computes 80%/95% kill-switch states', async () => {
     const fixture = TestBed.createComponent(Agencia360Component);
     const comp = fixture.componentInstance;
     fixture.detectChanges();
 
-    expect(comp.isLowBalanceAlert20Pct()).toBe(false);
-
-    // Switch to brd_b2b_03 which has $1,210 spent out of $1,500 spend cap (19.33% remaining <= 20%)
-    comp.selectBrand('brd_b2b_03');
+    comp.newBrandName.set('Mi Comercio Real VE');
+    comp.newBrandCardLabel.set('Wally Virtual USD');
+    comp.newBrandCardLast4.set('4821');
+    comp.newBrandSpendCap.set(200);
+    comp.newBrandInitialFund.set(100);
+    await comp.createRealBrand();
     fixture.detectChanges();
 
-    expect(comp.activeBrand().id).toBe('brd_b2b_03');
-    expect(comp.activeBrand().metaAdAccountId).toBe('act_77102938');
-    expect(comp.remainingSpendCapRatioPct()).toBeLessThanOrEqual(20);
-    expect(comp.isLowBalanceAlert20Pct()).toBe(true);
+    expect(comp.brands().length).toBe(1);
+    expect(comp.activeBrand()?.displayName).toBe('Mi Comercio Real VE');
+    expect(comp.activeBrand()?.vaultBalanceUsd).toBe(100);
+    expect(comp.cardKillswitchStatus()).toBe('SAFE');
+
+    // Stage and approve a $96 CTWA campaign -> consumes 96% of card -> triggers KILLSWITCH_95PCT
+    comp.ctwaCampaignName.set('Reels WhatsApp Caracas');
+    comp.ctwaWhatsappPhone.set('+584121234567');
+    comp.ctwaDailyBudgetUsd.set(96);
+    comp.stageCtwaCampaignForHitl();
+    expect(comp.pendingHitlCount()).toBe(1);
+
+    const approvalId = comp.hitlProposals()[0].approvalId;
+    comp.approveHitlProposal(approvalId);
+    fixture.detectChanges();
+
+    expect(comp.cardConsumedPct()).toBe(96);
+    expect(comp.cardKillswitchStatus()).toBe('KILLSWITCH_95PCT');
   });
 
-  it('switches across the 5 Execution sub-tabs and updates the 9:16 vertical hook preview', () => {
+  it('saves encrypted API connections and supports Gemini Omni 1.2 / Google Flow / YouTube surgical modes', async () => {
     const fixture = TestBed.createComponent(Agencia360Component);
     const comp = fixture.componentInstance;
     fixture.detectChanges();
 
-    comp.selectSubTab(AG360_SUB_TAB.VIDEO_PIPELINE);
-    comp.selectHookVariant('HOOK_B');
-    fixture.detectChanges();
+    comp.connProvider.set('GEMINI_API');
+    comp.connTokenInput.set('AIzaSy_TEST_KEY_12345');
+    await comp.saveApiConnection();
+    expect(comp.connections().length).toBe(1);
+    expect(comp.connections()[0].provider).toBe('GEMINI_API');
 
-    expect(comp.activeSubTab()).toBe(AG360_SUB_TAB.VIDEO_PIPELINE);
-    expect(comp.selectedHook().variant).toBe('HOOK_B');
-    expect(comp.selectedHook().retentionScore).toBe(89);
+    comp.setVideoEngine(AG360_VIDEO_ENGINE.GOOGLE_FLOW_HYBRID);
+    expect(comp.selectedVideoEngine()).toBe(AG360_VIDEO_ENGINE.GOOGLE_FLOW_HYBRID);
 
-    comp.selectSubTab(AG360_SUB_TAB.VIRAL_CLIPS);
     comp.setViralClipSourceMode(AG360_CLIP_SOURCE.YOUTUBE_SURGICAL);
-    fixture.detectChanges();
-
-    expect(comp.viralClipSourceMode()).toBe(AG360_CLIP_SOURCE.YOUTUBE_SURGICAL);
-    expect(comp.surgicalYtDlpPreviewCommand()).toContain('--download-sections');
+    comp.youtubeSurgicalUrl.set('https://www.youtube.com/watch?v=realVideoVE');
+    comp.youtubeSurgicalRange.set('00:02:10-00:02:55');
+    expect(comp.surgicalYtDlpPreviewCommand()).toContain('--download-sections "*00:02:10-00:02:55"');
   });
 
-  it('enforces Human-in-the-Loop (HITL) approval and rejection on staged ad campaigns', () => {
+  it('toggles scoped Ctrl+K palette and navigates to Conexiones & APIs or sub-tabs', () => {
     const fixture = TestBed.createComponent(Agencia360Component);
     const comp = fixture.componentInstance;
     fixture.detectChanges();
 
-    const pendingBefore = comp.pendingHitlCount();
-    expect(pendingBefore).toBeGreaterThan(0);
-
-    comp.approveHitlProposal('hitl_ag360_02');
-    fixture.detectChanges();
-
-    const updated = comp.hitlProposals().find((p) => p.approvalId === 'hitl_ag360_02');
-    expect(updated?.hitlStatus).toBe('APPROVED');
-    expect(updated?.campaignStatus).toBe('ACTIVE');
-  });
-
-  it('toggles the scoped Ctrl+K command palette and executes navigation commands', () => {
-    const fixture = TestBed.createComponent(Agencia360Component);
-    const comp = fixture.componentInstance;
-    fixture.detectChanges();
-
-    expect(comp.scopedPaletteOpen()).toBe(false);
     comp.toggleScopedPalette();
     expect(comp.scopedPaletteOpen()).toBe(true);
 
-    const flyerCmd = comp.filteredCommands().find((c) => c.tabTarget === AG360_SUB_TAB.FLYER_STUDIO);
-    expect(flyerCmd).toBeDefined();
-    if (flyerCmd) {
-      comp.executeCommand(flyerCmd);
-    }
+    const apiCmd = comp.filteredCommands().find((c) => c.action === 'OPEN_CONNECTIONS');
+    expect(apiCmd).toBeDefined();
+    if (apiCmd) comp.executeCommand(apiCmd);
+    expect(comp.connectionsModalOpen()).toBe(true);
+
+    expect(comp.handleScopedEscape()).toBe(true);
+    expect(comp.connectionsModalOpen()).toBe(false);
+
+    comp.selectSubTab(AG360_SUB_TAB.FLYER_STUDIO);
     expect(comp.activeSubTab()).toBe(AG360_SUB_TAB.FLYER_STUDIO);
-    expect(comp.scopedPaletteOpen()).toBe(false);
   });
 });
