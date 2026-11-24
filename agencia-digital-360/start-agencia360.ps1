@@ -10,9 +10,17 @@ $ErrorActionPreference = "Stop"
 $RootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $StorageCache = Join-Path $RootDir "storage\cache"
 $InboxDir = "E:\Agencia_Inbox"
+$FlowExportsDir = "E:\Agencia_Inbox\flow_exports"
+$FfmpegBin = "E:\tools\ffmpeg\bin"
 
 New-Item -ItemType Directory -Force -Path $StorageCache | Out-Null
 New-Item -ItemType Directory -Force -Path $InboxDir | Out-Null
+New-Item -ItemType Directory -Force -Path $FlowExportsDir | Out-Null
+
+if (Test-Path $FfmpegBin) {
+  $env:PATH = "$FfmpegBin;$env:PATH"
+  Write-Host "[Agencia Digital 360] FFmpeg portable activo desde $FfmpegBin" -ForegroundColor Green
+}
 
 $env:TZ = "America/Caracas"
 $env:LOCAL_INBOX_DIR = $InboxDir

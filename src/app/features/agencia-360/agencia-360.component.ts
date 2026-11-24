@@ -194,6 +194,63 @@ export class Agencia360Component {
     return this.hitlProposals().filter((p) => p.hitlStatus === 'PENDING').length;
   });
 
+  // Live Interactive 6-Step Execution Roadmap inside the Tool
+  readonly liveRoadmapSteps = computed(() => {
+    const hasBrand = this.brands().length > 0;
+    const hasGemini = this.connections().some((c) => c.provider === 'GEMINI_API');
+    const hasMeta = this.connections().some((c) => c.provider === 'META_ADS');
+    const hasMedia = this.uploadedMedia().length > 0;
+    const hasCreative =
+      this.generatedHooks().length > 0 ||
+      this.flyerAssets().length > 0 ||
+      this.uploadedMedia().some((m) => m.category === 'flyers' || m.category === 'videos');
+
+    return [
+      {
+        step: 1,
+        title: 'Motor Local FastAPI + SQLite (E:\\)',
+        completed: this.backendOnline(),
+        actionLabel: this.backendOnline() ? 'Conectado (:8090)' : 'Verificar :8090',
+        actionType: 'CHECK_BACKEND' as const,
+      },
+      {
+        step: 2,
+        title: 'Crear Tu Marca Real (Zero-Seed)',
+        completed: hasBrand,
+        actionLabel: hasBrand ? 'Marca Lista' : '+ Crear Marca',
+        actionType: 'NEW_BRAND' as const,
+      },
+      {
+        step: 3,
+        title: 'Conectar APIs (Gemini 3.8 / Omni 1.2 / Meta)',
+        completed: hasGemini,
+        actionLabel: hasGemini ? 'Gemini Activo' : 'Configurar APIs',
+        actionType: 'OPEN_APIS' as const,
+      },
+      {
+        step: 4,
+        title: 'Subir Fotos, Videos o Grabar Tu Voz',
+        completed: hasMedia,
+        actionLabel: hasMedia ? `${this.uploadedMedia().length} Archivo(s)` : 'Subir Activos',
+        actionType: 'GO_VIDEO' as const,
+      },
+      {
+        step: 5,
+        title: 'Generar Brief, Reel 9:16 o Flyer 4K Real',
+        completed: hasCreative,
+        actionLabel: hasCreative ? 'Creativo Listo' : 'Producir Flyer/Video',
+        actionType: 'GO_FLYER' as const,
+      },
+      {
+        step: 6,
+        title: 'Lanzar Pauta CTWA (Sin Ads Manager) + Kill-Switch',
+        completed: hasMeta && hasBrand,
+        actionLabel: 'Abrir Pauta CTWA',
+        actionType: 'GO_CTWA' as const,
+      },
+    ];
+  });
+
   // Scoped Ctrl+K Command Palette
   readonly scopedPaletteOpen = signal<boolean>(false);
   readonly paletteQuery = signal<string>('');
@@ -612,6 +669,112 @@ export class Agencia360Component {
 
   setViralClipSourceMode(mode: Ag360ClipSource): void {
     this.viralClipSourceMode.set(mode);
+  }
+
+  runRoadmapStepAction(
+    actionType: 'CHECK_BACKEND' | 'NEW_BRAND' | 'OPEN_APIS' | 'GO_VIDEO' | 'GO_FLYER' | 'GO_CTWA',
+  ): void {
+    switch (actionType) {
+      case 'CHECK_BACKEND':
+        void this.refreshBackendStatus();
+        break;
+      case 'NEW_BRAND':
+        this.openNewBrandModal();
+        break;
+      case 'OPEN_APIS':
+        this.openConnectionsModal();
+        break;
+      case 'GO_VIDEO':
+        this.selectSubTab(AG360_SUB_TAB.VIDEO_PIPELINE);
+        break;
+      case 'GO_FLYER':
+        this.selectSubTab(AG360_SUB_TAB.FLYER_STUDIO);
+        break;
+      case 'GO_CTWA':
+        this.selectSubTab(AG360_SUB_TAB.TRAFFICKER_HITL);
+        break;
+    }
+  }
+
+  async generateLiveFlyerNow(): Promise<void> {
+    const brand = this.activeBrand();
+    const headline = this.flyerHeadline().trim();
+    const price = this.flyerPriceBadge().trim();
+    const cta = this.flyerCtaText().trim() || 'ESCRIBENOS POR WHATSAPP';
+    if (!brand || !headline || !price) {
+      this.statusMessage.set('Creá una marca y completá Titular y Etiqueta de Precio para generar el flyer.');
+      return;
+    }
+    if (!this.backendOnline()) {
+      this.statusMessage.set('Encendé FastAPI (:8090) con start-agencia360.ps1 para renderizar y guardar el PNG real.');
+      return;
+    }
+
+    const res = await this.api.generateLiveFlyer({
+      brand_id: brand.id,
+      brand_slug: brand.slug,
+      headline,
+      price_badge: price,
+      cta_text: cta,
+      nano_banana_prompt: `Commercial studio visual for ${brand.displayName}: ${headline}`,
+      aspect_ratio: this.flyerAspectRatio(),
+    });
+    if (!res) {
+      this.statusMessage.set('Error generando el flyer real en FastAPI.');
+      return;
+    }
+
+    const fullUrl = `http://127.0.0.1:8090${res.relative_url}`;
+    const asset: Ag360FlyerAsset = {
+      id: res.asset_id,
+      brandId: brand.id,
+      aspectRatio: this.flyerAspectRatio(),
+      headline,
+      priceBadge: price,
+      ctaText: cta,
+      textDensityPct: res.text_area_ratio_pct,
+      previewUrl: fullUrl,
+    };
+    this.flyerAssets.update((list) => [asset, ...list]);
+    this.activePreviewMedia.set({
+      id: res.asset_id,
+      brandId: brand.id,
+      category: 'flyers',
+      filename: `${res.asset_id}.png`,
+      previewUrl: fullUrl,
+      mimeType: 'image/png',
+      sizeBytes: 0,
+    });
+    this.statusMessage.set(`Flyer PNG real generado (${res.text_area_ratio_pct}% texto) y cargado en el Player 9:16.`);
+  }
+
+  async importGoogleFlowVideoToPlayer(filename: string): Promise<void> {
+    const brand = this.activeBrand();
+    if (!brand || !this.backendOnline()) {
+      this.statusMessage.set('Creá una marca y verificá FastAPI (:8090) para importar desde Google Flow.');
+      return;
+    }
+    const res = await this.api.importFlowExport({
+      brand_id: brand.id,
+      brand_slug: brand.slug,
+      filename,
+    });
+    if (!res) {
+      this.statusMessage.set(`No se pudo importar ${filename} desde flow_exports.`);
+      return;
+    }
+    const imported: Ag360UploadedMedia = {
+      id: res.asset_id,
+      brandId: brand.id,
+      category: 'videos',
+      filename: res.filename,
+      previewUrl: `http://127.0.0.1:8090${res.relative_url}`,
+      mimeType: 'video/mp4',
+      sizeBytes: 0,
+    };
+    this.uploadedMedia.update((list) => [imported, ...list]);
+    this.activePreviewMedia.set(imported);
+    this.statusMessage.set(`Video de Google Flow "${res.filename}" importado y listo en el reproductor 9:16.`);
   }
 
   stageCtwaCampaignForHitl(): void {

@@ -270,4 +270,48 @@ export class Agencia360ApiService {
       return false;
     }
   }
+
+  async generateLiveFlyer(payload: {
+    brand_id: string;
+    brand_slug: string;
+    headline: string;
+    price_badge: string;
+    cta_text: string;
+    nano_banana_prompt: string;
+    aspect_ratio: '9:16' | '4:5';
+  }): Promise<{ asset_id: string; relative_url: string; text_area_ratio_pct: number } | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/flyers/generate-live`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as {
+        asset_id: string;
+        relative_url: string;
+        text_area_ratio_pct: number;
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async importFlowExport(payload: {
+    brand_id: string;
+    brand_slug: string;
+    filename: string;
+  }): Promise<{ asset_id: string; relative_url: string; filename: string } | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/video/import-flow-export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as { asset_id: string; relative_url: string; filename: string };
+    } catch {
+      return null;
+    }
+  }
 }

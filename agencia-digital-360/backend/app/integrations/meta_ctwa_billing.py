@@ -1,4 +1,5 @@
-from typing import Any
+from typing import Any, Optional
+import httpx
 
 
 def build_ctwa_5step_plan(
@@ -148,3 +149,110 @@ def evaluate_card_mirror_killswitch(
         "should_alert_telegram": should_alert,
         "should_pause_active_adsets": should_pause,
     }
+
+
+async def execute_ctwa_live_deploy(
+    access_token: str,
+    brand_id: str,
+    ad_account_id: str,
+    page_id: str,
+    whatsapp_phone: str,
+    campaign_name: str,
+    daily_budget_usd: float,
+    video_public_url: str,
+    copy_text: str,
+    tracking_code: str,
+    country_code: str = "VE",
+) -> dict[str, Any]:
+    """
+    Executes the real 5-step Meta Marketing API v21.0 Click-to-WhatsApp campaign
+    creation sequence over HTTPS so operators never have to open Facebook Ads Manager.
+    """
+    plan = build_ctwa_5step_plan(
+        brand_id=brand_id,
+        ad_account_id=ad_account_id,
+        page_id=page_id,
+        whatsapp_phone=whatsapp_phone,
+        campaign_name=campaign_name,
+        daily_budget_usd=daily_budget_usd,
+        video_public_url=video_public_url,
+        copy_text=copy_text,
+        tracking_code=tracking_code,
+        country_code=country_code,
+    )
+    act = plan["ad_account_id"]
+    base = f"https://graph.facebook.com/v21.0/{act}"
+
+    async with httpx.AsyncClient(timeout=25.0) as client:
+        # Step 1: Upload Video
+        r1 = await client.post(f"{base}/advideos", data={**plan["steps"][0]["payload"], "access_token": access_token})
+        if r1.status_code >= 300:
+            return {"ok": False, "failed_step": 1, "detail": r1.text[:240]}
+        video_id = r1.json().get("id")
+
+        # Step 2: Create Campaign (PAUSED)
+        r2 = await client.post(f"{base}/campaigns", json={**plan["steps"][1]["payload"], "access_token": access_token})
+        if r2.status_code >= 300:
+            return {"ok": False, "failed_step": 2, "detail": r2.text[:240]}
+        campaign_id = r2.json().get("id")
+
+        # Step 3: Create WhatsApp CTWA AdSet
+        adset_payload = {**plan["steps"][2]["payload"], "campaign_id": campaign_id, "access_token": access_token}
+        r3 = await client.post(f"{base}/adsets", json=adset_payload)
+        if r3.status_code >= 300:
+            return {"ok": False, "failed_step": 3, "detail": r3.text[:240]}
+        adset_id = r3.json().get("id")
+
+        # Step 4: Create Creative with video_id & WHATSAPP_MESSAGE CTA
+        cre_payload = {**plan["steps"][3]["payload"], "access_token": access_token}
+        cre_payload["object_story_spec"]["video_data"]["video_id"] = video_id
+        r4 = await client.post(f"{base}/adcreatives", json=cre_payload)
+        if r4.status_code >= 300:
+            return {"ok": False, "failed_step": 4, "detail": r4.text[:240]}
+        creative_id = r4.json().get("id")
+
+        # Step 5: Create Ad (PAUSED until HITL activation)
+        ad_payload = {
+            "name": plan["steps"][4]["payload"]["name"],
+            "adset_id": adset_id,
+            "creative": {"creative_id": creative_id},
+            "status": "PAUSED",
+            "access_token": access_token,
+        }
+        r5 = await client.post(f"{base}/ads", json=ad_payload)
+        if r5.status_code >= 300:
+            return {"ok": False, "failed_step": 5, "detail": r5.text[:240]}
+        ad_id = r5.json().get("id")
+
+    return {
+        "ok": True,
+        "brand_id": brand_id,
+        "tracking_code": tracking_code,
+        "meta_ids": {
+            "video_id": video_id,
+            "campaign_id": campaign_id,
+            "adset_id": adset_id,
+            "creative_id": creative_id,
+            "ad_id": ad_id,
+        },
+    }
+
+
+async def send_telegram_hitl_alert(
+    bot_token: str,
+    chat_id: str,
+    text: str,
+    reply_markup: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Sends a real Telegram alert or HITL inline approval card via Bot API."""
+    body: dict[str, Any] = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+    if reply_markup:
+        body["reply_markup"] = reply_markup
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        res = await client.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json=body)
+        if res.status_code >= 300:
+            return {"ok": False, "status_code": res.status_code, "detail": res.text[:200]}
+        data = res.json()
+        return {"ok": bool(data.get("ok")), "message_id": data.get("result", {}).get("message_id")}
+

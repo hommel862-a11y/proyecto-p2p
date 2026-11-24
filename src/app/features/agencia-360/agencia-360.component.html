@@ -144,8 +144,31 @@
   <!-- Main Workspace Bento Grid + REAL 9:16 HTML5 Media Preview Dock -->
   <div class="ag360-main-grid">
     <div class="ag360-stage">
-      <!-- 00. OVERVIEW & ZERO-SEED ONBOARDING -->
+      <!-- 00. OVERVIEW, INTERACTIVE 6-STEP PLAN & ZERO-SEED ONBOARDING -->
       @if (activeSubTab() === SUB_TAB.OVERVIEW) {
+        <div class="ag360-content-card ag360-roadmap-card">
+          <div class="section-head">
+            <h2>Plan de Puesta en Marcha Paso a Paso (Ejecución Real)</h2>
+            <span class="ag360-status-pill cyan font-mono">6 Pasos Guiados</span>
+          </div>
+          <div class="palette-list">
+            @for (st of liveRoadmapSteps(); track st.step) {
+              <div class="palette-item">
+                <span>
+                  <strong class="font-mono">PASO 0{{ st.step }}</strong> · {{ st.title }}
+                </span>
+                <button
+                  type="button"
+                  [class]="st.completed ? 'ag360-status-pill emerald font-mono' : 'ag360-btn-primary'"
+                  (click)="runRoadmapStepAction(st.actionType)"
+                >
+                  {{ st.completed ? 'LISTO · ' : '' }}{{ st.actionLabel }}
+                </button>
+              </div>
+            }
+          </div>
+        </div>
+
         @if (brands().length === 0) {
           <div class="ag360-content-card onboarding-empty">
             <h2>Tu Agencia Digital 360 está limpia (Zero-Seed · $0.00)</h2>
@@ -414,6 +437,18 @@
               <div>Archivos detectados en E:\Agencia_Inbox\: <strong>{{ inboxFiles().length }}</strong></div>
               <div>Videos exportados desde Google Flow (flow_exports\): <strong>{{ flowExports().length }}</strong></div>
             </div>
+            @if (flowExports().length > 0) {
+              <div class="palette-list">
+                @for (fx of flowExports(); track fx.filename) {
+                  <div class="palette-item">
+                    <span class="font-mono">{{ fx.filename }} ({{ fx.size_mb }} MB)</span>
+                    <button type="button" class="ag360-btn-primary" (click)="importGoogleFlowVideoToPlayer(fx.filename)">
+                      Importar al Player 9:16
+                    </button>
+                  </div>
+                }
+              </div>
+            }
           }
         </div>
       }
@@ -452,7 +487,23 @@
               [ngModel]="flyerCtaText()"
               (ngModelChange)="flyerCtaText.set($event)"
             />
+            <div class="action-pair">
+              <button type="button" class="ag360-btn-primary" (click)="generateLiveFlyerNow()">
+                Renderizar Flyer PNG Real (9:16) en Backend
+              </button>
+            </div>
           </div>
+
+          @if (flyerAssets().length > 0) {
+            <div class="palette-list">
+              @for (f of flyerAssets(); track f.id) {
+                <div class="palette-item">
+                  <span><strong>{{ f.headline }}</strong> · {{ f.priceBadge }} ({{ f.textDensityPct }}% texto)</span>
+                  <a class="ag360-btn-glass" [href]="f.previewUrl" target="_blank" rel="noopener">Abrir / Descargar PNG</a>
+                </div>
+              }
+            </div>
+          }
         </div>
       }
 

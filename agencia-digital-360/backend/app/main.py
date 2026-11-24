@@ -33,6 +33,7 @@ from app.integrations.meta_ads import MetaAdsIntegration
 from app.integrations.meta_ctwa_billing import (
     build_ctwa_5step_plan,
     evaluate_card_mirror_killswitch,
+    execute_ctwa_live_deploy,
 )
 from app.integrations.arm_bridge import ArmBridgeService, ArmWebhookAuthError
 from app.workers.tasks import SingleConcurrencyVideoLock, VideoWorkerBusyError
@@ -212,6 +213,12 @@ class CardKillswitchPayload(BaseModel):
     meta_amount_spent_usd: float = Field(..., ge=0)
     alert_pct: float = Field(default=80.0, ge=50.0, le=95.0)
     killswitch_pct: float = Field(default=95.0, ge=80.0, le=100.0)
+
+
+class FlowImportPayload(BaseModel):
+    brand_id: str
+    brand_slug: str
+    filename: str
 
 
 class TelegramWebhookPayload(BaseModel):
@@ -482,6 +489,143 @@ def topup_brand_vault(payload: VaultTopupPayload) -> dict:
 
 
 # --- Meta CTWA 5-Step Launcher & Card Mirror Billing Kill-Switch ---
+@app.get("/api/v1/setup/roadmap-status")
+def get_setup_roadmap_status() -> dict:
+    brands = sqlite_store.list_brands()
+    conns = sqlite_store.list_connections_masked()
+    has_brand = len(brands) > 0
+    has_gemini = any(c["provider"] == "GEMINI_API" for c in conns)
+    has_meta = any(c["provider"] == "META_ADS" for c in conns)
+    total_assets = sum(len(sqlite_store.list_media_assets(b["brand_id"])) for b in brands)
+    has_flyers_or_videos = any(
+        a["category"] in ("flyers", "renders", "videos")
+        for b in brands
+        for a in sqlite_store.list_media_assets(b["brand_id"])
+    )
+    caps = inspect_local_runtime_capabilities()
+    return {
+        "ffmpeg_installed": caps["ffmpeg_installed"],
+        "steps": [
+            {
+                "id": "step_1_backend_online",
+                "step": 1,
+                "title": "Motor Local FastAPI + SQLite (E:\\)",
+                "completed": True,
+                "detail": "Servidor :8090 activo con persistencia SQLite en E:\\",
+            },
+            {
+                "id": "step_2_brand_created",
+                "step": 2,
+                "title": "Crear Marca Real (Zero-Seed)",
+                "completed": has_brand,
+                "detail": f"{len(brands)} marca(s) aisladas registradas",
+            },
+            {
+                "id": "step_3_apis_connected",
+                "step": 3,
+                "title": "Conectar APIs (Gemini 3.8 / Omni 1.2 / Meta)",
+                "completed": has_gemini,
+                "detail": f"Gemini: {'OK' if has_gemini else 'Pendiente'} · Meta CTWA: {'OK' if has_meta else 'Opcional'}",
+            },
+            {
+                "id": "step_4_media_uploaded",
+                "step": 4,
+                "title": "Subir Fotos, Videos o Voz Propia",
+                "completed": total_assets > 0,
+                "detail": f"{total_assets} archivo(s) reales cargados en Media Vault",
+            },
+            {
+                "id": "step_5_creative_produced",
+                "step": 5,
+                "title": "Producir Reel 9:16, Clip o Flyer 4K",
+                "completed": has_flyers_or_videos,
+                "detail": "Usa Omni 1.2 Flash, Google Flow Watch-Folder o Nano Banana 2.1",
+            },
+            {
+                "id": "step_6_ctwa_ready",
+                "step": 6,
+                "title": "Lanzar Pauta CTWA (Sin Ads Manager) + Kill-Switch",
+                "completed": has_meta and has_brand,
+                "detail": "Meta Marketing API v21.0 + Alerta 80% / Auto-pausa 95%",
+            },
+        ],
+    }
+
+
+@app.post("/api/v1/video/import-flow-export")
+def import_google_flow_export_to_vault(payload: FlowImportPayload) -> dict:
+    flow_root = (settings_instance.local_inbox_dir / "flow_exports").resolve()
+    candidate = flow_root / payload.filename
+    try:
+        resolved = validate_local_inbox_path(str(candidate), allowed_root=flow_root)
+        saved = media_vault_service.save_uploaded_asset(
+            brand_id=payload.brand_id,
+            brand_slug=payload.brand_slug,
+            category="videos",
+            original_filename=resolved.name,
+            content_bytes=resolved.read_bytes(),
+        )
+        return sqlite_store.record_media_asset(**saved)
+    except SecurityViolationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/flyers/generate-live")
+def generate_live_servable_flyer(payload: FlyerGeneratePayload) -> dict:
+    try:
+        res = flyer_pipeline_service.generate_commercial_flyer(
+            brand_id=payload.brand_id,
+            brand_slug=payload.brand_slug,
+            headline=payload.headline,
+            price_badge=payload.price_badge,
+            cta_text=payload.cta_text,
+            nano_banana_prompt=payload.nano_banana_prompt,
+            aspect_ratio=payload.aspect_ratio,
+        )
+        png_bytes = Path(res["local_png_path"]).read_bytes()
+        saved = media_vault_service.save_uploaded_asset(
+            brand_id=payload.brand_id,
+            brand_slug=payload.brand_slug,
+            category="flyers",
+            original_filename=f"{res['flyer_id']}.png",
+            content_bytes=png_bytes,
+        )
+        recorded = sqlite_store.record_media_asset(**saved)
+        return {
+            **res,
+            "dimensions": list(res["dimensions"]),
+            "asset_id": recorded["asset_id"],
+            "relative_url": recorded["relative_url"],
+        }
+    except (SecurityViolationError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/ctwa/deploy-live")
+async def deploy_ctwa_live_campaign(payload: CtwaPlanPayload) -> dict:
+    try:
+        token, _ = sqlite_store.get_decrypted_connection(payload.brand_id, "META_ADS")
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Meta Ads token not configured for brand '{payload.brand_id}'. Configure it in Conexiones & APIs first.",
+        ) from exc
+
+    return await execute_ctwa_live_deploy(
+        access_token=token,
+        brand_id=payload.brand_id,
+        ad_account_id=payload.ad_account_id,
+        page_id=payload.page_id,
+        whatsapp_phone=payload.whatsapp_phone,
+        campaign_name=payload.campaign_name,
+        daily_budget_usd=payload.daily_budget_usd,
+        video_public_url=payload.video_public_url,
+        copy_text=payload.copy_text,
+        tracking_code=payload.tracking_code,
+        country_code=payload.country_code,
+    )
+
+
 @app.post("/api/v1/ctwa/plan")
 def generate_ctwa_launch_plan(payload: CtwaPlanPayload) -> dict:
     return build_ctwa_5step_plan(
