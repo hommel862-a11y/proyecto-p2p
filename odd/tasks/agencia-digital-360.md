@@ -53,6 +53,30 @@ Test runner: `pytest` (Python backend in `E:\05_Proyectos\proyecto p2p\agencia-d
   - Acceptance criteria & checks:
     - Spatial Liquid Glass 4-theme component suite (`dark`, `apple-dark`, `light`, `neon-pink`), 0 hardcoded hex colors, 9:16 preview player, scoped `Ctrl+K`, unit tests and Playwright E2E checks pass.
 
+- **S6 — Zero-Seed UI Purge, SQLite Persistence on `E:\` & Per-Brand API Connections Manager (Bloque 1):**
+  - Verbatim user feedback:
+    - `"Salen unas bóvedas de pauta y salen gastos acumulados y sale ROAS real de atributo atribuido de AMR $2000, o sea, sale otro lado 540, en otro lado sale 2450 en la bóveda de pauta y yo no he puesto sin ningún dinero, no se ha puesto cargar. Aparecen unas tiendas afiliadas a Cashea, una mesa de liquidez y una importadora mayorista de 2B que no debería aparecer allí"`
+    - `"no tengo cómo decir cómo conectar las API para para montar los reels o para montar lo que se está trabajando o lo que se empieza a trabajar."`
+  - Acceptance criteria & checks:
+    - Zero hardcoded demo brands, zero invented balances/ROAS, zero fake hooks/clips/flyers/proposals in `Agencia360Component`. Starts strictly at `0 brands` and `$0.00` with an onboarding wizard (`+ Crear Mi Primera Marca`).
+    - Persistent SQLite database on `E:\` (`agencia-digital-360/storage/agencia360.db`) storing brands, encrypted per-brand & global API credentials, uploaded media assets, briefs, render jobs, ledger entries, and HITL proposals.
+    - Dedicated **Conexiones & APIs** modal in Angular UI + live `/api/v1/connections` & `/api/v1/connections/test` endpoints verifying real Gemini (`google-genai`), OpenAI, Meta Graph, Telegram, and ARM connectivity.
+
+- **S7 — Real Media Upload Vault, Browser Voice Recorder, Real 9:16 `<video>`/`<img>` Player & Real Gemini 3.8 / Omni 1.2 Flash / Nano Banana 2.1 Execution (Bloque 2):**
+  - Verbatim user feedback:
+    - `"Donde sale video pipelín, archivo de voz, locutor y tal, eso no no no sé cómo coordinar y no sé cómo hacer para que el video, los videos en verdad se generen, los clips, las imágenes, los flyer. O sea, no no no sé cómo coordinamos eso allí y cómo yo pueda montar mis imágenes y mis videos por aquí."`
+    - `"Cómo podemos coordinar que podamos trabajar directamente dentro de Google Flow, ya sea con la API de Google Flow o con el MCP de Google Flow, donde nosotros generemos los videos pasándole la foto o pasándole el prompt"`
+  - Acceptance criteria & checks:
+    - Real `POST /api/v1/media/upload` (`multipart/form-data` for photos, videos, custom voice audio) and `GET /api/v1/media/files/{brand_slug}/{category}/{filename}` serving real playable files.
+    - Real drag & drop Media Vault + browser microphone recorder (`MediaRecorder`) + Watch-Folder `E:\Agencia_Inbox\flow_exports\` for Google Flow exports.
+    - Real `google-genai` adapters targeting current 2026 models (`gemini-3.8-flash` multimodal Creative Director & Compliance Auditor, `gemini-nano-banana-2.1` image generation with product reference photos, `gemini-omni-1.2-flash` image-to-video / text-to-video 9:16) + honest local FFmpeg/yt-dlp status telemetry + real HTML5 `<video controls>` / `<img>` preview inside `.phone-frame-916`.
+
+- **S8 — Real Click-to-WhatsApp (CTWA) Meta Marketing API Launcher & Card Mirror Billing Kill-Switch (Bloque 3):**
+  - Verbatim user feedback:
+    - `"ver cómo nos integramos para que lancemos la propaganda desde allí o las campañas de publicidad desde allí sin entrar al tema de Facebook, sino que lo hagamos por allí mismo o coordinemos con el WhatsApp por ahí mismo y lancemos la propaganda. Quiero ver cómo se va a pagar la propaganda, quiero ver cómo vamos a integrar el tema del pago."`
+  - Acceptance criteria & checks:
+    - 5-step Meta Marketing API v21.0 CTWA launcher (`advideos` -> `campaigns` -> `adsets` (`WHATSAPP` + `CONVERSATIONS`) -> `adcreatives` (prefilled tracking message) -> `ads` (`PAUSED` until HITL)) + Card Mirror Vault (`card_label`, `card_last4`, `funded_usd`, `meta_amount_spent_usd`, 80% alert, 95% auto-pause kill-switch).
+
 ## Tasks
 
 - [x] **T1** (S1) — Route: `inline` — Safe cache cleanup on `C:`/`E:` (+2.07 GB freed on `C:`, 0 bytes added to `C:`) + Sprint 1 foundation (`agencia-digital-360/docker-compose.yml`, `.env.example`, `database/schema.sql`, `docs/arm_webhook_contract.json`, `E:\Agencia_Inbox\`, FastAPI core `app/main.py`, `app/core/config.py`, `app/core/security.py`, `app/core/models.py`, and Sprint 1 `pytest` suite: RED 9/9 failed -> GREEN 9/9 passed) — Commit: `55514e6` (Risk: none — new isolated module directory `agencia-digital-360/`)
@@ -61,6 +85,9 @@ Test runner: `pytest` (Python backend in `E:\05_Proyectos\proyecto p2p\agencia-d
 - [x] **T4** (S4) — Route: `inline` — Sprint 4: Multi-platform integrations (`meta_ads.py` Graph/Marketing/Ad Library/CAPI SHA-256 hashing, `tiktok_ads.py`, `youtube_v3.py`, `arm_bridge.py` bilateral HMAC webhooks + idempotency + automatic CAPI `Purchase` dispatch) + `pytest` verification (RED 3/3 failed -> GREEN 23/23 passed) — Commit: `e46821f` (Risk: none — isolated `agencia-digital-360/backend`)
 - [x] **T5** (S5) — Route: `inline` — Sprint 5: Angular Zoneless Spatial Liquid Glass UI (`src/app/features/agencia-360/` with 5 sub-tabs + Executive Dashboard, 9:16 preview, 4 themes, 0 hardcoded hex, scoped `Ctrl+K`, `/agencia-360` route) + verification (`tsc` 0 errors, `eslint` 0 errors, `ng test` 5/5 passed) — Commit: `768d613` (Risk: none — new lazy route `/agencia-360`)
 - [x] **T6** (S1–S5 Integration) — Route: `inline` — Sprint 6: Full FastAPI live routes + CORS + `E:\Agencia_Inbox\` scanner + Angular `Agencia360ApiService` live wiring + Mobile Drawer navigation + `start-agencia360.ps1` Zero-C-Drive launcher + `ng build` (`exit 0`, 0 style warnings) + 4-Theme Playwright E2E verification (`e2e/web/agencia-360.spec.ts`: 2/2 passed across Desktop 1440×900 4 themes & Mobile 9:16 390×844, 0px overflow) — Commit: `f719a34` (Risk: none)
+- [x] **T7** (S6) — Route: `inline` — Bloque 1: Zero-Seed purge + SQLite persistence (`backend/app/core/database.py`) + Real Per-Brand/Global API Connections Vault & Live Tester (`/api/v1/connections/*`) + Angular Onboarding Wizard & Connections Drawer — Commit: `80e7929` (Risk: none)
+- [x] **T8** (S7) — Route: `inline` — Bloque 2: Real Media Upload (`POST /api/v1/media/upload`) & File Serving + Google Flow Watch-Folder (`E:\Agencia_Inbox\flow_exports\`) + Real `google-genai` 2026 Models (`gemini-3.8-flash`, `gemini-nano-banana-2.1`, `gemini-omni-1.2-flash`) + Real HTML5 `<video>`/`<img>` 9:16 Player & Browser Mic Recorder — Commit: `80e7929` (Risk: none)
+- [x] **T9** (S8) — Route: `inline` — Bloque 3: Real Meta Marketing API v21.0 Click-to-WhatsApp (CTWA) 5-Step Campaign Launcher + Card Mirror Billing Kill-Switch (80% alert / 95% auto-pause) + Full Verification (`pytest` 30/30, `tsc` 0, `eslint` 0, `ng test` 4/4, `ng build` exit 0, Playwright 4-theme E2E 2/2) — Commit: `80e7929` (Risk: none)
 
 ## Log
 
