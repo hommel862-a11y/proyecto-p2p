@@ -80,4 +80,34 @@ describe('McpHub Component', () => {
       'DOSSIER_COMPILED_READY_FOR_SUBMISSION',
     );
   });
+
+  it('calls real window.electron.copilot.sendMessage in runCopilotStrategy and reports honest unavailable state without bridge', async () => {
+    const f = TestBed.createComponent(McpHub);
+    const comp = f.componentInstance;
+    const origElectron = (window as any).electron;
+
+    // 1. Offline web mode (no Electron bridge) -> never fabricates 84.85 VES or +$64.50
+    (window as any).electron = undefined;
+    await comp.runCopilotStrategy();
+    expect(comp.copilotMemoResult()?.marketRegime).toBe('SIN_PUENTE_ELECTRON_IPC');
+    expect(JSON.stringify(comp.copilotMemoResult())).not.toContain('84.85');
+
+    // 2. Real Electron IPC bridge
+    (window as any).electron = {
+      copilot: {
+        sendMessage: async ({ prompt }: { prompt: string }) => ({
+          reply: `Respuesta real para: ${prompt}`,
+          provenance: { source: 'gemini', model: 'gemini-3.8-flash', liveMarketFeedConnected: true },
+          toolTraces: [{ step: 1, toolName: 'calculate_spread', argsSummary: '{}', durationMs: 12, status: 'ok', provenance: 'LIVE' }],
+        }),
+      },
+    };
+    try {
+      await comp.runCopilotStrategy();
+      expect(comp.copilotMemoResult()?.marketRegime).toContain('EN VIVO');
+      expect(comp.copilotMemoResult()?.actionPlan[0]).toContain('Respuesta real para:');
+    } finally {
+      (window as any).electron = origElectron;
+    }
+  });
 });

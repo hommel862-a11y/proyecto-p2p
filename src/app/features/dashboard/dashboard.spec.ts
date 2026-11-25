@@ -519,4 +519,37 @@ describe('Dashboard', () => {
     expect(c.layoutService.sectionOrder()[0]).toBe(initialFirst);
     expect(c.isSectionOrderCustom()).toBe(false);
   });
+
+  it('reads real window.electron.copilot.getSwarmHealth in runSwarmHealthCheck and marks OFFLINE without bridge', async () => {
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+    const origElectron = (window as any).electron;
+
+    (window as any).electron = undefined;
+    await c.runSwarmHealthCheck();
+    expect(c.swarmAgents().every((a) => a.status === 'OFFLINE' && a.lastPingMs === 0)).toBe(true);
+
+    (window as any).electron = {
+      copilot: {
+        getSwarmHealth: async () => [
+          {
+            name: 'Centinela Microestructura',
+            role: 'SENTINEL',
+            status: 'ONLINE',
+            opsProcessed: 42,
+            description: 'Live check',
+          },
+        ],
+      },
+    };
+    try {
+      await c.runSwarmHealthCheck();
+      expect(c.swarmAgents().length).toBe(1);
+      expect(c.swarmAgents()[0].status).toBe('ONLINE');
+      expect(c.swarmAgents()[0].decisionsCount).toBe(42);
+    } finally {
+      (window as any).electron = origElectron;
+    }
+  });
 });

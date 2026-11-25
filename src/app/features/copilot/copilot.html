@@ -1,553 +1,262 @@
-<div class="copilot-container">
-  <header class="copilot-header">
-    <div class="title-area">
-      <div class="bot-badge" [class.online]="connectionStatus().connected" [class.offline]="!connectionStatus().connected">
-        <span class="status-dot"></span>
-        <span class="badge-text">{{ connectionStatus().connected ? ('CONECTADO: ' + connectionStatus().model) : connectionStatus().message }}</span>
+<div class="copilot-shell">
+  <!-- TOP TELEMETRY RIBBON -->
+  <header class="telemetry-ribbon">
+    <div class="ribbon-left">
+      <button
+        type="button"
+        class="btn-ghost"
+        title="Mostrar/ocultar panel lateral"
+        (click)="toggleSidebar()"
+      >
+        ☰
+      </button>
+      <div class="brand-title">
+        <span class="dot" [class.live]="isConnected()"></span>
+        <h2>Copiloto Táctico</h2>
       </div>
-      <h2>Copiloto Estratega P2P</h2>
-      <p class="subtitle">Planificación en tiempo real, arbitraje triangular y memoria persistente de mercado.</p>
+      <nav class="mode-switcher" aria-label="Modos del Copiloto">
+        <button
+          type="button"
+          [class.active]="activeView() === 'workbench'"
+          (click)="setView('workbench')"
+        >
+          Workbench
+        </button>
+        <button
+          type="button"
+          [class.active]="activeView() === 'dashboard'"
+          (click)="setView('dashboard')"
+        >
+          Dashboard IA
+        </button>
+      </nav>
     </div>
 
-    <div class="header-right-controls">
-      @if (activeTab() === 'chat') {
-        <button 
-          class="voice-speaker-btn"
-          [class.active]="voiceService.ttsEnabled()"
-          [class.speaking]="voiceService.isSpeaking()"
-          (click)="voiceService.toggleTts()"
-          [title]="voiceService.ttsEnabled() ? (voiceService.isSpeaking() ? 'Estratega hablando... Clic para silenciar' : 'Voz del Estratega activada (TTS). Clic para silenciar') : 'Voz del Estratega silenciada. Clic para activar'">
-          <span class="voice-speaker-icon">{{ voiceService.ttsEnabled() ? (voiceService.isSpeaking() ? '🔊' : '🔉') : '🔇' }}</span>
-          <span class="voice-speaker-label">{{ voiceService.ttsEnabled() ? (voiceService.isSpeaking() ? 'Hablando...' : 'Voz: ON') : 'Voz: OFF' }}</span>
-        </button>
-        <button 
-          class="zen-toggle-btn" 
-          [class.active]="showMissionHud()"
-          (click)="toggleMissionHud()"
-          [title]="showMissionHud() ? 'Ocultar panel de métricas (Desk HUD)' : 'Mostrar panel de métricas (Desk HUD)'">
-          {{ showMissionHud() ? '✕ Ocultar HUD' : '📊 Métricas HUD' }}
-        </button>
-        <button 
-          class="zen-toggle-btn desktop-only" 
-          [class.active]="!sidebarCollapsed()"
-          (click)="toggleSidebar()"
-          [title]="sidebarCollapsed() ? 'Mostrar panel lateral de controles y radar' : 'Ocultar panel lateral (Modo Zen de Lectura)'">
-          {{ sidebarCollapsed() ? '⚡ Controles & Radar' : '✕ Ocultar Controles' }}
-        </button>
-        <button 
-          type="button"
-          class="mobile-prompts-btn mobile-only"
-          (click)="toggleMobileSheet()"
-          title="Abrir panel de acciones rápidas y métricas">
-          💡 Acciones
-        </button>
-      }
+    <div class="ribbon-metrics">
+      <span class="metric-pill" [class.pill-live]="liveParallelRate() !== null">
+        {{ liveParallelRate() !== null ? 'FEED LIVE' : 'SIN FEED' }}
+      </span>
+      <span class="metric-pill mono">
+        Paralelo: {{ liveParallelRate() !== null ? (liveParallelRate()! | number: '1.2-2') + ' VES' : 'SIN DATO' }}
+      </span>
+      <span class="metric-pill mono">
+        Brecha BCV: {{ liveBcvGapPct() !== null ? (liveBcvGapPct()! | number: '1.1-1') + '%' : 'SIN DATO' }}
+      </span>
+      <span class="metric-pill mono">
+        Tesorería: {{ treasurySnapshot().totalBalanceVes | number: '1.0-0' }} VES
+      </span>
+      <span class="metric-pill mono">
+        SUDEBAN: {{ sudebanCapPct() !== null ? (sudebanCapPct()! | number: '1.0-0') + '%' : 'SIN TOPE' }}
+      </span>
+    </div>
 
-      <div class="tab-nav master-tab-nav">
-        <button 
-          type="button"
-          class="tab-btn master-tab-btn" 
-          [class.active]="masterArea() === 'conversacion'" 
-          (click)="setMasterArea('conversacion')">
-          💬 Conversación
-        </button>
-        <button 
-          type="button"
-          class="tab-btn master-tab-btn" 
-          [class.active]="masterArea() === 'agentes'" 
-          (click)="setMasterArea('agentes')">
-          🤖 Agentes
-        </button>
-        <button 
-          type="button"
-          class="tab-btn master-tab-btn" 
-          [class.active]="masterArea() === 'artefactos'" 
-          (click)="setMasterArea('artefactos')">
-          🏛️ Artefactos
-        </button>
-        <button 
-          type="button" 
-          class="tab-btn master-tab-btn gateway-quick-pill" 
-          (click)="openAiConfigTab()" 
-          [title]="'Universal AI Gateway: ' + getProviderDisplayName() + ' · Clic para configurar'">
-          <span class="gateway-indicator" [class.connected]="connectionStatus().connected"></span>
-          <span class="gateway-title">{{ getProviderDisplayName() }}</span>
-          <span class="gateway-icon">⚙️</span>
-        </button>
-      </div>
+    <div class="ribbon-right">
+      <button type="button" class="model-pill" (click)="openAiSettingsModal()">
+        <span>{{ activeModel() }}</span>
+        @if (usageSummary(); as u) {
+          <span class="mono cost-tag">\${{ u.totalCostUsd | number: '1.3-3' }}</span>
+        }
+      </button>
+      <button
+        type="button"
+        class="killswitch-btn"
+        [class.armed]="killSwitchArmed()"
+        (mousedown)="startKillSwitchHold()"
+        (mouseup)="cancelKillSwitchHold()"
+        (mouseleave)="cancelKillSwitchHold()"
+        (click)="triggerKillSwitch()"
+      >
+        {{ killSwitchArmed() ? 'KILLSWITCH [ARMADO]' : 'KILLSWITCH' }}
+      </button>
     </div>
   </header>
 
-  @if (masterArea() === 'artefactos') {
-    <div class="artifact-subnav-bar">
-      <button 
-        type="button" 
-        class="subtab-btn" 
-        [class.active]="activeTab() === 'plans'" 
-        (click)="setArtifactSubTab('plans')">
-        📋 Planes ({{ plans().length }})
-      </button>
-      <button 
-        type="button" 
-        class="subtab-btn" 
-        [class.active]="activeTab() === 'earn'" 
-        (click)="setArtifactSubTab('earn')">
-        💎 Tesorería & Earn (10 Skills)
-      </button>
-      <button 
-        type="button" 
-        class="subtab-btn" 
-        [class.active]="activeTab() === 'operations'" 
-        (click)="setArtifactSubTab('operations')">
-        🛡️ Operaciones & SOP (10 Skills)
-      </button>
-      <button 
-        type="button" 
-        class="subtab-btn" 
-        [class.active]="activeTab() === 'memory'" 
-        (click)="setArtifactSubTab('memory')">
-        🧠 Memoria Engram ({{ engramObservations().length }})
-      </button>
-      <button 
-        type="button" 
-        class="subtab-btn" 
-        [class.active]="activeTab() === 'counterparties'" 
-        (click)="setArtifactSubTab('counterparties')">
-        👥 Contrapartes CRM ({{ counterparties().length }})
-      </button>
-      <button 
-        type="button" 
-        class="subtab-btn" 
-        [class.active]="activeTab() === 'config'" 
-        (click)="setArtifactSubTab('config')">
-        ⚙ Cerebro IA
-      </button>
-    </div>
+  @if (actionSuccessNotice(); as notice) {
+    <div class="notice-strip">{{ notice }}</div>
   }
 
-  <!-- UNIFIED MISSION HUD (LIQUID GLASS TICKER & SWARM BAR) -->
-  @if (showMissionHud()) {
-    <div class="mission-hud">
-      <div class="hud-item hud-brand">
-        <span class="hud-dot"></span>
-        <span class="hud-tag">DESK HUD</span>
-      </div>
+  <!-- MODE 1: 3-PANE TACTICAL WORKBENCH -->
+  @if (activeView() === 'workbench') {
+    <div class="workbench-grid">
+      <!-- Left Rail -->
+      @if (!sidebarCollapsed()) {
+        <aside class="left-rail" aria-label="Hilos, Grounding y Radar">
+          <button type="button" class="btn-new-thread" (click)="newThread()">
+            + Nueva Conversación
+          </button>
 
-      <div class="hud-item" title="Capital declarado por el operador en Tesorería">
-        <span class="hud-label">EQUITY:</span>
-        <span class="hud-val">${{ treasuryMetrics().totalEquityUsd.toLocaleString() }} USDT</span>
-      </div>
-
-      <div class="hud-sep">•</div>
-
-      <div class="hud-item" title="Saldo bancario consolidado en VES de todas las cuentas">
-        <span class="hud-label">TESORERÍA:</span>
-        @if (treasuryDataAvailable()) {
-          <span class="hud-val profit">{{ treasuryMetrics().dailyAccumulatedProfitUsdt.toFixed(2) }} VES</span>
-        } @else {
-          <span class="hud-val profit">-- VES</span>
-        }
-      </div>
-
-      <div class="hud-sep">•</div>
-
-      <div class="hud-item" title="Brecha porcentual calculada sobre las tasas BCV y paralelo">
-        <span class="hud-label">BRECHA BCV:</span>
-        <span class="hud-val gap" [class.danger]="bcvIntelligence().gap.zone === 'CRITICAL_DISPERSION'" [class.warning]="bcvIntelligence().gap.zone === 'ELEVATED'">
-          +{{ bcvIntelligence().gap.gapPct }}%
-        </span>
-        <span class="hud-sub">({{ bcvIntelligence().gap.bcvRate }} / {{ bcvIntelligence().gap.parallelRate }})</span>
-      </div>
-
-      <div class="hud-sep">•</div>
-
-      <div class="hud-item">
-        <span class="hud-pill" [class.active-window]="bcvIntelligence().window.phase === 'INTERVENTION_ACTIVE'">
-          @if (bcvIntelligence().window.phase === 'INTERVENTION_ACTIVE') {
-            🚨 BCV ACTIVO
-          } @else if (bcvIntelligence().window.phase === 'PRE_INTERVENTION_COMPRESSION') {
-            ⏳ PRE-BCV ({{ bcvIntelligence().window.hoursUntilIntervention }}h)
-          } @else {
-            🟢 MERCADO LIBRE
-          }
-        </span>
-      </div>
-
-      <div class="hud-sep">•</div>
-
-      <!-- ENJAMBRE 4-AGENTES COMPACTO -->
-      <div class="hud-swarm-cluster" title="Telemetría en vivo del Enjambre de 4 Agentes">
-        <span class="hud-swarm-title">ENJAMBRE:</span>
-        <div class="hud-agent-chips">
-          @for (agent of swarmHealth(); track agent.role) {
-            <span class="agent-chip" [class.online]="agent.status === 'ONLINE'" [class.standby]="agent.status === 'STANDBY'" [title]="agent.name + ': ' + agent.opsProcessed + ' ops'">
-              <span class="agent-dot"></span>
-              {{ agent.name.split(' ')[0] }}
-            </span>
-          }
-        </div>
-        <button 
-          type="button"
-          class="btn-hud-audit" 
-          [disabled]="isSwarmAnalyzing()" 
-          (click)="triggerSwarmAnalysis()"
-          title="Ejecutar auditoría multi-agente en tiempo real">
-          {{ isSwarmAnalyzing() ? '⏳ Auditando...' : '⚡ Auditar' }}
-        </button>
-      </div>
-
-      <div class="hud-spacer"></div>
-
-      <!-- ACCIONES HUD: Centinela + KillSwitch -->
-      <div class="hud-actions">
-        <button 
-          type="button" 
-          class="hud-ai-pill" 
-          (click)="openAiConfigTab()" 
-          [title]="'Cerebro: ' + getProviderDisplayName() + ' (' + connectionStatus().message + ') · Clic para configurar'">
-          <span class="hud-ai-dot" [class.connected]="connectionStatus().connected"></span>
-          <span class="hud-ai-text">🧠 {{ getProviderDisplayName() }}</span>
-        </button>
-
-        <span class="hud-watcher" [class.on]="watcherStatus().enabled">
-          {{ watcherStatus().enabled ? '🟢 Centinela ON' : '⏸ Centinela OFF' }}
-        </span>
-
-        <button 
-          type="button"
-          class="killswitch-pill" 
-          [class.active]="treasuryMetrics().killSwitchActive"
-          [class.holding]="killswitchHolding()"
-          (touchstart)="startKillswitchHold($event)"
-          (touchend)="cancelKillswitchHold()"
-          (touchcancel)="cancelKillswitchHold()"
-          (click)="onKillswitchClick($event)"
-          [title]="treasuryMetrics().killSwitchActive ? 'Kill-switch activo' : 'En móvil mantén presionado 1.2s para activar el kill-switch'">
-          @if (killswitchHolding()) {
-            <span class="hold-fill" [style.width.%]="killswitchHoldProgress()"></span>
-          }
-          <span class="killswitch-text">
-            @if (treasuryMetrics().killSwitchActive) {
-              ⚠ KILL-SWITCH ACTIVO
-            } @else if (killswitchHolding()) {
-              🛑 MANTENÉ ({{ (1.2 * (1 - killswitchHoldProgress() / 100)).toFixed(1) }}s)
+          <section class="rail-section">
+            <div class="rail-heading">HILOS OPERATIVOS</div>
+            @if (threads().length === 0) {
+              <p class="rail-empty">Sin hilos guardados aún.</p>
             } @else {
-              🛑 KILL-SWITCH
-            }
-          </span>
-        </button>
-      </div>
-    </div>
-  }
-
-  <!-- PROACTIVE EVENT ALERTS (EVENT-DRIVEN IA) -->
-  @if (activeAlerts().length > 0) {
-    <div class="proactive-alerts-container">
-      @for (alert of activeAlerts(); track alert.id) {
-        <div class="proactive-alert-card" [class.critical]="alert.severity === 'CRITICAL'" [class.warning]="alert.severity === 'WARNING'">
-          <div class="alert-icon">
-            {{ alert.severity === 'CRITICAL' ? '🚨' : '⚠️' }}
-          </div>
-          <div class="alert-body">
-            <div class="alert-title">{{ alert.title }}</div>
-            <div class="alert-msg">{{ alert.message }}</div>
-            @if (alert.recommendedAction) {
-              <div class="alert-action"><strong>Directiva:</strong> {{ alert.recommendedAction }}</div>
-            }
-          </div>
-          <button class="btn-dismiss-alert" (click)="dismissAlert(alert.id)" title="Descartar alerta">✕</button>
-        </div>
-      }
-    </div>
-  }
-
-  @if (actionSuccessNotice()) {
-    <div class="notice-banner success">
-      <span>{{ actionSuccessNotice() }}</span>
-    </div>
-  }
-
-  <!-- TAB: CHAT -->
-  @if (activeTab() === 'chat') {
-    <div class="copilot-workbench" [class.sidebar-hidden]="sidebarCollapsed() && !mobileSheetOpen()" [class.has-artifact-active]="activeArtifactPlan() !== null">
-      @if (mobileSheetOpen()) {
-        <div
-          class="mobile-sheet-backdrop"
-          role="button"
-          tabindex="0"
-          (click)="closeMobileSheet()"
-          (keydown.escape)="closeMobileSheet()"
-          aria-label="Cerrar panel de acciones rápidas">
-        </div>
-      }
-
-      <!-- SIDEBAR CONTROLS (COLUMNA IZQUIERDA 280px en Desktop / Bottom Sheet en Móvil) -->
-      @if (!sidebarCollapsed() || mobileSheetOpen()) {
-        <aside class="copilot-sidebar" [class.mobile-sheet-active]="mobileSheetOpen()">
-          <div class="mobile-sheet-header mobile-only">
-            <div class="sheet-drag-pill"></div>
-            <div class="sheet-header-title">
-              <span>⚡ Acciones Rápidas & Enjambre</span>
-              <button type="button" class="btn-close-sheet" (click)="closeMobileSheet()">&times;</button>
-            </div>
-          </div>
-          <!-- Centinela Card -->
-          <div class="sidebar-box">
-            <div class="box-header">
-              <span class="box-title">🤖 CENTINELA DE MERCADO</span>
-              <span class="box-badge">{{ watcherStatus().scanCount }} scans</span>
-            </div>
-            <div class="watcher-controls-row">
-              <button 
-                class="btn-watcher-toggle" 
-                [class.active]="watcherStatus().enabled" 
-                (click)="toggleWatcher()">
-                {{ watcherStatus().enabled ? '🟢 ACTIVO' : '⏸ PAUSA' }}
-              </button>
-              <div class="chips-group">
-                <span class="chips-label">Min:</span>
-                <button 
-                  class="chip-btn" 
-                  [class.selected]="watcherStatus().minNetSpreadPct === 1.0"
-                  (click)="setWatcherMinSpread(1.0)">
-                  1.0%
-                </button>
-                <button 
-                  class="chip-btn" 
-                  [class.selected]="watcherStatus().minNetSpreadPct === 1.15"
-                  (click)="setWatcherMinSpread(1.15)">
-                  1.15%
-                </button>
-                <button 
-                  class="chip-btn" 
-                  [class.selected]="watcherStatus().minNetSpreadPct === 1.5"
-                  (click)="setWatcherMinSpread(1.5)">
-                  1.5%
-                </button>
+              <div class="thread-list">
+                @for (t of threads(); track t.id) {
+                  <div
+                    class="thread-item"
+                    [class.active]="activeThreadId() === t.id"
+                    (click)="selectThread(t.id)"
+                  >
+                    <span class="thread-title">{{ t.title }}</span>
+                    <button
+                      type="button"
+                      class="thread-del"
+                      title="Eliminar hilo"
+                      (click)="deleteThread(t.id, $event)"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                }
               </div>
-            </div>
-          </div>
+            }
+          </section>
 
-          <!-- Bank daily-cap headroom: real account counts from the treasury snapshot.
-               The projection degrades to `Number.NaN` in copilot.ts, and Angular template
-               expressions expose no `Number`/`isNaN` global, so `x === x` is the only NaN test
-               available here (copilot.ts owns the formatter; this template only degrades). -->
-          <div class="sidebar-box" title="Conteos reales de cuentas bancarias tomados del snapshot de tesorería. No hay un ratio fiat/crypto medido en esta build.">
-            @let nearLimitAccounts = treasuryMetrics().cryptoRatioPct;
-            @let overLimitAccounts = treasuryMetrics().fiatRatioPct;
-            @let cycleMinutes = treasuryMetrics().avgCycleVelocityMinutes;
-            <div class="box-header">
-              <span class="box-title">🏦 CUPO DIARIO SUDEBAN</span>
-              <span class="box-badge" title="Proyección real: minutos que faltan en el día local divididos por las transacciones de cupo que las cuentas activas todavía pueden ejecutar. Muestra «--» cuando no queda cupo disponible.">
-                {{ cycleMinutes === cycleMinutes ? cycleMinutes + ' min/tx rest.' : '-- min/tx rest.' }}
-              </span>
-            </div>
-            <div class="delta-bar-container" title="El ancho de cada barra es el conteo real de cuentas en ese estado, no un porcentaje.">
-              <div class="delta-bar crypto" [style.width.%]="treasuryMetrics().cryptoRatioPct"></div>
-              <div class="delta-bar fiat" [style.width.%]="treasuryMetrics().fiatRatioPct"></div>
-            </div>
-            <div class="delta-subtext">
-              @if (treasuryDataAvailable()) {
-                <span>Cercanas: {{ nearLimitAccounts }}</span>
-                <span [class.warning]="treasuryMetrics().fiatRatioPct > 15">Sobre-límite: {{ overLimitAccounts }}</span>
-              } @else {
-                <span>Cercanas: --</span>
-                <span>Sobre-límite: --</span>
+          <section class="rail-section">
+            <div class="rail-heading">CONTEXTO INYECTADO (GROUNDING)</div>
+            <label class="toggle-row">
+              <input
+                type="checkbox"
+                [checked]="contextScope().orderbook"
+                (change)="toggleContextScope('orderbook')"
+              />
+              <span>Orderbook Binance P2P</span>
+            </label>
+            <label class="toggle-row">
+              <input
+                type="checkbox"
+                [checked]="contextScope().treasury"
+                (change)="toggleContextScope('treasury')"
+              />
+              <span>Tesorería y Cupos VES</span>
+            </label>
+            <label class="toggle-row">
+              <input
+                type="checkbox"
+                [checked]="contextScope().orders"
+                (change)="toggleContextScope('orders')"
+              />
+              <span>Órdenes FSM Activas</span>
+            </label>
+            <label class="toggle-row">
+              <input
+                type="checkbox"
+                [checked]="contextScope().finance360"
+                (change)="toggleContextScope('finance360')"
+              />
+              <span>Bóvedas Finanzas 360</span>
+            </label>
+          </section>
+
+          <section class="rail-section">
+            <div class="rail-heading">RADAR EN TIEMPO REAL (PUSH)</div>
+            @if (radarAlerts().length === 0) {
+              <p class="rail-empty">Escuchando oportunidades en tiempo real...</p>
+            } @else {
+              @for (alert of radarAlerts().slice(0, 3); track alert.id) {
+                <div class="radar-card">
+                  <div class="radar-title">{{ alert.title }}</div>
+                  <div class="radar-msg">{{ alert.message }}</div>
+                  <button type="button" class="btn-link" (click)="analyzeRadarAlert(alert)">
+                    Analizar →
+                  </button>
+                </div>
               }
-            </div>
-          </div>
+            }
+          </section>
 
-          <!-- Contextual Slash Command Palette Guide Card (P6 - v1 Paso 3) -->
-          <div class="sidebar-box slash-palette-guide-box">
-            <div class="box-header">
-              <span class="box-title">⌨️ COMANDOS RÁPIDOS</span>
-              <span class="box-badge">{{ slashCommands.length }} directivas</span>
-            </div>
-            <p class="slash-palette-help-text">
-              Escribí <code>/</code> en el chat para buscar y autocompletar directivas de arbitraje, riesgo o tesorería.
-            </p>
-            <div class="slash-quick-sample-chips">
-              <button type="button" class="sample-chip" (click)="openSlashMenu()" [disabled]="isLoading()">
-                <span>⚡ /triangulacion</span>
-              </button>
-              <button type="button" class="sample-chip" (click)="openSlashMenu()" [disabled]="isLoading()">
-                <span>📊 /resumen</span>
-              </button>
-              <button type="button" class="sample-chip" (click)="openSlashMenu()" [disabled]="isLoading()">
-                <span>🏛️ /bancos</span>
-              </button>
-            </div>
-          </div>
+          <section class="rail-section nav-links">
+            <div class="rail-heading">MÓDULOS CONECTADOS</div>
+            <button type="button" class="btn-nav" (click)="navigateTo('/agents')">
+              Estudio de Agentes →
+            </button>
+            <button type="button" class="btn-nav" (click)="navigateTo('/finanzas-360')">
+              Finanzas 360 →
+            </button>
+            <button type="button" class="btn-nav" (click)="navigateTo('/compliance-cockpit')">
+              Compliance & CRM →
+            </button>
+          </section>
         </aside>
       }
 
-      <!-- CHAT CANVAS (COLUMNA DERECHA FLEX 1) -->
-      <main class="copilot-chat-canvas">
-        <!-- Messages Stream Viewport -->
-        <div class="messages-viewport" #messagesViewport>
-          @for (msg of messages(); track $index) {
-            <div class="message-row" [class.user]="msg.role === 'user'" [class.assistant]="msg.role === 'assistant'">
-              <div class="avatar">
-                @if (msg.role === 'user') {
-                  <span>TÚ</span>
-                } @else {
-                  <span>🤖</span>
-                }
+      <!-- Center Chat Canvas -->
+      <main class="chat-canvas">
+        <div class="messages-viewport" #chatScrollContainer>
+          @if (messages().length === 0) {
+            <div class="empty-onboarding">
+              <h3>Copiloto Táctico P2P</h3>
+              <p>
+                Conectado a SQLite, libros en vivo y esquema completo MCP. Selecciona una acción rápida
+                o escribe tu consulta:
+              </p>
+              <div class="quick-chips">
+                <button type="button" (click)="quickPrompt('explicar_triangulacion')">
+                  /spread Arbitraje hoy
+                </button>
+                <button type="button" (click)="quickPrompt('riesgo_bcv')">
+                  /bcv Brecha y Ventana
+                </button>
+                <button type="button" (click)="quickPrompt('tesoreria')">
+                  /tesoreria Liquidez VES
+                </button>
+                <button type="button" (click)="quickPrompt('resumen_ejecutivo')">
+                  Resumen Ejecutivo
+                </button>
               </div>
-              <div class="message-bubble">
-                <div class="message-content" [innerHTML]="renderMarkdown(msg.content)"></div>
+            </div>
+          }
 
-                <!-- Interactive Strategy Card inside Chat (Claude Artifacts Inspiration) -->
-                @if (msg.plan) {
-                  <div class="artifact-summary-card" [class.active]="activeArtifactPlan()?.id === msg.plan.id">
-                    <div class="artifact-card-head">
-                      <div class="artifact-head-tag">
-                        <span class="artifact-icon">📋</span>
-                        <span class="artifact-label">PLAN DE ARBITRAJE RECOMENDADO</span>
-                      </div>
-                      <div class="artifact-badges">
-                        @if (msg.plan.esSimulado || msg.plan.isSimulated) {
-                          <span class="card-simulated-badge" title="Valores derivados sin feed directo de mercado">
-                            ⚠️ SIMULADO
-                          </span>
+          @for (msg of messages(); track $index) {
+            <div class="msg-row" [class.user]="msg.role === 'user'">
+              <div class="msg-bubble">
+                @if (msg.toolTraces && msg.toolTraces.length > 0) {
+                  <div class="trace-box">
+                    <button
+                      type="button"
+                      class="trace-toggle"
+                      (click)="toggleTraceExpanded('msg-' + $index)"
+                    >
+                      <span>⚡ {{ msg.toolTraces.length }} herramienta(s) MCP ejecutadas</span>
+                      <span>{{ expandedTraces()['msg-' + $index] ? '▲' : '▼' }}</span>
+                    </button>
+                    @if (expandedTraces()['msg-' + $index]) {
+                      <div class="trace-list">
+                        @for (tr of msg.toolTraces; track tr.step + '-' + tr.toolName) {
+                          <div class="trace-item mono">
+                            <span class="badge-prov" [class.live]="tr.provenance === 'LIVE'">
+                              {{ tr.provenance }}
+                            </span>
+                            <span>{{ tr.toolName }}({{ tr.argsSummary }})</span>
+                            <span>{{ tr.durationMs }}ms</span>
+                          </div>
                         }
-                        <span class="card-status" [class.approved]="msg.plan.status === 'APPROVED'">
-                          {{ msg.plan.status }}
-                        </span>
                       </div>
-                    </div>
-
-                    <h4 class="artifact-title">{{ msg.plan.title }}</h4>
-                    <div class="artifact-route">
-                      <strong>Ruta:</strong> <code>{{ msg.plan.route }}</code>
-                    </div>
-
-                    <div class="artifact-kpis-mini">
-                      <div class="kpi-mini">
-                        <span class="label">Capital:</span>
-                        <strong>${{ msg.plan.capitalRequiredUsdt }} USDT</strong>
-                      </div>
-                      <div class="kpi-mini highlight">
-                        <span class="label">Spread Neto:</span>
-                        <strong class="spread-val">+{{ msg.plan.expectedNetSpreadPct }}%</strong>
-                      </div>
-                      <div class="kpi-mini profit">
-                        <span class="label">Ganancia:</span>
-                        <strong>+${{ msg.plan.expectedProfitUsdt }} USDT</strong>
-                      </div>
-                    </div>
-
-                    <div class="artifact-footer-actions">
-                      <button 
-                        type="button" 
-                        class="btn-open-canvas" 
-                        (click)="openPlanArtifact(msg.plan)"
-                        title="Abrir panel lateral de análisis interactivo">
-                        <span>🔍 Abrir en Canvas</span>
-                        <span class="arrow">→</span>
-                      </button>
-
-                      @if (msg.plan.status === 'PROPOSED') {
-                        <button 
-                          type="button"
-                          class="btn-play-quick" 
-                          (click)="executePlan(msg.plan)"
-                          title="Aprobar y despachar estrategia de inmediato">
-                          ▶ EJECUTAR (PLAY)
-                        </button>
-                      } @else {
-                        <span class="badge-approved-mini">✓ APROBADA Y EN MESA</span>
-                      }
-                    </div>
+                    }
                   </div>
                 }
 
-                <!-- Grounding Sources & Citations (Pilar 1.4 - M2/M3) -->
-                @if (msg.sources && msg.sources.length > 0) {
-                  <div class="grounding-sources-container">
-                    <div class="grounding-sources-header">
-                      <span class="grounding-title">
-                        <span class="globe-icon">🌐</span> Fuentes Verificadas ({{ msg.sources.length }})
-                      </span>
-                      <button
-                        type="button"
-                        class="btn-dossier-link"
-                        (click)="openSourcesAsDossier(msg)"
-                        title="Abrir dossier de fuentes en el Canvas lateral"
-                      >
-                        📄 Ver Dossier en Canvas →
-                      </button>
-                    </div>
-                    <div class="grounding-sources-chips">
-                      @for (src of msg.sources; track src.uri) {
-                        <a
-                          [href]="src.uri"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          class="source-bubble-chip"
-                          [title]="src.uri"
-                        >
-                          <span class="chip-pin">📌</span>
-                          <span class="chip-text">{{ src.title || src.uri }}</span>
-                          <span class="chip-arrow">↗</span>
-                        </a>
-                      }
-                    </div>
+                <div class="msg-body" [innerHTML]="renderMarkdown(msg.content)"></div>
+
+                @if (msg.plan; as p) {
+                  <div class="inline-plan-chip">
+                    <span>Ticket: <strong>{{ p.title }}</strong> (+{{ p.expectedNetSpreadPct }}%)</span>
+                    <button type="button" class="btn-inspect" (click)="selectedPlan.set(p)">
+                      Abrir Inspector HITL →
+                    </button>
                   </div>
                 }
 
-                <!-- Provenance & Metering Bar (F1 / F4) -->
-                @if (msg.role === 'assistant' && msg.provenance) {
-                  <div class="provenance-metering-bar">
-                    <!--
-                      A green badge requires an affirmative live feed. Previously this
-                      branch fired on `!esSimulado`, which is a statement about the plan's
-                      numbers, not about market connectivity, so plain chat replies with no
-                      market data rendered as [MERCADO EN VIVO].
-                    -->
-                    @if (msg.provenance.liveMarketFeedConnected === true) {
-                      <span class="provenance-badge live-success" title="Feed de libro Binance P2P conectado y vigente">
-                        🟢 [MERCADO EN VIVO]
-                      </span>
-                    } @else {
-                      <span
-                        class="provenance-badge simulated-warning"
-                        [title]="msg.provenance.marketFeedNote || 'Sin feed de mercado Binance P2P en vivo conectado. Valores heurísticos o referenciales.'"
-                      >
-                        ⚠️ [SIN FEED]
-                      </span>
+                @if (msg.provenance || msg.usage) {
+                  <div class="msg-meta mono">
+                    @if (msg.provenance) {
+                      <span>{{ msg.provenance.model || msg.provenance.source }}</span>
                     }
-                    @if (msg.provenance.marketFeedNote) {
-                      <span class="provenance-feed-note">{{ msg.provenance.marketFeedNote }}</span>
-                    }
-                    @if (msg.provenance.budgetExhausted) {
-                      <span class="provenance-budget" title="Se alcanzó el techo de llamadas pagas por turno">
-                        ⛔ [PRESUPUESTO DE TURNO AGOTADO]
-                      </span>
-                    }
-                    <span class="provenance-source">
-                      Origen: {{ msg.provenance.source }}
-                      @if (msg.provenance.model) { ({{ msg.provenance.model }}) }
-                    </span>
-                    @if (msg.provenance.fallbackReason) {
-                      <span class="provenance-fallback">
-                        Motivo de fallback: {{ msg.provenance.fallbackReason }}
-                      </span>
-                    }
-                    @if (msg.provenance.stepsCount !== undefined) {
-                      <span class="provenance-steps">
-                        Pasos ReAct: {{ msg.provenance.stepsCount }}/{{ msg.provenance.maxSteps || 5 }}
-                      </span>
-                    }
-                    @if (msg.provenance.apiCallsCount !== undefined) {
-                      <span class="provenance-calls">
-                        Llamadas API: {{ msg.provenance.apiCallsCount }}
-                      </span>
-                    }
-                    @if (msg.provenance.paidCallsBudget) {
-                      <span class="provenance-budget-limit">
-                        (techo por turno: {{ msg.provenance.paidCallsBudget }})
-                      </span>
+                    @if (msg.usage) {
+                      <span>{{ msg.usage.totalTokens }} tok · {{ msg.usage.latencyMs }}ms</span>
+                      @if (msg.usage.cached) {
+                        <span class="cache-tag">CACHÉ</span>
+                      }
                     }
                   </div>
                 }
@@ -555,1175 +264,133 @@
             </div>
           }
 
-          @if (isLoading()) {
-            <div class="message-row assistant loading-row">
-              <div class="avatar">🤖</div>
-              <div class="message-bubble loading-bubble">
-                <span class="typing-indicator">Consultando herramientas del Core y analizando liquidez...</span>
-              </div>
+          @if (isTyping()) {
+            <div class="stream-indicator">
+              <span class="pulse"></span>
+              <span>{{ streamStatus()?.message || 'Procesando...' }}</span>
             </div>
           }
         </div>
 
-        <!-- Input Bar -->
-        <div class="input-container">
-          @if (voiceService.isListening()) {
-            <div class="voice-listening-bar">
-              <div class="voice-wave-container">
-                <span class="voice-dot red"></span>
-                <span class="voice-bar"></span>
-                <span class="voice-bar"></span>
-                <span class="voice-bar"></span>
-                <span class="voice-bar"></span>
-                <span class="voice-wave-text">
-                  @if (voiceService.isMediaRecording()) {
-                    🎙️ Grabando audio local ({{ voiceService.recordingSeconds() }}s)... Presioná ⏹ para procesar
-                  } @else {
-                    Escuchando por micrófono...
-                    @if (voiceService.interimTranscript()) {
-                      <strong class="interim-text">"{{ voiceService.interimTranscript() }}"</strong>
-                    } @else {
-                      <span class="hint-text">Hablá con naturalidad (ej: "Audita el spread en Banesco")</span>
-                    }
-                  }
-                </span>
-              </div>
-              <button type="button" class="btn-cancel-voice" (click)="voiceService.stopListening()" title="Detener grabación">
-                Detener ⏹
-              </button>
-            </div>
-          }
-
-          @if (voiceService.lastError()) {
-            <div class="voice-error-banner">
-              <span class="error-text">⚠️ {{ voiceService.lastError() }}</span>
-              @if (voiceService.lastError()?.includes('API Key')) {
-                <button type="button" class="btn-config-shortcut" (click)="activeTab.set('config'); voiceService.lastError.set(null)">
-                  ⚙ Configurar Key
+        <!-- Composer -->
+        <div class="composer-bar">
+          @if (showSlashPopup()) {
+            <div class="slash-popup" role="listbox">
+              @for (cmd of filteredSlashCommands(); track cmd.command) {
+                <button type="button" class="slash-item" (click)="applySlashCommand(cmd)">
+                  <strong class="mono">{{ cmd.command }}</strong>
+                  <span>{{ cmd.description }}</span>
                 </button>
               }
-              <button type="button" class="btn-close-banner" (click)="voiceService.lastError.set(null)">✕</button>
             </div>
           }
 
-          <!-- Mobile Floating Quick Prompt Chips -->
-          <div class="mobile-quick-chips mobile-only">
-            <button type="button" class="quick-chip highlight" (click)="toggleMobileSheet()">
-              💡 Más Acciones
-            </button>
-            <button type="button" class="quick-chip" (click)="quickPrompt('explicar_triangulacion')" [disabled]="isLoading()">
-              🔄 Triangulación
-            </button>
-            <button type="button" class="quick-chip" (click)="quickPrompt('earn_hurdle')" [disabled]="isLoading()">
-              ⚖️ Hurdle Rate
-            </button>
-            <button type="button" class="quick-chip" (click)="quickPrompt('riesgo_bcv')" [disabled]="isLoading()">
-              🏦 Riesgo BCV
-            </button>
-            <button type="button" class="quick-chip" (click)="quickPrompt('resumen_ejecutivo')" [disabled]="isLoading()">
-              📊 Resumen
-            </button>
-          </div>
-
-          <!-- Contextual Slash Command Palette Popup Menu (P6 - v1 Paso 3) -->
-          @if (isCommandPaletteOpen()) {
-            <div class="slash-command-palette-menu" role="menu">
-              <div class="palette-header">
-                <span class="palette-title">
-                  ⌨️ Comandos Disponibles @if (commandFilter()) { <span>(filtrando: "/{{ commandFilter() }}")</span> }
-                </span>
-                <span class="palette-count">{{ filteredCommands().length }} opciones</span>
-              </div>
-              <div class="palette-items-list">
-                @if (filteredCommands().length === 0) {
-                  <div class="palette-empty">No hay directivas que coincidan con "{{ commandFilter() }}".</div>
-                } @else {
-                  @for (cmd of filteredCommands(); track cmd.command) {
-                    <button
-                      type="button"
-                      class="palette-item"
-                      (click)="selectCommand(cmd)"
-                      role="menuitem"
-                    >
-                      <span class="palette-icon">{{ cmd.icon }}</span>
-                      <div class="palette-details">
-                        <div class="palette-cmd-row">
-                          <span class="palette-cmd-name">{{ cmd.command }}</span>
-                          <span class="palette-label">{{ cmd.label }}</span>
-                          <span class="palette-category">{{ cmd.category }}</span>
-                        </div>
-                        <p class="palette-desc">{{ cmd.description }}</p>
-                      </div>
-                    </button>
-                  }
+          <div class="composer-controls">
+            <select
+              class="agent-select"
+              aria-label="Seleccionar agente especializado"
+              [ngModel]="selectedAgentId()"
+              (ngModelChange)="selectedAgentId.set($event)"
+            >
+              <option [ngValue]="null">Orquestador General</option>
+              @for (ag of registeredAgents(); track ag.id) {
+                @if (ag.enabled) {
+                  <option [ngValue]="ag.id">&#64;{{ ag.name }}</option>
                 }
-              </div>
-            </div>
-          }
+              }
+            </select>
 
-          <div class="chat-ai-status-strip">
-            <div class="ai-status-info" (click)="openAiConfigTab()" role="button" tabindex="0" title="Clic para cambiar proveedor de IA o modelo">
-              <span class="ai-status-dot" [class.connected]="connectionStatus().connected"></span>
-              <span class="ai-status-label">Cerebro:</span>
-              <strong class="ai-status-provider">{{ getProviderDisplayName() }}</strong>
-              <span class="ai-status-model">({{ selectedAiModel() }})</span>
-              <span class="ai-status-switch">Cambiar Modelo ⚙️</span>
-            </div>
-            @if (selectedAiProvider() === 'gemini') {
-              <div class="ai-grounding-badge" title="Búsqueda web en vivo con Google Search Grounding activa">
-                🌐 Google Search Activo
-              </div>
-            }
-          </div>
+            <input
+              #chatInputField
+              type="text"
+              class="chat-input"
+              placeholder="Consulta táctica, /spread, /riesgo o @agente (Ctrl+K)..."
+              [ngModel]="userInput()"
+              (ngModelChange)="onInputChange($event)"
+              (keyup.enter)="sendPrompt()"
+            />
 
-          <form (ngSubmit)="sendPrompt()" class="input-form">
             <button
               type="button"
               class="btn-mic"
-              [class.listening]="voiceService.isListening()"
+              [class.recording]="isVoiceRecording()"
+              title="Dictado por voz"
               (click)="toggleVoiceDictation()"
-              [title]="voiceService.isListening() ? 'Detener micrófono' : 'Dictar al Copiloto por voz (Micrófono)'"
-              [disabled]="isLoading()"
             >
-              @if (voiceService.isListening()) {
-                <span class="mic-wave-pulse"></span>
-              }
-              <span class="mic-icon">{{ voiceService.isListening() ? '⏹' : '🎙️' }}</span>
+              🎤
             </button>
 
-            <input
-              type="text"
-              placeholder="Pedile al estratega que evalúe spreads o triangulaciones... (🎙️ para dictar)"
-              [ngModel]="inputPrompt()"
-              (ngModelChange)="inputPrompt.set($event)"
-              (focus)="scrollToBottom()"
-              name="userPrompt"
-              [disabled]="isLoading()"
-              autocomplete="off"
-              enterkeyhint="send"
-            />
-            <button type="submit" class="btn-send" [disabled]="!inputPrompt().trim() || isLoading()">
-              <span>ENVIAR</span>
-            </button>
-          </form>
+            @if (isTyping()) {
+              <button type="button" class="btn-stop" (click)="cancelCurrentTurn()">
+                Detener (Esc)
+              </button>
+            } @else {
+              <button type="button" class="btn-send" (click)="sendPrompt()">
+                Enviar
+              </button>
+            }
+          </div>
+          @if (voiceError(); as vErr) {
+            <div class="voice-err">{{ vErr }}</div>
+          }
         </div>
       </main>
 
-      <!-- ARTIFACT CANVAS PANEL (CLAUDE ARTIFACTS / CANVAS INSPIRATION) -->
-      @if (activeArtifactPlan(); as plan) {
-        <aside class="copilot-artifact-canvas">
-          <div class="canvas-header">
-            <div class="canvas-title-group">
-              <span class="canvas-tag">ARTEFACTO ESTRATÉGICO</span>
-              <h3>{{ plan.title }}</h3>
-              <p class="canvas-route">Ruta: <code>{{ plan.route }}</code></p>
-            </div>
-            <button type="button" class="btn-close-canvas" (click)="closePlanArtifact()" title="Cerrar panel lateral de Canvas">✕</button>
-          </div>
-
-          <div class="canvas-scroll-content">
-            <!-- Grid de Métricas Principales -->
-            <div class="canvas-kpi-grid">
-              <div class="canvas-kpi-card">
-                <span class="kpi-label">Capital Asignado</span>
-                <span class="kpi-val">${{ plan.capitalRequiredUsdt }} USDT</span>
-              </div>
-              <div class="canvas-kpi-card highlight">
-                <span class="kpi-label">Spread Neto</span>
-                <span class="kpi-val">+{{ plan.expectedNetSpreadPct }}%</span>
-              </div>
-              <div class="canvas-kpi-card profit">
-                <span class="kpi-label">Ganancia Estimada</span>
-                <span class="kpi-val">+${{ plan.expectedProfitUsdt }} USDT</span>
-              </div>
-              <div class="canvas-kpi-card">
-                <span class="kpi-label">Riesgo & Estado</span>
-                <span class="kpi-val badge" [class.approved]="plan.status === 'APPROVED'">{{ plan.status }} ({{ plan.riskLevel }})</span>
-              </div>
-            </div>
-
-            <!-- Procedimiento Operativo Estándar (3 Pasos) -->
-            <div class="canvas-card-section">
-              <div class="section-header">🧭 PROCEDIMIENTO OPERATIVO ESTÁNDAR (SOP)</div>
-              <div class="canvas-steps-list">
-                <div class="step-card">
-                  <span class="step-badge">1</span>
-                  <div class="step-info">
-                    <strong>Entrada (Maker Compra):</strong>
-                    <p>Abrir orden de compra en Binance P2P por ${{ plan.capitalRequiredUsdt }} USDT al mejor precio de compra para absorber liquidez fiat.</p>
-                  </div>
-                </div>
-                <div class="step-card">
-                  <span class="step-badge">2</span>
-                  <div class="step-info">
-                    <strong>Verificación & Custodia:</strong>
-                    <p>Esperar acreditación bancaria, verificar comprobante sin terceros y liberar cripto con score de fraude limpio.</p>
-                  </div>
-                </div>
-                <div class="step-card">
-                  <span class="step-badge">3</span>
-                  <div class="step-info">
-                    <strong>Salida & Ganancia (Maker Venta):</strong>
-                    <p>Publicar anuncio de venta con markup optimizado para capturar el +{{ plan.expectedNetSpreadPct }}% de spread neto en mano (+${{ plan.expectedProfitUsdt }} USDT).</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Desglose Financiero Completo -->
-            <div class="canvas-card-section">
-              <div class="section-header">🔍 AUDITORÍA FINANCIERA & COMISIONES</div>
-              <div class="canvas-breakdown-table">
-                <div class="breakdown-row">
-                  <span>Spread Bruto de Mercado:</span>
-                  <strong>+{{ (plan.expectedNetSpreadPct + 0.35).toFixed(2) }}%</strong>
-                </div>
-                <div class="breakdown-row fee">
-                  <span>Comisión Maker Binance:</span>
-                  <strong>-0.35%</strong>
-                </div>
-                <div class="breakdown-row fee">
-                  <span>Fricción Bancaria (Pago Móvil / Banesco):</span>
-                  <strong>0.00% (Sin IGTF)</strong>
-                </div>
-                <div class="breakdown-row var">
-                  <span>Slippage P95 Estocástico (Monte Carlo 500 it.):</span>
-                  <strong>0.12% (VaR 95%: $1.20 USDT)</strong>
-                </div>
-                <div class="breakdown-row net">
-                  <span>Margen Neto Limpio en Mano:</span>
-                  <strong class="highlight">+{{ plan.expectedNetSpreadPct }}%</strong>
-                </div>
-              </div>
-            </div>
-
-            <!-- Fundamento Algorítmico -->
-            <div class="canvas-card-section">
-              <div class="section-header">🧠 FUNDAMENTO ALGORÍTMICO</div>
-              <p class="canvas-rationale-text">{{ plan.rationale }}</p>
-            </div>
-
-            <!-- Custodia y Ejecución -->
-            <div class="canvas-execution-box">
-              <div class="canvas-guarantee">
-                🛡 <strong>Custodia Segura:</strong> Al hacer clic en PLAY, se aprueba la estrategia y se delega al operador en la FSM. <em>Ningún fondo se libera automáticamente sin tu verificación bancaria física.</em>
-              </div>
-
-              @if (plan.status === 'PROPOSED') {
-                <button type="button" class="btn-play-full" (click)="executePlan(plan)">
-                  ▶ EJECUTAR ESTRATEGIA (PLAY)
-                </button>
-              } @else {
-                <div class="badge-approved-full">✓ APROBADA Y ENVIADA A MESA</div>
-              }
-            </div>
-          </div>
-        </aside>
-      }
-
-      <!-- ARTIFACT CANVAS PANEL: WEB RESEARCH DOSSIER (PILAR 1.3) -->
-      @if (activeArtifactDossier(); as dossier) {
-        <aside class="copilot-artifact-canvas dossier-canvas">
-          <div class="canvas-header">
-            <div class="canvas-title-group">
-              <span class="canvas-tag">DOSSIER DE INVESTIGACIÓN WEB</span>
-              <h3>{{ dossier.title }}</h3>
-              @if (dossier.query) {
-                <p class="canvas-route">Consulta: <code>{{ dossier.query }}</code></p>
-              }
-            </div>
-            <button type="button" class="btn-close-canvas" (click)="closeDossierArtifact()" title="Cerrar panel de dossier">✕</button>
-          </div>
-
-          <div class="canvas-scroll-content">
-            <!-- Síntesis verificada -->
-            <div class="canvas-card-section">
-              <div class="section-header">📑 SÍNTESIS DE INTELIGENCIA VERIFICADA</div>
-              <div class="dossier-summary-content" [innerHTML]="renderMarkdown(dossier.summary)"></div>
-            </div>
-
-            <!-- Fuentes Oficiales y Enlaces -->
-            <div class="canvas-card-section">
-              <div class="section-header">🌐 FUENTES OFICIALES CITADAS ({{ dossier.sources.length }})</div>
-              <div class="dossier-sources-list">
-                @for (source of dossier.sources; track source.uri) {
-                  <a
-                    [href]="source.uri"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="dossier-source-card"
-                    [title]="source.uri"
-                  >
-                    <div class="source-card-icon">🔗</div>
-                    <div class="source-card-info">
-                      <span class="source-card-title">{{ source.title || 'Fuente Externa Verificada' }}</span>
-                      <span class="source-card-uri">{{ source.uri }}</span>
-                    </div>
-                    <span class="source-card-external-arrow">↗</span>
-                  </a>
-                }
-              </div>
-            </div>
-
-            <!-- Caja de Garantía y Gobernanza -->
-            <div class="canvas-execution-box">
-              <div class="canvas-guarantee">
-                🛡 <strong>Gobernanza de Información:</strong> Respaldado por Google Search Grounding en tiempo real. Citas directas y enlaces auditables sin alucinaciones de precios ni fuentes.
-              </div>
-            </div>
-          </div>
-        </aside>
+      <!-- Right HITL Inspector -->
+      @if (selectedPlan()) {
+        <app-copilot-hitl-inspector
+          [plan]="selectedPlan()"
+          [parallelRate]="liveParallelRate()"
+          [treasury]="treasurySnapshot()"
+          [killSwitchActive]="killSwitchArmed()"
+          [executing]="executingPlan()"
+          [executionError]="executionError()"
+          (approvePlan)="executePlan($event)"
+          (rejectPlan)="rejectPlan($event)"
+          (closeInspector)="selectedPlan.set(null)"
+        />
       }
     </div>
+  } @else {
+    <!-- MODE 2: 4-QUADRANT AI GOVERNANCE DASHBOARD -->
+    <app-copilot-governance-dashboard
+      [plans]="plans()"
+      [watcherStatus]="watcherStatus()"
+      [swarmHealth]="swarmHealth()"
+      [engramObservations]="engramObservations()"
+      [usageSummary]="usageSummary()"
+      [activeProvider]="activeProvider()"
+      [activeModel]="activeModel()"
+      [killSwitchActive]="killSwitchArmed()"
+      [isElectron]="isElectron()"
+      (inspectPlan)="selectedPlan.set($event); setView('workbench')"
+      (rejectPlan)="rejectPlan($event)"
+      (toggleWatcher)="toggleWatcher()"
+      (reviewEngram)="reviewEngramObservation($event)"
+      (openAiConfig)="openAiSettingsModal()"
+    />
   }
 
-  <!-- TAB: AGENTS MANAGER (PILAR 2.3) -->
-  @if (masterArea() === 'agentes' || activeTab() === 'agents') {
-    <div class="agents-manager-layout">
-      <div class="agents-manager-header">
-        <div class="header-titles">
-          <h3 class="section-title">Enjambre de Agentes Especialistas (Hermes / OpenClaw)</h3>
-          <p class="section-desc">
-            Directorio y activación de agentes autónomos modulares con IPC soberano y ejecución de herramientas nativas.
-          </p>
-        </div>
-        <div class="agents-meta-badge">
-          <span class="active-count">{{ activeAgentsCount() }} / {{ registeredAgents().length }} activos</span>
-        </div>
-      </div>
-
-      <div class="agents-grid">
-        @for (agent of registeredAgents(); track agent.id) {
-          <div class="agent-manager-card panel-card" [class.disabled]="!agent.enabled">
-            <div class="agent-card-header">
-              <div class="agent-avatar-wrap">
-                <span class="agent-avatar">{{ agent.avatar }}</span>
-                <span class="agent-status-indicator" [class.online]="agent.enabled"></span>
-              </div>
-              <div class="agent-identity">
-                <div class="agent-name-row">
-                  <h4 class="agent-name">{{ agent.name }}</h4>
-                  <span class="agent-role-pill">{{ agent.role }}</span>
-                </div>
-                <span class="agent-id">ID: <code>{{ agent.id }}</code></span>
-              </div>
-              <div class="agent-toggle-wrap">
-                <label class="switch-toggle" [title]="agent.enabled ? 'Desactivar agente' : 'Activar agente'">
-                  <input
-                    type="checkbox"
-                    [checked]="agent.enabled"
-                    (change)="toggleRegisteredAgent(agent)"
-                  />
-                  <span class="slider-round"></span>
-                </label>
-              </div>
-            </div>
-
-            <p class="agent-description">{{ agent.description }}</p>
-
-            <div class="agent-prompt-box">
-              <span class="prompt-label">Directiva de Sistema:</span>
-              <p class="prompt-text">“{{ agent.systemPromptModifier }}”</p>
-            </div>
-
-            <div class="agent-tools-section">
-              <span class="tools-label">Herramientas Autorizadas:</span>
-              <div class="tools-chips-list">
-                @for (tool of agent.tools; track tool) {
-                  <span class="tool-chip">🛠️ {{ tool }}</span>
-                }
-              </div>
-            </div>
-
-            <div class="agent-actions-row">
-              <button
-                type="button"
-                class="btn-consult-agent"
-                [disabled]="!agent.enabled"
-                (click)="consultAgent(agent)"
-              >
-                💬 Consultar Agente
-              </button>
-            </div>
-          </div>
-        }
-      </div>
-    </div>
-  }
-
-  <!-- TAB: PLANS LIST -->
-  @if (activeTab() === 'plans') {
-    <div class="plans-layout">
-      <h3>Historial de Planes de Estrategia Generados</h3>
-      <p class="section-desc">Todos los planes formulados por la IA quedan auditados en SQLite con sus métricas y estado.</p>
-
-      @if (plans().length === 0) {
-        <div class="empty-state">No hay planes generados todavía. Pedile al estratega en el chat que formule uno.</div>
-      } @else {
-        <div class="plans-grid">
-          @for (p of plans(); track p.id) {
-            <div class="strategy-card panel-card">
-              <div class="card-header">
-                <span class="card-id">{{ p.id }}</span>
-                <span class="card-status" [class.approved]="p.status === 'APPROVED'">{{ p.status }}</span>
-              </div>
-              <h4 class="card-title">{{ p.title }}</h4>
-              <p class="card-route">{{ p.route }}</p>
-              
-              <div class="metrics-grid compact">
-                <div class="metric">
-                  <span class="label">Capital</span>
-                  <span class="value">${{ p.capitalRequiredUsdt }}</span>
-                </div>
-                <div class="metric highlight">
-                  <span class="label">Spread</span>
-                  <span class="value">+{{ p.expectedNetSpreadPct }}%</span>
-                </div>
-                <div class="metric success">
-                  <span class="label">Ganancia</span>
-                  <span class="value">+${{ p.expectedProfitUsdt }}</span>
-                </div>
-              </div>
-
-              <div class="card-footer">
-                @if (p.status === 'PROPOSED') {
-                  <button class="btn-play small" (click)="executePlan(p)">
-                    ▶ PLAY
-                  </button>
-                } @else {
-                  <span class="badge-approved small">✓ EN PROCESO</span>
-                }
-              </div>
-            </div>
-          }
-        </div>
-      }
-    </div>
-  }
-
-  <!-- TAB: MEMORY & LEARNINGS (ENGRAM PROTOCOL) -->
-  @if (activeTab() === 'memory') {
-    <div class="memory-layout">
-      <div class="memory-header-row">
-        <div>
-          <h3>Memoria Persistente Engram & Microestructura</h3>
-          <p class="section-desc">
-            Protocolo canónico de retención a largo plazo sincronizado en SQLite WAL. Estructura cada aprendizaje en <strong>What</strong>, <strong>Why</strong>, <strong>Where</strong> y <strong>Learned</strong> para blindar las operaciones del desk.
-          </p>
-        </div>
-        <div class="engram-filter-bar">
-          <button 
-            class="filter-pill" 
-            [class.active]="engramFilterType() === 'ALL'" 
-            (click)="engramFilterType.set('ALL')">
-            Todos ({{ engramObservations().length }})
-          </button>
-          <button 
-            class="filter-pill" 
-            [class.active]="engramFilterType() === 'DISCOVERY'" 
-            (click)="engramFilterType.set('DISCOVERY')">
-            🔍 Discovery
-          </button>
-          <button 
-            class="filter-pill" 
-            [class.active]="engramFilterType() === 'DECISION'" 
-            (click)="engramFilterType.set('DECISION')">
-            ⚡ Decision
-          </button>
-          <button 
-            class="filter-pill" 
-            [class.active]="engramFilterType() === 'PATTERN'" 
-            (click)="engramFilterType.set('PATTERN')">
-            📊 Pattern
+  <!-- Verified Action Launcher Modal (ONLY opens when Gatekeeper returns success: true) -->
+  @if (showActionLauncher() && launchedPlan(); as lp) {
+    <div class="modal-backdrop" (click)="showActionLauncher.set(false)">
+      <div class="launcher-modal" (click)="$event.stopPropagation()">
+        <h3>Orden Verificada y Copiada</h3>
+        <p>{{ lp.title }} — {{ lp.route }}</p>
+        <div class="mono">Capital: {{ lp.capitalRequiredUsdt }} USDT · Spread: +{{ lp.expectedNetSpreadPct }}%</div>
+        <div class="modal-actions">
+          <a href="https://p2p.binance.com" target="_blank" rel="noopener" class="btn-send">
+            Abrir Binance P2P
+          </a>
+          <button type="button" class="btn-ghost" (click)="showActionLauncher.set(false)">
+            Cerrar
           </button>
         </div>
       </div>
-
-      @if (filteredEngramObservations().length === 0) {
-        <div class="empty-state">
-          Sin observaciones registradas para este filtro. A medida que Gentleman AI formule estrategias y el operador valide ejecuciones, las observaciones se persistirán aquí automáticamente bajo el protocolo Engram.
-        </div>
-      } @else {
-        <div class="engram-grid">
-          @for (obs of filteredEngramObservations(); track obs.id || obs.topicKey) {
-            <div class="engram-card" [class.needs-review]="obs.status === 'needs_review'">
-              <div class="engram-card-header">
-                <div class="header-left">
-                  <span class="engram-type-badge type-{{ obs.type.toLowerCase() }}">
-                    {{ obs.type | uppercase }}
-                  </span>
-                  <span class="engram-topic-key"><code>{{ obs.topicKey }}</code></span>
-                </div>
-                <div class="header-right">
-                  <span class="engram-status-badge status-{{ obs.status || 'active' }}">
-                    {{ obs.status === 'needs_review' ? '⚠️ Por Revisar' : '✓ Activo' }}
-                  </span>
-                  <span class="engram-conf">
-                    Confianza: {{ ((obs.confidenceScore || 1) * 100).toFixed(0) }}%
-                  </span>
-                </div>
-              </div>
-
-              <div class="engram-card-body">
-                <div class="engram-field">
-                  <span class="field-label">What:</span>
-                  <span class="field-content">{{ obs.what }}</span>
-                </div>
-                <div class="engram-field">
-                  <span class="field-label">Why:</span>
-                  <span class="field-content text-muted">{{ obs.why }}</span>
-                </div>
-                <div class="engram-field">
-                  <span class="field-label">Where:</span>
-                  <span class="field-content text-code">{{ obs.whereAffected }}</span>
-                </div>
-                <div class="engram-learned-box">
-                  <div class="learned-label">💡 Learned (Lección Operativa):</div>
-                  <div class="learned-text">{{ obs.learned }}</div>
-                </div>
-              </div>
-            </div>
-          }
-        </div>
-      }
     </div>
   }
 
-  <!-- TAB: COUNTERPARTIES CRM & REPUTATION GRAPH -->
-  @if (activeTab() === 'counterparties') {
-    <div class="counterparties-layout">
-      <div class="counterparties-header-row">
-        <div>
-          <h3>Grafo de Reputación de Contrapartes & Anti-Triangulación</h3>
-          <p class="section-desc">
-            Perfilado conductual continuo de comerciantes P2P. Audita historial de titularidad bancaria, volumen acumulado y bloqueo unilateral ante intentos de pago de terceros.
-          </p>
-        </div>
-      </div>
-
-      @if (counterparties().length === 0) {
-        <div class="empty-state">No hay contrapartes registradas todavía. Se agregan automáticamente al completar intercambios.</div>
-      } @else {
-        <div class="counterparties-grid">
-          @for (cparty of counterparties(); track cparty.id) {
-            <div class="cparty-card" [class.trusted]="cparty.reputation === 'TRUSTED'" [class.suspicious]="cparty.reputation === 'SUSPICIOUS'" [class.blocked]="cparty.reputation === 'BLOCKED'">
-              <div class="cparty-header">
-                <div class="cparty-identity">
-                  <span class="cparty-alias">{{ cparty.alias }}</span>
-                  <span class="cparty-name">{{ cparty.realName }} ({{ cparty.documentId }})</span>
-                </div>
-                <div class="cparty-badges">
-                  <span class="reputation-badge rep-{{ cparty.reputation.toLowerCase() }}">{{ cparty.reputation }}</span>
-                  <span class="risk-score-badge" [class.danger]="cparty.riskScore >= 75" [class.safe]="cparty.riskScore <= 15">
-                    Score: {{ cparty.riskScore }}/100
-                  </span>
-                </div>
-              </div>
-
-              <div class="cparty-metrics-row">
-                <div class="metric-item">
-                  <span class="m-label">Órdenes Exitosas:</span>
-                  <span class="m-val">{{ cparty.successfulTradesCount }}</span>
-                </div>
-                <div class="metric-item">
-                  <span class="m-label">Incidentes Triangulación:</span>
-                  <span class="m-val" [class.danger]="cparty.triangulationIncidentsCount > 0">{{ cparty.triangulationIncidentsCount }}</span>
-                </div>
-                <div class="metric-item">
-                  <span class="m-label">Volumen Operado:</span>
-                  <span class="m-val">${{ cparty.totalVolumeUsdt.toLocaleString() }} USDT</span>
-                </div>
-              </div>
-
-              @if (cparty.notes) {
-                <div class="cparty-notes-box">
-                  <strong>Observación Conductual:</strong> {{ cparty.notes }}
-                </div>
-              }
-            </div>
-          }
-        </div>
-      }
-    </div>
-  }
-
-  <!-- TAB: BINANCE EARN & TESORERÍA PASIVA (10 SKILLS CUANTITATIVAS) -->
-  @if (activeTab() === 'earn') {
-    <div class="plans-layout earn-vault-layout">
-      <div class="plans-header">
-        <div>
-          <h3>💎 Binance Earn & Optimización de Tesorería Pasiva (10 Skills)</h3>
-          <p class="section-desc">
-            Modelos de carry, costo de oportunidad y tasa de corte (Hurdle Rate) para maximizar el rendimiento del capital ocioso sin comprometer la liquidez de la mesa P2P.
-          </p>
-        </div>
-        <div class="earn-quick-actions">
-          <button class="btn-new-plan" (click)="askEarnRecommendation('hurdle_rate')">
-            ⚖️ Consultar Hurdle Rate con el CSO
-          </button>
-        </div>
-      </div>
-
-      <!-- Live Simulator Parameter Inputs -->
-      <div class="earn-controls-card">
-        <h4 class="earn-card-title">⚙️ Parámetros de Tesorería y Mercado en Vivo</h4>
-        <div class="earn-inputs-grid">
-          <div class="earn-input-group">
-            <label for="earnCap">Capital Total Disponible (USDT):</label>
-            <input
-              id="earnCap"
-              type="number"
-              min="100"
-              step="500"
-              [ngModel]="earnCapitalUsdt()"
-              (ngModelChange)="earnCapitalUsdt.set($event)"
-            />
-          </div>
-          <div class="earn-input-group">
-            <label for="earnT1">APR Tier 1 (Flexible &le; $500):</label>
-            <input
-              id="earnT1"
-              type="number"
-              min="0"
-              step="0.5"
-              [ngModel]="earnT1AprPct()"
-              (ngModelChange)="earnT1AprPct.set($event)"
-            />
-          </div>
-          <div class="earn-input-group">
-            <label for="earnT2">APR Tier 2 (Excedentes):</label>
-            <input
-              id="earnT2"
-              type="number"
-              min="0"
-              step="0.1"
-              [ngModel]="earnT2AprPct()"
-              (ngModelChange)="earnT2AprPct.set($event)"
-            />
-          </div>
-          <div class="earn-input-group">
-            <label for="earnHurdle">Spread P2P Bruto Observado (%):</label>
-            <input
-              id="earnHurdle"
-              type="number"
-              min="0"
-              step="0.1"
-              [ngModel]="earnHurdleGrossSpreadPct()"
-              (ngModelChange)="earnHurdleGrossSpreadPct.set($event)"
-            />
-          </div>
-          <div class="earn-input-group">
-            <label for="earnHours">Ciclo de Rotación P2P (Horas):</label>
-            <input
-              id="earnHours"
-              type="number"
-              min="0.5"
-              step="0.5"
-              [ngModel]="earnTradeCycleHours()"
-              (ngModelChange)="earnTradeCycleHours.set($event)"
-            />
-          </div>
-        </div>
-      </div>
-
-      <!-- 3 Advanced Cards Grid -->
-      <div class="earn-cards-grid">
-        <!-- Card 1: Simple Earn Optimizer -->
-        <div class="earn-result-card">
-          <div class="card-top-header">
-            <span class="earn-badge">SIMPLE EARN FLEXIBLE (D+0)</span>
-            <span class="earn-rate-pill">{{ earnSimpleResult().effectiveBlendedAprPct }}% APR Efectivo</span>
-          </div>
-          <h4 class="card-main-title">Optimización de Capital Inactivo</h4>
-          <p class="card-sub-desc">
-            Asignación algorítmica entre el tramo subvencionado Tier 1 ($500 USDT) y el tramo base Tier 2 para exprimir el carry diario.
-          </p>
-
-          <div class="earn-metrics-table">
-            <div class="metric-row">
-              <span class="label">Asignado Tier 1 ({{ earnT1AprPct() }}% APR):</span>
-              <span class="value highlight">${{ earnSimpleResult().tier1Allocated }} USDT</span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Asignado Tier 2 ({{ earnT2AprPct() }}% APR):</span>
-              <span class="value">${{ earnSimpleResult().tier2Allocated }} USDT</span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Yield Proyectado Mensual:</span>
-              <span class="value profit">+${{ earnSimpleResult().monthlyYieldUsdt }} USDT</span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Costo de Oportunidad Ocioso:</span>
-              <span class="value warning">${{ ((earnSimpleResult().opportunityCostPerHourUsdt ?? 0) * 24).toFixed(3) }} USDT/día</span>
-            </div>
-          </div>
-
-          <div class="card-footer-actions">
-            <button class="btn-ask-cso" (click)="askEarnRecommendation('simple_earn')">
-              💬 Formular Estrategia en Chat
-            </button>
-          </div>
-        </div>
-
-        <!-- Card 2: Hurdle Rate P2P vs Earn -->
-        <div class="earn-result-card" [class.hurdle-pass]="earnHurdleResult().isP2pProfitableOverEarn" [class.hurdle-fail]="!earnHurdleResult().isP2pProfitableOverEarn">
-          <div class="card-top-header">
-            <span class="earn-badge">TASA DE CORTE (HURDLE RATE)</span>
-            <span class="verdict-tag" [class.operate]="earnHurdleResult().verdict === 'OPERATE_P2P'" [class.park]="earnHurdleResult().verdict === 'PARK_IN_EARN'">
-              {{ earnHurdleResult().verdict }}
-            </span>
-          </div>
-          <h4 class="card-main-title">Arbitraje P2P vs Rendimiento Libre de Riesgo</h4>
-          <p class="card-sub-desc">
-            {{ earnHurdleResult().reasoning }}
-          </p>
-
-          <div class="earn-metrics-table">
-            <div class="metric-row">
-              <span class="label">Spread Neto P2P por Ciclo:</span>
-              <span class="value" [class.profit]="(earnHurdleResult().netP2pCycleReturnPct ?? 0) > 0" [class.danger]="(earnHurdleResult().netP2pCycleReturnPct ?? 0) <= 0">
-                {{ earnHurdleResult().netP2pCycleReturnPct ?? 0 }}%
-              </span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Hurdle Rate de Cobertura:</span>
-              <span class="value highlight">{{ earnHurdleResult().hurdleSpreadPct }}%</span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Retorno Horario P2P:</span>
-              <span class="value">{{ earnHurdleResult().hourlyP2pReturnPct }}%/hora</span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Rendimiento Horario Earn:</span>
-              <span class="value">{{ earnHurdleResult().hourlyEarnYieldPct }}%/hora</span>
-            </div>
-          </div>
-
-          <div class="card-footer-actions">
-            <button class="btn-ask-cso" (click)="askEarnRecommendation('hurdle_rate')">
-              ⚖️ Evaluar con el Comité de Riesgo
-            </button>
-          </div>
-        </div>
-
-        <!-- Card 3: Liquidity Laddering -->
-        <div class="earn-result-card">
-          <div class="card-top-header">
-            <span class="earn-badge">LIQUIDITY LADDERING</span>
-            <span class="earn-rate-pill">{{ earnLadderResult().blendedPortfolioAprPct }}% APR Global</span>
-          </div>
-          <h4 class="card-main-title">Escalera de Liquidez Estructurada</h4>
-          <p class="card-sub-desc">
-            Protección de liquidez operativa con buffer D+0 para absorber órdenes de compra P2P y colocación escalonada a 30d/60d.
-          </p>
-
-          <div class="earn-metrics-table">
-            <div class="metric-row">
-              <span class="label">Buffer Flexible Inmediato (D+0):</span>
-              <span class="value highlight">${{ earnLadderResult().flexibleBufferUsdt }} USDT</span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Tramo Bloqueado 30 Días:</span>
-              <span class="value">${{ earnLadderResult().locked30dUsdt }} USDT</span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Tramo Bloqueado 60 Días:</span>
-              <span class="value">${{ earnLadderResult().locked60dUsdt }} USDT</span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Ratio de Cobertura de Liquidez:</span>
-              <span class="value profit">{{ earnLadderResult().liquidityCoverageRatio }}x volumen diario</span>
-            </div>
-          </div>
-
-          <div class="card-footer-actions">
-            <button class="btn-ask-cso" (click)="askEarnRecommendation('ladder')">
-              🪜 Desplegar Escalera en Chat
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  }
-
-  <!-- TAB: OPERATIONS, SOP GOVERNANCE & LIVE LEDGER (10 SKILLS) -->
-  @if (activeTab() === 'operations') {
-    <div class="plans-layout earn-vault-layout operations-layout">
-      <div class="plans-header">
-        <div>
-          <h3>🛡️ Operaciones, Gobernanza SOP & Conciliación Contable (10 Skills)</h3>
-          <p class="section-desc">
-            Protocolos operativos estándar, triaje de incidentes bancarios (P1-P4), conciliación RPA de extractos, calificación de leads y sincronización contable con Google Sheets.
-          </p>
-        </div>
-        <div class="earn-quick-actions">
-          <button class="btn-new-plan" (click)="askOperationsRecommendation('incident_triage')">
-            🚨 Activar Triaje con el CSO
-          </button>
-        </div>
-      </div>
-
-      <!-- Live Operations Simulator & Parameters -->
-      <div class="earn-controls-card">
-        <h4 class="earn-card-title">⚙️ Parámetros Operativos & Auditoría de Órdenes en Tiempo Real</h4>
-        <div class="earn-inputs-grid">
-          <div class="earn-input-group">
-            <label for="sopOrder">ID de Orden:</label>
-            <input
-              id="sopOrder"
-              type="text"
-              [ngModel]="sopOrderId()"
-              (ngModelChange)="sopOrderId.set($event)"
-            />
-          </div>
-          <div class="earn-input-group">
-            <label for="sopResponse">Tiempo de Respuesta (minutos):</label>
-            <input
-              id="sopResponse"
-              type="number"
-              min="1"
-              max="60"
-              [ngModel]="sopResponseMinutes()"
-              (ngModelChange)="sopResponseMinutes.set($event)"
-            />
-          </div>
-          <div class="earn-input-group">
-            <label for="triageIncident">Incidencia / Crisis:</label>
-            <select
-              id="triageIncident"
-              [ngModel]="triageIncidentType()"
-              (ngModelChange)="triageIncidentType.set($event)">
-              <option value="BANK_ACCOUNT_HOLD">Retención de Cuenta Bancaria (P1)</option>
-              <option value="THIRD_PARTY_PAYMENT">Pago de Tercero no Autorizado (P2)</option>
-              <option value="PARTIAL_PAYMENT_FRAUD">Pago Parcial Incompleto (P2)</option>
-              <option value="APP_LATENCY_DELAY">Latencia de Conexión / App (P4)</option>
-            </select>
-          </div>
-          <div class="earn-input-group">
-            <label for="triageRisk">Monto en Riesgo (USDT):</label>
-            <input
-              id="triageRisk"
-              type="number"
-              min="10"
-              step="100"
-              [ngModel]="triageAmountUsdt()"
-              (ngModelChange)="triageAmountUsdt.set($event)"
-            />
-          </div>
-          <div class="earn-input-group">
-            <label for="leadChannelSelect">Canal de Lead Directo:</label>
-            <select
-              id="leadChannelSelect"
-              [ngModel]="leadChannel()"
-              (ngModelChange)="leadChannel.set($event)">
-              <option value="WHATSAPP">WhatsApp Business</option>
-              <option value="TELEGRAM">Telegram Comercial</option>
-              <option value="INSTAGRAM_DM">Instagram DM</option>
-            </select>
-          </div>
-          <div class="earn-input-group">
-            <label for="leadVol">Volumen Semanal Lead (USDT):</label>
-            <input
-              id="leadVol"
-              type="number"
-              min="100"
-              step="500"
-              [ngModel]="leadWeeklyVolume()"
-              (ngModelChange)="leadWeeklyVolume.set($event)"
-            />
-          </div>
-        </div>
-
-        <div class="sop-checkbox-row">
-          <label class="checkbox-label">
-            <input
-              type="checkbox"
-              [checked]="sopHolderMatches()"
-              (change)="sopHolderMatches.set(!sopHolderMatches())"
-            />
-            <span>Titular bancario coincide con documento verificado en Binance</span>
-          </label>
-          <label class="checkbox-label">
-            <input
-              type="checkbox"
-              [checked]="sopBalanceConfirmed()"
-              (change)="sopBalanceConfirmed.set(!sopBalanceConfirmed())"
-            />
-            <span>Fondos confirmados en saldo disponible líquido (no diferido)</span>
-          </label>
-          <label class="checkbox-label alert-check">
-            <input
-              type="checkbox"
-              [checked]="sopFundsReleasedEarly()"
-              (change)="sopFundsReleasedEarly.set(!sopFundsReleasedEarly())"
-            />
-            <span>Fondos liberados antes de verificar en portal bancario</span>
-          </label>
-        </div>
-      </div>
-
-      <!-- Institutional Analytics Results (3 Grid Cards) -->
-      <div class="earn-results-grid">
-        <!-- Card 1: SOP Compliance Audit -->
-        <div class="earn-result-card" [class.alert-border]="!sopAuditResult().isCompliant">
-          <div class="card-top-header">
-            <span class="earn-badge" [class.danger]="!sopAuditResult().isCompliant">SOP COMPLIANCE</span>
-            <span class="earn-rate-pill" [class.safe]="sopAuditResult().isCompliant" [class.danger]="!sopAuditResult().isCompliant">
-              {{ sopAuditResult().complianceScore }}% Cumplimiento
-            </span>
-          </div>
-          <h4 class="card-main-title">Auditoría Forense de Protocolo SOP</h4>
-          <p class="card-sub-desc">
-            Verificación obligatoria de protocolos operativos estándar de la mesa de arbitraje institucional.
-          </p>
-
-          <div class="earn-metrics-table">
-            <div class="metric-row">
-              <span class="label">Estado de Conformidad:</span>
-              <span class="value" [class.profit]="sopAuditResult().isCompliant" [class.danger]="!sopAuditResult().isCompliant">
-                {{ sopAuditResult().isCompliant ? '✓ CONFORME A NORMA' : '⚠️ DESVIACIÓN DETECTADA' }}
-              </span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Acción Disciplinaria:</span>
-              <span class="value highlight">{{ sopAuditResult().disciplinaryAction }}</span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Infracciones Detectadas:</span>
-              <span class="value" [class.danger]="sopAuditResult().violationsDetected.length > 0">
-                {{ sopAuditResult().violationsDetected.length }} infracciones
-              </span>
-            </div>
-          </div>
-
-          <div class="sop-summary-box">
-            {{ sopAuditResult().summary }}
-          </div>
-
-          <div class="card-footer-actions">
-            <button class="btn-ask-cso" (click)="askOperationsRecommendation('sop_audit')">
-              📋 Auditar en Chat con Gentleman AI
-            </button>
-          </div>
-        </div>
-
-        <!-- Card 2: Incident Triage & SLA Matrix -->
-        <div class="earn-result-card">
-          <div class="card-top-header">
-            <span class="earn-badge danger">INCIDENT TRIAGE</span>
-            <span class="earn-rate-pill danger">{{ triageResult().severityLevel }}</span>
-          </div>
-          <h4 class="card-main-title">Matriz de Severidad & Escalación</h4>
-          <p class="card-sub-desc">
-            Clasificación automática de riesgo operativo, SLA de resolución y aislamiento preventivo.
-          </p>
-
-          <div class="earn-metrics-table">
-            <div class="metric-row">
-              <span class="label">SLA Máximo de Resolución:</span>
-              <span class="value highlight">{{ triageResult().maxResolutionSlaMinutes }} minutos</span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Intervención Humana (CSO):</span>
-              <span class="value" [class.danger]="triageResult().requiresHumanHandoff">
-                {{ triageResult().requiresHumanHandoff ? '⚠️ REQUERIDA (OBLIGATORIA)' : '✓ NO REQUERIDA' }}
-              </span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Capital Total en Riesgo:</span>
-              <span class="value danger">${{ triageAmountUsdt() }} USDT</span>
-            </div>
-          </div>
-
-          <div class="sop-protocol-box">
-            <strong>Protocolo Activo:</strong> {{ triageResult().isolationProtocol }}
-          </div>
-
-          <div class="card-footer-actions">
-            <button class="btn-ask-cso" (click)="askOperationsRecommendation('incident_triage')">
-              🚨 Escalar Incidente al CSO
-            </button>
-          </div>
-        </div>
-
-        <!-- Card 3: Lead CRM & Treasury Runway -->
-        <div class="earn-result-card">
-          <div class="card-top-header">
-            <span class="earn-badge">CRM & RUNWAY</span>
-            <span class="earn-rate-pill">{{ leadQualificationResult().leadTier }}</span>
-          </div>
-          <h4 class="card-main-title">Lead Qualification & Conciliación</h4>
-          <p class="card-sub-desc">
-            Calificación de prospectos comerciales de WhatsApp/Telegram y proyección de runway de tesorería.
-          </p>
-
-          <div class="earn-metrics-table">
-            <div class="metric-row">
-              <span class="label">Protocolo de Cierre Comercial:</span>
-              <span class="value highlight">{{ leadQualificationResult().actionProtocol }}</span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Margen Neto Cotizado:</span>
-              <span class="value profit">+{{ (leadQualificationResult().recommendedNetMarginBps / 100).toFixed(2) }}%</span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Runway de Tesorería:</span>
-              <span class="value profit">{{ cashFlowResult().runwayOperationalDays }} días de operación</span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Salud del Sistema:</span>
-              <span class="value safe">{{ serviceHealthResult().healthScore }}/100 ({{ serviceHealthResult().systemStatus }})</span>
-            </div>
-          </div>
-
-          <div class="card-footer-actions">
-            <button class="btn-ask-cso" (click)="askOperationsRecommendation('lead_closing')">
-              🤝 Diseñar Propuesta Comercial
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  }
-
-  <!-- TAB: CONFIGURATION -->
-  @if (activeTab() === 'config') {
-    <div class="config-layout">
-      <h3>Configuración de Conexión de Inteligencia Artificial (Gentleman AI)</h3>
-      <p class="section-desc">Gestioná el proveedor soberano de IA (Google Gemini, OpenAI, Anthropic, DeepSeek, Qwen) y las credenciales del orquestador.</p>
-
-      <div class="config-card">
-        <div class="config-status-row">
-          <div class="status-indicator-box" [class.connected]="connectionStatus().connected">
-            <span class="indicator-bulb"></span>
-            <div>
-              <strong>Estado del Modelo Activo:</strong>
-              <div class="status-desc">{{ connectionStatus().message }}</div>
-            </div>
-          </div>
-          <button 
-            class="btn-test" 
-            (click)="testConnectionAction()" 
-            [disabled]="isTestingConnection()">
-            {{ isTestingConnection() ? 'Probando...' : '🔄 Probar Conexión' }}
-          </button>
-        </div>
-
-        <div class="config-field">
-          <label for="aiProviderSelect">Proveedor de Inteligencia Artificial:</label>
-          <select
-            id="aiProviderSelect"
-            class="provider-select"
-            [ngModel]="selectedAiProvider()"
-            (ngModelChange)="onProviderChange($event)"
-          >
-            <option value="gemini">Google Gemini (Gemini 3.8 / Pro / Flash) [Grounding Web]</option>
-            <option value="anthropic">Anthropic (Claude 3.5 Sonnet / 3.7)</option>
-            <option value="openai">OpenAI (ChatGPT / GPT-4o / o3)</option>
-            <option value="deepseek">DeepSeek (DeepSeek-V3 / R1)</option>
-            <option value="qwen">Qwen 2.5 (OpenRouter / Local)</option>
-          </select>
-        </div>
-
-        <div class="config-field">
-          <label for="aiModelSelect">Modelo de Inteligencia Artificial (Selector Soberano):</label>
-          <select
-            id="aiModelSelect"
-            class="provider-select"
-            [ngModel]="selectedAiModel()"
-            (ngModelChange)="onModelChange($event)"
-          >
-            @for (m of currentAvailableModels(); track m.id) {
-              <option [value]="m.id">{{ m.label }}</option>
-            }
-          </select>
-        </div>
-
-        <div class="config-field">
-          <label for="geminiKey">API Key de {{ getProviderDisplayName() }} (Almacenamiento Seguro en SQLite):</label>
-          <div class="input-with-action">
-            <input 
-              id="geminiKey"
-              type="password" 
-              [placeholder]="getProviderKeyPlaceholder()" 
-              [ngModel]="apiKeyInput()" 
-              (ngModelChange)="apiKeyInput.set($event)"
-            />
-            <button class="btn-save-key" (click)="saveApiKey()" [disabled]="!apiKeyInput().trim()">
-              Guardar Key
-            </button>
-          </div>
-          <small class="field-hint">
-            La credencial se encripta con DPAPI local antes de almacenarse en SQLite. Si contás con variables de entorno (como <code>GEMINI_API_KEY</code>, <code>OPENAI_API_KEY</code> o <code>DEEPSEEK_API_KEY</code>), el orquestador las prioriza de forma automática.
-          </small>
-        </div>
-      </div>
-    </div>
-  }
-
-  <!-- ACTION LAUNCHER MODAL / QUICK EXECUTION DRAWER -->
-  @if (selectedActionPlan(); as plan) {
-    <div
-      class="action-launcher-backdrop"
-      role="button"
-      tabindex="0"
-      (click)="$event.target === $event.currentTarget && closeActionLauncher()"
-      (keydown.escape)="closeActionLauncher()"
-      aria-label="Cerrar lanzador de orden">
-      <div class="action-launcher-modal">
-        <div class="modal-header">
-          <div class="title-wrap">
-            <span class="bolt-icon">⚡</span>
-            <h3>Lanzador Rápido de Orden P2P</h3>
-          </div>
-          <button class="close-btn" (click)="closeActionLauncher()">✕</button>
-        </div>
-
-        <div class="modal-body">
-          <div class="plan-summary-badge">
-            <span class="plan-id">{{ plan.id }}</span>
-            <span class="plan-status">{{ plan.status }}</span>
-          </div>
-
-          <h4 class="plan-headline">{{ plan.title }}</h4>
-          <p class="plan-route-line"><strong>Ruta:</strong> {{ plan.route }}</p>
-
-          <div class="action-metrics-grid">
-            <div class="metric-card">
-              <span class="m-label">CAPITAL REQUERIDO</span>
-              <span class="m-val">${{ plan.capitalRequiredUsdt }} USDT</span>
-            </div>
-            <div class="metric-card profit">
-              <span class="m-label">SPREAD NETO ESPERADO</span>
-              <span class="m-val">+{{ plan.expectedNetSpreadPct }}%</span>
-            </div>
-            <div class="metric-card profit">
-              <span class="m-label">BENEFICIO ESTIMADO</span>
-              <span class="m-val">+${{ plan.expectedProfitUsdt }} USDT</span>
-            </div>
-          </div>
-
-          <div class="execution-instructions">
-            <strong>Instrucción Táctica:</strong>
-            <p>{{ plan.rationale }}</p>
-          </div>
-
-          <div class="quick-actions-toolbar">
-            <button class="btn-copy-ticket" (click)="copyTicketToClipboard(plan)">
-              {{ ticketCopiedNotice() ? '✓ ¡Ticket Copiado al Portapapeles!' : '📋 Copiar Ticket de Orden' }}
-            </button>
-            <button class="btn-open-binance" (click)="openBinanceP2pPortal()">
-              🚀 Abrir Binance P2P (Filtro Listo)
-            </button>
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <span class="security-note">🛡 <em>Custodia segura activa: Ningún fondo se libera sin confirmación bancaria humana.</em></span>
-          <button class="btn-done" (click)="closeActionLauncher()">Entendido / Cerrar</button>
-        </div>
-      </div>
-    </div>
+  @if (showApiSettingsModal()) {
+    <app-api-settings-modal (closed)="closeAiSettingsModal()" />
   }
 </div>
-

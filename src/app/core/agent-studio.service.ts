@@ -476,7 +476,7 @@ export class AgentStudioService {
           description: dto.description ?? '',
           systemPrompt: dto.systemPrompt,
           modelProvider: dto.modelProvider ?? 'gemini',
-          modelName: dto.modelName ?? 'gemini-3.7-flash',
+          modelName: dto.modelName ?? 'gemini-3.8-flash',
           temperature: dto.temperature ?? 0.1,
           isActive: dto.isActive !== false,
           executionMode: dto.executionMode ?? 'on_demand',
@@ -591,7 +591,7 @@ export class AgentStudioService {
         systemPrompt:
           'Eres el Agente Coordinador (Router/Triage) de la plataforma ARM. Analiza intención y sentimiento y ejecuta route_conversation hacia SDR_QUALIFIER, QUOTER, SCHEDULER o HUMAN_TAKEOVER.',
         modelProvider: 'gemini',
-        modelName: 'gemini-3.7-flash',
+        modelName: 'gemini-3.8-flash',
         temperature: 0.1,
         isActive: true,
         executionMode: 'on_demand',
@@ -604,7 +604,7 @@ export class AgentStudioService {
         systemPrompt:
           'Eres el Especialista SDR / Calificador BANT. Realiza máximo una pregunta abierta por turno, extrae BANT con update_lead_bant_and_profile y avanza el Kanban con transition_pipeline_stage.',
         modelProvider: 'gemini',
-        modelName: 'gemini-3.7-flash',
+        modelName: 'gemini-3.8-flash',
         temperature: 0.3,
         isActive: true,
         executionMode: 'on_demand',
@@ -623,7 +623,7 @@ export class AgentStudioService {
         systemPrompt:
           'Eres el Especialista Cotizador Comercial ARM. Consulta get_catalog_items y ejecuta create_or_submit_quote respetando estrictamente el Risk Gate Human-in-the-Loop.',
         modelProvider: 'gemini',
-        modelName: 'gemini-3.7-flash',
+        modelName: 'gemini-3.8-flash',
         temperature: 0.0,
         isActive: true,
         executionMode: 'on_demand',
@@ -642,7 +642,7 @@ export class AgentStudioService {
         systemPrompt:
           'Eres el Especialista de Agenda (Scheduler) ARM. Verifica horarios con check_calendar_slots y ejecuta book_appointment generando el briefing_for_human.',
         modelProvider: 'gemini',
-        modelName: 'gemini-3.7-flash',
+        modelName: 'gemini-3.8-flash',
         temperature: 0.1,
         isActive: true,
         executionMode: 'on_demand',
@@ -655,7 +655,7 @@ export class AgentStudioService {
         systemPrompt:
           'Eres el Agente FOLLOW_UP de Reactivación Proactiva ARM. Escanea prospectos estancados fuera de ventana de 24h y encola send_whatsapp_template en la bandeja de aprobación.',
         modelProvider: 'gemini',
-        modelName: 'gemini-3.7-flash',
+        modelName: 'gemini-3.8-flash',
         temperature: 0.2,
         isActive: true,
         executionMode: 'ambient_daemon',

@@ -1490,76 +1490,53 @@ export class Dashboard implements OnInit, OnDestroy {
   }
 
   async runSwarmHealthCheck(): Promise<void> {
-    const copilot = (
-      window as unknown as {
-        copilotApi?: {
-          getSwarmHealth?: () => Promise<
-            {
-              name: string;
-              role: string;
-              status: 'ONLINE' | 'DEGRADED' | 'OFFLINE';
-              lastPingMs: number;
-              decisionsCount: number;
-            }[]
-          >;
-        };
-      }
-    ).copilotApi;
+    const win = window as unknown as {
+      electron?: { copilot?: { getSwarmHealth?: () => Promise<any[]> } };
+      p2p?: { copilot?: { getSwarmHealth?: () => Promise<any[]> } };
+    };
+    const copilot = win.electron?.copilot ?? win.p2p?.copilot;
 
     if (copilot?.getSwarmHealth) {
       try {
+        const startMs = Date.now();
         const liveHealth = await copilot.getSwarmHealth();
+        const roundTripMs = Math.max(1, Date.now() - startMs);
         if (Array.isArray(liveHealth) && liveHealth.length > 0) {
-          const icons: Record<string, string> = {
-            'Sentinel Agent': '🛡️',
-            'Strategist Agent': '🧠',
-            'Risk Gatekeeper Agent': '⚖️',
-            'Dispute Auditor Agent': '🔍',
-          };
-          const descs: Record<string, string> = {
-            'Sentinel Agent':
-              'Detección de shocks de liquidez, desbalance de órdenes y volatilidad.',
-            'Strategist Agent':
-              'Arbitraje algorítmico, cálculo VWAP y optimización de spreads netos.',
-            'Risk Gatekeeper Agent':
-              'Veto unilateral ante incumplimiento de Regla de Oro (>0.50%) o contraparte dudosa.',
-            'Dispute Auditor Agent':
-              'Auditoría forense de recibos OCR y verificación de transferencias.',
-          };
           this.swarmAgents.set(
-            liveHealth.map((h) => ({
+            liveHealth.map((h: any) => ({
               name: h.name,
               role: h.role,
-              status: h.status,
-              lastPingMs: h.lastPingMs,
-              decisionsCount: h.decisionsCount,
-              icon: icons[h.name] || '🤖',
-              description: descs[h.name] || 'Agente de enjambre institucional activo.',
+              status: h.status ?? 'ONLINE',
+              lastPingMs: typeof h.lastPingMs === 'number' ? h.lastPingMs : roundTripMs,
+              decisionsCount: Number(h.opsProcessed ?? h.decisionsCount ?? 0),
+              icon: '🤖',
+              description: h.description || 'Agente de enjambre institucional activo.',
             })),
           );
         }
         this.toast.success(
-          'Diagnóstico del enjambre de agentes ejecutado con éxito.',
+          'Diagnóstico real del enjambre de agentes completado.',
           'Swarm Online',
         );
       } catch (err) {
         console.error('[Dashboard] Error checking swarm health:', err);
-        this.toast.info('Diagnóstico de agentes ejecutado (modo local).', 'Swarm OK');
+        this.swarmAgents.update((agents) =>
+          agents.map((a) => ({ ...a, status: 'OFFLINE' as const, lastPingMs: 0 })),
+        );
+        this.toast.info('Enjambre no disponible en este momento.', 'Swarm Offline');
       }
     } else {
-      const snap = this.telemetry();
-      const opsCount = this.ops().length;
-      const auditCount = this.audit.events().length;
-      const viableFxCount = this.fxDeskSummary().viableCount;
       this.swarmAgents.update((agents) =>
-        agents.map((a, idx) => ({
+        agents.map((a) => ({
           ...a,
-          lastPingMs: Math.max(18, (snap.p2pMs || 45) + idx * 12),
-          decisionsCount:
-            a.decisionsCount + Math.max(1, idx === 0 ? viableFxCount : idx === 1 ? opsCount : auditCount || 1),
+          status: 'OFFLINE' as const,
+          lastPingMs: 0,
         })),
       );
-      this.toast.success('Telemetría del enjambre de agentes actualizada.', 'Swarm 4/4 Activo');
+      this.toast.info(
+        'Modo web sin puente Electron IPC: enjambre en espera.',
+        'OFFLINE_WEB',
+      );
     }
   }
 

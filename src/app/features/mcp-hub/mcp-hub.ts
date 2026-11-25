@@ -67,28 +67,72 @@ export class McpHub {
 
   async runCopilotStrategy(): Promise<void> {
     this.copilotExecuting.set(true);
-    await new Promise((r) => setTimeout(r, 650));
+    try {
+      const win = window as unknown as {
+        electron?: { copilot?: { sendMessage?: (p: { prompt: string }) => Promise<any> } };
+        p2p?: { copilot?: { sendMessage?: (p: { prompt: string }) => Promise<any> } };
+      };
+      const copilotBridge = win.electron?.copilot ?? win.p2p?.copilot;
+      if (!copilotBridge?.sendMessage) {
+        this.copilotMemoResult.set({
+          marketRegime: 'SIN_PUENTE_ELECTRON_IPC',
+          actionPlan: [
+            'Modo web sin puente Electron: abra el cliente de escritorio para ejecutar herramientas MCP reales.',
+          ],
+          riskMetrics: {
+            Estado: 'NO_DISPONIBLE_EN_NAVEGADOR',
+            Feed: 'Sin conexión IPC',
+          },
+          directive: 'Ejecución real disponible únicamente con el puente Electron IPC activo.',
+          timestamp: new Date().toLocaleTimeString(),
+        });
+        return;
+      }
 
-    this.copilotMemoResult.set({
-      marketRegime: 'EXPANSIÓN DE SPREAD & DRENAJE MACRO MODERADO',
-      actionPlan: [
-        'Paso 1: Colocar orden Maker BUY escalonada mediante Avellaneda-Stoikov en 84.85 VES (reserva óptima con skew de inventario equilibrado).',
-        'Paso 2: Rotar hacia venta Maker en 85.95 VES fraccionando en 4 bloques TWAP de $1,250 USDT para cero impacto de mercado.',
-        'Paso 3: Asignar según Criterio de Kelly (fraccional 33%): máx $1,250 USDT por cuenta bancaria (Banesco y Mercantil) para blindaje antilavado.',
-        'Paso 4: Mantener cobertura pasiva corta si el saldo ocioso en bolívares supera los 45 minutos (regla de velocidad de repudio MV=PY).',
-      ],
-      riskMetrics: {
-        'Spread Neto Proyectado': '1.29% real',
-        'Volatilidad Implícita (VPIN)': '0.12 (Baja toxicidad / flujo retail genuino)',
-        'Probabilidad de Llenado Markov (15m)': '89.4%',
-        'Pérdida por Convexidad Máx (Jump 15%)': '-$18.40 USDT',
-        'Criterio de Kelly Óptimo': '25% por ticket ($1,250 USDT)',
-      },
-      directive:
-        'EJECUTAR CON REGLA DE ORO CUMPLIDA. Retorno neto esperado: +$64.50 USDT por ciclo completo.',
-      timestamp: new Date().toLocaleTimeString(),
-    });
-    this.copilotExecuting.set(false);
+      const res = await copilotBridge.sendMessage({ prompt: this.copilotPrompt() });
+      const traces = Array.isArray(res?.toolTraces) ? res.toolTraces : [];
+      const traceSummary: Record<string, string | number> = {
+        Proveedor: res?.provenance?.source ?? 'desconocido',
+        Modelo: res?.provenance?.model ?? 'N/D',
+        Feed: res?.provenance?.liveMarketFeedConnected ? 'EN_VIVO' : 'SIN_FEED',
+        Herramientas: traces.length,
+      };
+      if (res?.usage) {
+        traceSummary['Tokens'] = res.usage.totalTokens ?? 0;
+        traceSummary['Latencia (ms)'] = res.usage.latencyMs ?? 0;
+      }
+
+      const planSteps =
+        traces.length > 0
+          ? traces.map(
+              (t: any) =>
+                `[${t.provenance}] ${t.toolName}(${t.argsSummary}) -> ${t.status} (${t.durationMs}ms)`,
+            )
+          : [res?.reply || 'Sin respuesta del orquestador.'];
+
+      this.copilotMemoResult.set({
+        marketRegime: res?.provenance?.liveMarketFeedConnected
+          ? 'ANÁLISIS EN VIVO (MCP + ORQUESTADOR)'
+          : 'MODO DEGRADADO / SIN FEED EN VIVO',
+        actionPlan: res?.reply ? [res.reply, ...planSteps] : planSteps,
+        riskMetrics: traceSummary,
+        directive: res?.suggestedPlan
+          ? `${res.suggestedPlan.title} · Spread neto ${res.suggestedPlan.expectedNetSpreadPct}% (${res.suggestedPlan.esSimulado === false ? 'LIVE' : 'SIMULADO'})`
+          : 'Consulta ejecutada directamente contra el orquestador real.',
+        timestamp: new Date().toLocaleTimeString(),
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.copilotMemoResult.set({
+        marketRegime: 'ERROR_DE_EJECUCION',
+        actionPlan: [msg],
+        riskMetrics: { Estado: 'ERROR' },
+        directive: 'No se pudo completar la consulta en el orquestador.',
+        timestamp: new Date().toLocaleTimeString(),
+      });
+    } finally {
+      this.copilotExecuting.set(false);
+    }
   }
 
   setCategory(cat: string): void {

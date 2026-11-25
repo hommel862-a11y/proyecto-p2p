@@ -17,10 +17,10 @@ export interface AiModelOption {
 
 export const AI_MODELS_BY_PROVIDER: Record<string, AiModelOption[]> = {
   gemini: [
-    { id: 'gemini-3.7-flash', label: '⚡ Gemini 3.7 Flash (Recomendado - Activo & Rápido)', badge: 'RECOMENDADO' },
-    { id: 'gemini-3.8-flash', label: '🚀 Gemini 3.8 Flash (Última Generación)', badge: 'FRONTIER' },
-    { id: 'gemini-3.6-flash', label: '⚖️ Gemini 3.6 Flash (Estable & Fluido)', badge: 'ESTABLE' },
-    { id: 'gemini-3.5-flash', label: '🧠 Gemini 3.5 Flash (Balanceado)', badge: 'BALANCE' },
+    { id: 'gemini-3.8-flash', label: '⚡ Gemini 3.8 Flash (Recomendado - Agéntico & Multimodal)', badge: 'RECOMENDADO' },
+    { id: 'gemini-4-argon', label: '🧠 Gemini 4 Argon (Razonamiento Frontier Rápido)', badge: 'FRONTIER' },
+    { id: 'gemini-4-carbon', label: '💎 Gemini 4 Carbon (Máxima Profundidad)', badge: 'PRO' },
+    { id: 'gemini-3.5-flash-lite', label: '⚖️ Gemini 3.5 Flash Lite (Alto Rendimiento / Bajo Costo)', badge: 'ESTABLE' },
     { id: 'gemini-3.1-flash-lite', label: '🌱 Gemini 3.1 Flash Lite (Ultra Rápido)', badge: 'LITE' },
   ],
   anthropic: [
