@@ -61,6 +61,9 @@ import {
 const QUOTA_ENGINE_NOTE =
   '\n\n⚠️ *Modo local por cuota agotada: conectá una API Key con plan de pago para restaurar el análisis Gemini en vivo.*';
 
+const OVERLOAD_ENGINE_NOTE =
+  '\n\n⚠️ *Modo local por alta demanda temporal en servidores de Gemini (HTTP 503): tu API Key está bien; reintentá en unos segundos para retomar el motor en vivo.*';
+
 const BUDGET_ENGINE_NOTE =
   '\n\n⚠️ *Modo local por presupuesto del turno: se alcanzó el techo de llamadas pagas por turno, así que esta respuesta viene del motor local, no de Gemini.*';
 
@@ -919,6 +922,17 @@ export class GeminiOrchestrator {
     return err.message.includes('HTTP 429') || err.message.includes('cuota agotada');
   }
 
+  private isTransientUnavailableError(err: unknown): boolean {
+    if (!(err instanceof Error)) return false;
+    return (
+      err.message.includes('HTTP 503') ||
+      err.message.includes('HTTP 502') ||
+      err.message.includes('HTTP 504') ||
+      err.message.includes('UNAVAILABLE') ||
+      err.message.toLowerCase().includes('high demand')
+    );
+  }
+
   async testConnection(
     provider?: AiProviderType,
     key?: string,
@@ -1209,14 +1223,29 @@ export class GeminiOrchestrator {
             this.runDeterministicStrategist(lowerPrompt, recentLearnings, QUOTA_ENGINE_NOTE),
           );
         }
+        if (this.isTransientUnavailableError(err)) {
+          console.warn(
+            `[GeminiOrchestrator] Saturación temporal (503 UNAVAILABLE) en ${provider}; continuando con motor local.`,
+          );
+          return persistTurn(
+            this.runDeterministicStrategist(lowerPrompt, recentLearnings, OVERLOAD_ENGINE_NOTE),
+          );
+        }
         this.emitStream({
           requestId,
           phase: 'error',
           message,
         });
         console.error(`[GeminiOrchestrator] Error en llamada al proveedor ${provider}:`, err);
+        const isAuthErr =
+          message.includes('HTTP 401') ||
+          message.includes('HTTP 403') ||
+          message.includes('API_KEY_INVALID');
+        const hint = isAuthErr
+          ? '*Por favor verifica tu API Key en Configuración de IA.*'
+          : '*Error temporal del proveedor. Reintentá en unos segundos o probá otro modelo en Configuración de IA.*';
         return persistTurn({
-          reply: `⚠️ **Error en llamada a ${provider.toUpperCase()} (${model})**:\n\n${message}\n\n*Por favor verifica tu API Key y conexión.*`,
+          reply: `⚠️ **Error en llamada a ${provider.toUpperCase()} (${model})**:\n\n${message}\n\n${hint}`,
           provenance: {
             source: provider,
             model,
@@ -1438,27 +1467,48 @@ export class GeminiOrchestrator {
           tools: [{ functionDeclarations: toolDeclarations }],
         };
 
-        let res: Response;
-        try {
-          res = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-goog-api-key': apiKey,
-            },
-            body: JSON.stringify(requestBody),
-            signal: buildFetchSignal(callerSignal, 30_000),
-          });
-        } catch (fetchErr) {
-          if (callerSignal?.aborted) {
-            return {
-              reply: 'Turno cancelado por el operador.',
-              cancelled: true,
-              toolTraces: toolTraces.length > 0 ? toolTraces : undefined,
-            };
+        let res!: Response;
+        let transientAttempt = 0;
+        const MAX_TRANSIENT_RETRIES = 1;
+        while (true) {
+          try {
+            res = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey,
+              },
+              body: JSON.stringify(requestBody),
+              signal: buildFetchSignal(callerSignal, 30_000),
+            });
+          } catch (fetchErr) {
+            if (callerSignal?.aborted) {
+              return {
+                reply: 'Turno cancelado por el operador.',
+                cancelled: true,
+                toolTraces: toolTraces.length > 0 ? toolTraces : undefined,
+              };
+            }
+            lastError = fetchErr instanceof Error ? fetchErr : new Error(String(fetchErr));
+            modelFailed = true;
+            break;
           }
-          lastError = fetchErr instanceof Error ? fetchErr : new Error(String(fetchErr));
-          modelFailed = true;
+
+          if ((res.status === 503 || res.status === 502 || res.status === 504) && transientAttempt < MAX_TRANSIENT_RETRIES) {
+            transientAttempt++;
+            if (callerSignal?.aborted) {
+              return {
+                reply: 'Turno cancelado por el operador.',
+                cancelled: true,
+                toolTraces: toolTraces.length > 0 ? toolTraces : undefined,
+              };
+            }
+            await new Promise((r) => setTimeout(r, 900));
+            continue;
+          }
+          break;
+        }
+        if (modelFailed) {
           break;
         }
 
@@ -1470,6 +1520,9 @@ export class GeminiOrchestrator {
             lastError = new Error(`Gemini API HTTP 429 (${model}): ${errText}`);
             modelFailed = true;
             break;
+          }
+          if (res.status === 503 || res.status === 502 || res.status === 504) {
+            this.setModelCooldown(model, 30_000);
           }
           lastError = new Error(`Gemini API HTTP ${res.status} (${model}): ${errText}`);
           modelFailed = true;
