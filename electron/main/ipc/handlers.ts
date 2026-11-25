@@ -1693,8 +1693,10 @@ export function registerIpcHandlers(): void {
         `Solicitud:\n${req.prompt}`;
 
       const response = await orch.sendMessage({
-        message: composedPrompt,
+        prompt: composedPrompt,
         agentId: req.agent.id,
+        provider: req.agent.modelProvider,
+        model: req.agent.modelName,
         contextScope: {
           orderbook: req.agent.domain === 'P2P_DESK' || req.agent.domain === 'SECURITY',
           treasury: true,
@@ -1705,15 +1707,15 @@ export function registerIpcHandlers(): void {
 
       return {
         reply: response.reply ?? '',
-        modelUsed: response.usage?.model ?? req.agent.modelName,
-        providerUsed: response.usage?.provider ?? req.agent.modelProvider,
+        modelUsed: req.agent.modelName,
+        providerUsed: req.agent.modelProvider,
         toolsCalled: (response.toolTraces ?? []).map((t) => ({
-          name: t.name,
-          ok: t.ok,
-          latencyMs: t.latencyMs,
+          name: t.toolName,
+          ok: t.status === 'ok',
+          latencyMs: t.durationMs,
         })),
-        tokensIn: response.usage?.inputTokens ?? 0,
-        tokensOut: response.usage?.outputTokens ?? 0,
+        tokensIn: response.usage?.promptTokens ?? 0,
+        tokensOut: response.usage?.completionTokens ?? 0,
         costUsd: response.usage?.estimatedCostUsd ?? 0,
       };
     },
