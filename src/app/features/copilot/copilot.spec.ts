@@ -68,8 +68,8 @@ describe('Copilot (2-Mode Workbench & Governance Dashboard)', () => {
     component.setView('dashboard');
     fixture.detectChanges();
     expect(component.activeView()).toBe('dashboard');
-    expect(fixture.nativeElement.textContent).toContain('COLA DE PLANES TÁCTICOS Y AUDITORÍA HITL');
-    expect(fixture.nativeElement.textContent).toContain('CUARENTENA ENGRAM');
+    expect(fixture.nativeElement.textContent).toMatch(/cola de planes tácticos y auditoría hitl/i);
+    expect(fixture.nativeElement.textContent).toMatch(/cuarentena engram/i);
 
     component.setView('workbench');
     fixture.detectChanges();

@@ -1,10 +1,14 @@
+@use '../../shared/styles/ai-liquid-glass';
+
 .agent-platform-shell {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding: 1.25rem;
+  gap: 16px;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 12px 16px 40px;
   min-height: 100%;
-  color: #f8fafc;
+  color: var(--ai-text);
 }
 
 .platform-header {
@@ -12,56 +16,65 @@
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--ai-radius-lg);
+  background: color-mix(in srgb, var(--ai-panel) 78%, transparent);
+  border: 1px solid var(--ai-line-strong);
+  backdrop-filter: blur(var(--ai-blur)) saturate(1.45);
+  -webkit-backdrop-filter: blur(var(--ai-blur)) saturate(1.45);
+  box-shadow: var(--ai-shadow), inset 0 1px 0 color-mix(in srgb, var(--ai-text) 10%, transparent);
 }
 
 .header-title h1 {
   margin: 0;
-  font-size: 1.35rem;
-  font-weight: 700;
-  color: #f8fafc;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  color: var(--ai-text);
 }
 
 .header-title p {
-  margin: 0.2rem 0 0;
-  font-size: 0.82rem;
-  color: #94a3b8;
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  color: var(--ai-muted);
 }
 
 .header-actions {
   display: flex;
-  gap: 0.55rem;
+  gap: 8px;
 }
 
 .btn-primary {
-  background: #0284c7;
-  color: #fff;
+  background: var(--ai-accent);
+  color: var(--ai-bg-0);
   border: none;
-  border-radius: 9px;
-  padding: 0.5rem 0.95rem;
-  font-size: 0.82rem;
-  font-weight: 600;
+  border-radius: 999px;
+  padding: 7px 15px;
+  font-size: 12px;
+  font-weight: 800;
   cursor: pointer;
 }
 
 .btn-secondary {
-  background: rgba(148, 163, 184, 0.14);
-  color: #e2e8f0;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 9px;
-  padding: 0.48rem 0.85rem;
-  font-size: 0.8rem;
+  background: var(--ai-panel-2);
+  color: var(--ai-text);
+  border: 1px solid var(--ai-line-strong);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
 }
 
 .btn-danger {
-  background: #e11d48;
-  color: #fff;
-  border: none;
-  border-radius: 9px;
-  padding: 0.48rem 0.9rem;
-  font-size: 0.8rem;
-  font-weight: 600;
+  background: color-mix(in srgb, var(--ai-danger) 18%, var(--ai-panel));
+  color: var(--ai-danger);
+  border: 1px solid color-mix(in srgb, var(--ai-danger) 46%, var(--ai-line));
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -70,64 +83,71 @@
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 0.75rem;
-  background: rgba(15, 23, 42, 0.85);
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  border-radius: 12px;
-  padding: 0.8rem 1rem;
+  gap: 10px;
+  background: var(--ai-panel);
+  border: 1px solid color-mix(in srgb, var(--ai-gold) 36%, var(--ai-line));
+  border-radius: var(--ai-radius-lg);
+  padding: 12px 16px;
 }
 
 .drawer-info {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
-  font-size: 0.8rem;
+  gap: 2px;
+  font-size: 12.5px;
 }
 
 .drawer-info span {
-  font-size: 0.74rem;
-  color: #94a3b8;
+  font-size: 11.5px;
+  color: var(--ai-muted);
 }
 
 .drawer-buttons {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 8px;
   align-items: center;
 }
 
 .btn-close-drawer {
   background: transparent;
-  color: #94a3b8;
+  color: var(--ai-muted);
   border: none;
-  font-size: 0.9rem;
+  font-size: 14px;
   cursor: pointer;
-  padding: 0.25rem 0.45rem;
+  padding: 4px 8px;
 }
 
 .platform-tabs {
-  display: flex;
+  display: inline-flex;
+  align-self: flex-start;
   flex-wrap: wrap;
-  gap: 0.45rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-  padding-bottom: 0.65rem;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ai-panel-2) 84%, transparent);
+  border: 1px solid var(--ai-line);
 }
 
 .tab-btn {
-  background: rgba(15, 23, 42, 0.65);
-  color: #94a3b8;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 10px;
-  padding: 0.5rem 0.95rem;
-  font-size: 0.82rem;
+  background: transparent;
+  color: var(--ai-muted);
+  border: none;
+  border-radius: 999px;
+  padding: 7px 15px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+
+  &:hover {
+    color: var(--ai-text);
+  }
 }
 
 .tab-btn.active {
-  background: rgba(14, 165, 233, 0.2);
-  border-color: #38bdf8;
-  color: #f8fafc;
+  background: var(--ai-pill-active-bg);
+  color: var(--ai-pill-active-fg);
 }
 
 .platform-body {
@@ -137,7 +157,8 @@
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(2, 6, 23, 0.72);
+  background: color-mix(in srgb, var(--ai-bg-0) 76%, transparent);
+  backdrop-filter: blur(8px);
   display: grid;
   place-items: center;
   z-index: 1000;
@@ -145,9 +166,9 @@
 }
 
 .modal-card {
-  background: #0f172a;
-  border: 1px solid rgba(244, 63, 94, 0.35);
-  border-radius: 14px;
+  background: var(--ai-panel);
+  border: 1px solid color-mix(in srgb, var(--ai-danger) 42%, var(--ai-line));
+  border-radius: var(--ai-radius-lg);
   padding: 1.25rem;
   max-width: 420px;
   width: 100%;
@@ -161,7 +182,7 @@
 .modal-card p {
   margin: 0 0 1rem;
   font-size: 0.82rem;
-  color: #94a3b8;
+  color: var(--ai-muted);
 }
 
 .modal-actions {
