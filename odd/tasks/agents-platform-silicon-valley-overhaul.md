@@ -1,0 +1,26 @@
+# Agents Platform Silicon Valley Overhaul
+
+- Branch: `feat/p2p-decision-tool-mvp`
+- Scope: Backend SQLite ledger (`agent_runs`), unified `AgentRegistry`, real `AgentDaemonScheduler`, IPC/Preload contracts, Copilot handoff, 2 new functional agents (`ad-repricing-desk`, `treasury-macro-cfo`), and 3-view Angular 22 Agent Studio UI + tests.
+
+## Specs
+
+- **S1**: "Quiero que organicemos allí mismo la herramienta de agentes. Quiero que esa herramienta de los agentes que está dentro de la aplicación P2P quede bien organizada... que quede operativa y quede 100% bien organizada... dime lo que no sirve dentro de esa herramienta y, si hay que borrar cosas, borramos y organizamos de manera que quede 100% operativa."
+- **S2**: "trata también de organizar el dashboard de esa herramienta... Analiza que tenga un buen backend, un buen frontend y una buena UI, y que todo sea bien de alto valor, a la altura de herramientas como las de Silicon Valley."
+- **S3**: "recomiendame 2 agentes mas que sean funcionales para integrarlos y que queden operativos" — Approved additions: `ad-repricing-desk` (Mesa de Anuncios & Repricing P2P) and `treasury-macro-cfo` (Tesorero 360 & Centinela Macro BCV), wired 100% to existing `p2p-decisor` MCP tools.
+- **S4**: Real `AgentDaemonScheduler` in Electron main process with >=60s minimum interval, non-overlapping tick guard, `killswitch` interlock, per-agent daily USD cap (`daily_budget_usd`), and strict `READ-ONLY` tool restriction in background ticks; persistent `agent_runs` SQLite forensic ledger.
+- **S5**: Unify dual registries (`AgentRegistry` -> `custom_agents` single source of truth), remove dead gimmick `ux-sentinel`, replace invalid `gemini-3.7-flash` defaults with valid Nov 2026 Gemini models (`gemini-3.8-flash` / `gemini-3.5-flash-lite` / `gemini-4-argon` / `gemini-4-carbon`), and wire `/copilot?agentId=...&mention=...` queryParams.
+- **S6**: "ok implementa todo y dejalo operativo y funcional deja todo listo commiteado y haz push y deja limpia la rama" — Rebuild `src/app/features/agent-studio/` into 3 views (Fleet Dashboard, Studio + Live Sandbox, Forensic Runs Ledger with CSV export), fix in-place Angular Signal mutations, add `FINANCE_360` category & `READ-ONLY`/`HITL` badges, pass build + full Electron & Angular test suites, commit in clean work units, push, and leave working tree clean.
+
+## Tasks
+
+- [x] **T1** (S1, S3, S4, S5 | inline): Upgrade SQLite schema (`agent_runs`, budget/domain/max_steps/prompt_version columns), unify `AgentRegistry` onto `custom_agents`, remove `ux-sentinel`, add `ad-repricing-desk` & `treasury-macro-cfo`, fix invalid model defaults, build `AgentDaemonScheduler` + Electron unit tests. Commit: `448a311`
+- [x] **T2** (S1, S4, S5 | inline): Wire IPC channels (`agents:run-sandbox`, `agents:run-now`, `agents:list-runs`, `agents:get-fleet-metrics`, `agents:get-daemon-status`, push `agents:run-event`) in `shared/types.ts`, `ipc/handlers.ts`, `preload/api.ts`, and `AgentStudioService`; wire Copilot `ActivatedRoute.queryParams` (`agentId`, `mention`). Commit: `448a311` + UI slice
+- [x] **T3** (S1, S2, S6 | inline): Rebuild `src/app/features/agent-studio/` into 3 modular views (`AgentFleetDashboardComponent`, `AgentStudioSandboxComponent`, `AgentRunsLedgerComponent`), fix Signal mutations (`form.update`), add `FINANCE_360` + `READ-ONLY`/`HITL` badges, CSV export, and `agent-studio.component.spec.ts` + `e2e/web/agent-studio.spec.ts`. Commit: UI slice
+- [x] **T4** (S6 | inline): Run full verification (`npm run build`, `npm run validate:all` — 28/28 files / 312/312 Electron tests, 17/17 Angular unit tests), commit final slice, push `feat/p2p-decision-tool-mvp`, and verify clean git status. Commit: UI slice
+
+## Log
+
+- **L1**: "Quiero que organicemos allí mismo la herramienta de agentes. Quiero que esa herramienta de los agentes que está dentro de la aplicación P2P quede bien organizada. Dame una serie de recomendaciones y dame una serie de planificación con respecto a esa herramienta. Vamos a buscar la manera de que quede operativa y quede 100% bien organizada. Busca cómo hacerla de alto nivel, que esté a la altura de herramientas similares de alto valor. Trabaja como un ingeniero de software y un programador de ingeniería a gran escala con más de 10 años de experiencia. No me vendas humo, dime lo que no sirve dentro de esa herramienta y, si hay que borrar cosas, borramos y organizamos de manera que quede 100% operativa. Otra cosa, trata también de organizar el dashboard de esa herramienta y pásame las fotos de cómo va a quedar el nuevo dashboard. Analiza que tenga un buen backend, un buen frontend y una buena UI, y que todo sea bien de alto valor, a la altura de herramientas como las de Silicon Valley. No escatimes en proyectar una herramienta a gran escala. Dame una planificación para implementarla en tiempo real y no te olvides de mostrarme las fotos de cómo va a quedar la nueva herramienta con el dashboard integrado nuevo."
+- **L2**: "si hazlo pero antes recomiendame 2 agentes mas que sean funcionales para integrarlos y que queden operativos" -> Recommended `ad-repricing-desk` and `treasury-macro-cfo`.
+- **L3**: "ok implementa todo y dejalo operativo y funcional deja todo listo commiteado y haz push y deja limpia la rama"

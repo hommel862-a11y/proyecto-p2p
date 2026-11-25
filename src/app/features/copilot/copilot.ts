@@ -12,7 +12,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import type {
   CopilotContextScope,
   CopilotStreamEvent,
@@ -58,6 +58,7 @@ import type {
 export class Copilot implements OnInit, OnDestroy {
   private readonly sanitizer = inject(DomSanitizer);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   readonly voiceService = inject(VoiceSpeechService);
   readonly accountsService = inject(AccountsService);
   readonly triangulationService = inject(TriangulationIntelligenceService);
@@ -219,6 +220,7 @@ export class Copilot implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.scrubLegacyPlaintextKeys();
     this.bindIpcPushListeners();
+    this.applyIncomingAgentQueryParams();
     void this.loadInitialState();
 
     this.refreshTimer = setInterval(() => {
@@ -278,6 +280,21 @@ export class Copilot implements OnInit, OnDestroy {
 
   navigateTo(path: string): void {
     void this.router.navigateByUrl(path);
+  }
+
+  private applyIncomingAgentQueryParams(): void {
+    const qp = this.route.snapshot?.queryParamMap;
+    if (!qp) return;
+    const agentId = qp.get('agentId')?.trim();
+    const mention = qp.get('mention')?.trim();
+    if (agentId) {
+      this.selectedAgentId.set(agentId);
+      this.activeView.set('workbench');
+    }
+    if (mention && !this.userInput().trim()) {
+      this.userInput.set(`${mention} `);
+      setTimeout(() => this.chatInputField?.nativeElement?.focus(), 80);
+    }
   }
 
   toggleContextScope(key: keyof CopilotContextScope): void {

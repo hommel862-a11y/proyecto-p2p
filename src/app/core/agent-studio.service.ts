@@ -1,16 +1,44 @@
 import { Injectable, signal, computed, inject } from '@angular/core';
 import type {
-  CustomAgentDto,
+  AgentDomainDto,
+  AgentFleetMetricsDto,
+  AgentRunDto,
+  AgentRunFilterDto,
   CreateCustomAgentDto,
+  CustomAgentDto,
+  DaemonSchedulerStatusDto,
   UpdateCustomAgentDto,
 } from '../../../electron/shared/types';
 import { ToastService } from './toast.service';
+
+export type SkillRiskTier = 'READ_ONLY' | 'HITL';
+
+export const HITL_SKILL_IDS: ReadonlySet<string> = new Set([
+  'publish_ad_price',
+  'toggle_ad_status',
+  'trigger_killswitch',
+  'dispatch_order_instructions',
+  'register_blacklisted_entity',
+  'add_operation_entry',
+  'execute_browser_operator_task',
+  'send_whatsapp_template',
+  'book_appointment',
+  'create_or_submit_quote',
+  'transition_pipeline_stage',
+  'update_lead_bant_and_profile',
+  'send_multichannel_alert',
+]);
+
+export function getSkillRiskTier(skillId: string): SkillRiskTier {
+  return HITL_SKILL_IDS.has(skillId) ? 'HITL' : 'READ_ONLY';
+}
 
 export interface McpSkillCatalogItem {
   id: string;
   name: string;
   category: 'TRADING' | 'RIESGO' | 'SEGURIDAD' | 'CONCILIACION' | 'ARM_CRM' | 'FINANCE_360';
   description: string;
+  riskTier?: SkillRiskTier;
 }
 
 export const MCP_SKILL_CATALOG: readonly McpSkillCatalogItem[] = [
@@ -68,6 +96,44 @@ export const MCP_SKILL_CATALOG: readonly McpSkillCatalogItem[] = [
     name: 'Spread Multi-Exchange',
     category: 'TRADING',
     description: 'Analiza diferenciales de precios entre Binance, Bybit y El Dorado para arbitraje cruzado.',
+  },
+  {
+    id: 'audit_ad_competitiveness',
+    name: 'Auditoría de Competitividad de Anuncios',
+    category: 'TRADING',
+    description: 'Evalúa posición Top-3 de tus anuncios P2P activos frente a la competencia y margen neto.',
+  },
+  {
+    id: 'evaluate_ad_repricing',
+    name: 'Evaluación de Repricing de Anuncio',
+    category: 'TRADING',
+    description: 'Calcula el precio óptimo de repricing respetando piso mínimo de spread neto (>= 0.50%).',
+  },
+  {
+    id: 'publish_ad_price',
+    name: 'Publicar Precio de Anuncio (HITL)',
+    category: 'TRADING',
+    description: 'Actualiza el precio en vivo de un anuncio P2P. Bloqueada en background; requiere aprobación humana.',
+    riskTier: 'HITL',
+  },
+  {
+    id: 'toggle_ad_status',
+    name: 'Pausar / Activar Anuncio P2P (HITL)',
+    category: 'TRADING',
+    description: 'Cambia el estado online/offline de un anuncio en Binance P2P bajo confirmación HITL.',
+    riskTier: 'HITL',
+  },
+  {
+    id: 'check_bcv_intervention_window',
+    name: 'Ventana de Intervención BCV',
+    category: 'TRADING',
+    description: 'Detecta ventanas probables de inyección cambiaria del BCV para proteger inventario en VES.',
+  },
+  {
+    id: 'predict_bcv_macro_regime',
+    name: 'Régimen Macro BCV / Brecha',
+    category: 'TRADING',
+    description: 'Clasifica el régimen cambiario actual (estable, compresión o expansión de brecha) con datos en vivo.',
   },
 
   // RIESGO & COMPLIANCE
@@ -283,6 +349,20 @@ export const MCP_SKILL_CATALOG: readonly McpSkillCatalogItem[] = [
     description:
       'Identifica pasivos y cuotas Cashea vencidas o próximas a vencer, proyecta runway operativo y detecta riesgo de quiebre de caja.',
   },
+  {
+    id: 'optimize_treasury_idle_yield',
+    name: 'Optimización de Capital Ocioso (Yield)',
+    category: 'FINANCE_360',
+    description:
+      'Calcula asignaciones de liquidez ociosa entre bóvedas operativas y Simple Earn sin comprometer rotación P2P.',
+  },
+  {
+    id: 'rebalance_capital_allocation',
+    name: 'Rebalanceo de Capital Multi-Mesa',
+    category: 'FINANCE_360',
+    description:
+      'Propone distribución óptima de capital entre USDT, VES y reservas Pyme según spread y exposición.',
+  },
 ];
 
 export const FINANCE_360_SPECIALIST_PRESETS: readonly CreateCustomAgentDto[] = [
@@ -294,7 +374,7 @@ export const FINANCE_360_SPECIALIST_PRESETS: readonly CreateCustomAgentDto[] = [
     systemPrompt:
       'Eres el CFO Virtual y Tesorero de Finanzas 360. Audita liquidez a 14 días, supervisa vencimientos Cashea y preserva la integridad contable de bóvedas y 3 gavetas.',
     modelProvider: 'gemini',
-    modelName: 'gemini-3.7-flash',
+    modelName: 'gemini-3.8-flash',
     temperature: 0.1,
     isActive: true,
     executionMode: 'on_demand',
@@ -314,7 +394,7 @@ export const FINANCE_360_SPECIALIST_PRESETS: readonly CreateCustomAgentDto[] = [
     systemPrompt:
       'Eres el Arquitecto de Presupuestos 360. Verifica stock y gavetas antes de cotizar, aplica merma técnica y protege el anticipo del 100% de materiales.',
     modelProvider: 'gemini',
-    modelName: 'gemini-3.7-flash',
+    modelName: 'gemini-3.8-flash',
     temperature: 0.1,
     isActive: true,
     executionMode: 'on_demand',
@@ -328,7 +408,7 @@ export const FINANCE_360_SPECIALIST_PRESETS: readonly CreateCustomAgentDto[] = [
     systemPrompt:
       'Eres el Agente de Nómina y Gaveta 2. Verifica fondos disponibles para nómina y vencimientos operativos próximos sin vulnerar la Gaveta 1 de proveedores.',
     modelProvider: 'gemini',
-    modelName: 'gemini-3.7-flash',
+    modelName: 'gemini-3.8-flash',
     temperature: 0.1,
     isActive: true,
     executionMode: 'on_demand',
@@ -342,7 +422,7 @@ export const FINANCE_360_SPECIALIST_PRESETS: readonly CreateCustomAgentDto[] = [
     systemPrompt:
       'Eres el Agente de Proveedores CxP y Gaveta 1. Prioriza compromisos de reposición de mercancía y garantiza solvencia antes de autorizar desembolsos.',
     modelProvider: 'gemini',
-    modelName: 'gemini-3.7-flash',
+    modelName: 'gemini-3.8-flash',
     temperature: 0.1,
     isActive: true,
     executionMode: 'on_demand',
@@ -356,7 +436,7 @@ export const FINANCE_360_SPECIALIST_PRESETS: readonly CreateCustomAgentDto[] = [
     systemPrompt:
       'Eres el Agente de Inventario y Mercancía Fría. Identifica SKUs inmovilizados por más de 45 días y suministra costos reales de reposición a cotizaciones.',
     modelProvider: 'gemini',
-    modelName: 'gemini-3.7-flash',
+    modelName: 'gemini-3.8-flash',
     temperature: 0.1,
     isActive: true,
     executionMode: 'on_demand',
@@ -370,7 +450,7 @@ export const FINANCE_360_SPECIALIST_PRESETS: readonly CreateCustomAgentDto[] = [
     systemPrompt:
       'Eres el Agente de Utilidad, CAPEX y Cashea Aliado. Evalúa márgenes descontando MDR, adelanto semanal y brecha de reposición cambiaria sin recargos al cliente.',
     modelProvider: 'gemini',
-    modelName: 'gemini-3.7-flash',
+    modelName: 'gemini-3.8-flash',
     temperature: 0.1,
     isActive: true,
     executionMode: 'on_demand',
@@ -391,18 +471,34 @@ export class AgentStudioService {
   private readonly _agents = signal<CustomAgentDto[]>([]);
   private readonly _loading = signal<boolean>(false);
   private readonly _filterMode = signal<'all' | 'on_demand' | 'ambient_daemon'>('all');
+  private readonly _filterDomain = signal<'all' | AgentDomainDto>('all');
   private readonly _searchQuery = signal<string>('');
+  private readonly _runs = signal<AgentRunDto[]>([]);
+  private readonly _fleetMetrics = signal<AgentFleetMetricsDto | null>(null);
+  private readonly _daemonStatus = signal<DaemonSchedulerStatusDto | null>(null);
+  private readonly _runningSandbox = signal<boolean>(false);
+  private readonly _lastSandboxRun = signal<AgentRunDto | null>(null);
 
   readonly agents = computed(() => this._agents());
   readonly loading = computed(() => this._loading());
   readonly filterMode = computed(() => this._filterMode());
+  readonly filterDomain = computed(() => this._filterDomain());
   readonly searchQuery = computed(() => this._searchQuery());
+  readonly runs = computed(() => this._runs());
+  readonly fleetMetrics = computed(() => this._fleetMetrics());
+  readonly daemonStatus = computed(() => this._daemonStatus());
+  readonly runningSandbox = computed(() => this._runningSandbox());
+  readonly lastSandboxRun = computed(() => this._lastSandboxRun());
 
   readonly filteredAgents = computed(() => {
     let list = this._agents();
     const mode = this._filterMode();
     if (mode !== 'all') {
       list = list.filter((a) => a.executionMode === mode);
+    }
+    const domain = this._filterDomain();
+    if (domain !== 'all') {
+      list = list.filter((a) => (a.domain ?? 'P2P_DESK') === domain);
     }
     const query = this._searchQuery().trim().toLowerCase();
     if (query) {
@@ -425,14 +521,153 @@ export class AgentStudioService {
 
   constructor() {
     void this.loadAgents();
+    void this.loadFleetTelemetry();
+    if (typeof window !== 'undefined' && window.electron?.agents?.onRunEvent) {
+      window.electron.agents.onRunEvent((event) => {
+        if (event.status) {
+          this._daemonStatus.set(event.status);
+        }
+        if (event.run) {
+          this._runs.update((prev) => {
+            const idx = prev.findIndex((r) => r.id === event.run!.id);
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = event.run!;
+              return next;
+            }
+            return [event.run!, ...prev].slice(0, 200);
+          });
+          if (event.type === 'run_completed') {
+            void this.loadFleetTelemetry();
+          }
+        }
+      });
+    }
   }
 
   setFilterMode(mode: 'all' | 'on_demand' | 'ambient_daemon'): void {
     this._filterMode.set(mode);
   }
 
+  setFilterDomain(domain: 'all' | AgentDomainDto): void {
+    this._filterDomain.set(domain);
+  }
+
   setSearchQuery(query: string): void {
     this._searchQuery.set(query);
+  }
+
+  async loadFleetTelemetry(filter?: AgentRunFilterDto): Promise<void> {
+    if (typeof window === 'undefined' || !window.electron?.agents) return;
+    const api = window.electron.agents;
+    try {
+      const [runs, metrics, daemonStatus] = await Promise.all([
+        api.listRuns ? api.listRuns({ limit: 150, ...filter }) : Promise.resolve([]),
+        api.getFleetMetrics ? api.getFleetMetrics() : Promise.resolve(null),
+        api.getDaemonStatus ? api.getDaemonStatus() : Promise.resolve(null),
+      ]);
+      this._runs.set(runs);
+      if (metrics) this._fleetMetrics.set(metrics);
+      if (daemonStatus) this._daemonStatus.set(daemonStatus);
+    } catch {
+      // Telemetry refresh is best-effort
+    }
+  }
+
+  async runSandbox(params: {
+    agentId: string;
+    prompt: string;
+    overrideSystemPrompt?: string;
+    overrideSkills?: string[];
+    overrideModel?: string;
+  }): Promise<AgentRunDto | null> {
+    this._runningSandbox.set(true);
+    try {
+      if (typeof window !== 'undefined' && window.electron?.agents?.runSandbox) {
+        const run = await window.electron.agents.runSandbox(params);
+        this._lastSandboxRun.set(run);
+        await this.loadFleetTelemetry();
+        if (run.status === 'success') {
+          this.toast.success(`Sandbox completado (${run.latencyMs} ms).`);
+        } else if (run.status === 'blocked_killswitch' || run.status === 'blocked_budget') {
+          this.toast.warn(run.errorMessage ?? `Ejecución bloqueada (${run.status}).`);
+        } else {
+          this.toast.error(run.errorMessage ?? 'Error durante ejecución en Sandbox.');
+        }
+        return run;
+      }
+      this.toast.warn('Sandbox en vivo requiere el runtime de escritorio Electron.');
+      return null;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al ejecutar Sandbox';
+      this.toast.error(msg);
+      return null;
+    } finally {
+      this._runningSandbox.set(false);
+    }
+  }
+
+  async runNow(agentId: string, promptOverride?: string): Promise<AgentRunDto | null> {
+    try {
+      if (typeof window !== 'undefined' && window.electron?.agents?.runNow) {
+        const run = await window.electron.agents.runNow({ agentId, promptOverride });
+        await this.loadFleetTelemetry();
+        if (run.status === 'success') {
+          this.toast.success(`Tick manual ejecutado (${run.latencyMs} ms).`);
+        } else {
+          this.toast.warn(run.errorMessage ?? `Estado de ejecución: ${run.status}`);
+        }
+        return run;
+      }
+      this.toast.warn('La ejecución manual requiere el runtime de escritorio Electron.');
+      return null;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al ejecutar tick manual';
+      this.toast.error(msg);
+      return null;
+    }
+  }
+
+  exportRunsCsv(runsList: AgentRunDto[] = this._runs()): string {
+    const headers = [
+      'id',
+      'agent_id',
+      'agent_name',
+      'trigger_type',
+      'status',
+      'model_used',
+      'tokens_in',
+      'tokens_out',
+      'cost_usd',
+      'latency_ms',
+      'tools_called',
+      'started_at',
+      'error_message',
+    ];
+    const escape = (v: unknown): string => {
+      const s = String(v ?? '').replace(/"/g, '""');
+      return `"${s}"`;
+    };
+    const rows = runsList.map((r) =>
+      [
+        r.id,
+        r.agentId,
+        r.agentName ?? r.agentId,
+        r.triggerType,
+        r.status,
+        r.modelUsed,
+        r.tokensIn,
+        r.tokensOut,
+        r.costUsd.toFixed(6),
+        r.latencyMs,
+        r.toolsCalled.map((t) => t.name).join('|'),
+        new Date(r.startedAt).toISOString(),
+        r.errorMessage ?? '',
+      ]
+        .map(escape)
+        .join(','),
+    );
+    return [headers.join(','), ...rows].join('\n');
   }
 
   async loadAgents(): Promise<void> {
