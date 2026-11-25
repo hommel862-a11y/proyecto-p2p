@@ -231,12 +231,17 @@ export class UniversalAiGateway {
         if (msg.content) parts.push({ text: msg.content });
         if (msg.toolCalls && msg.toolCalls.length > 0) {
           for (const tc of msg.toolCalls) {
-            parts.push({
+            const fcPart: Record<string, unknown> = {
               functionCall: {
                 name: tc.name,
                 args: tc.args,
               },
-            });
+            };
+            const sig = (tc as { thoughtSignature?: string }).thoughtSignature;
+            if (sig) {
+              fcPart['thoughtSignature'] = sig;
+            }
+            parts.push(fcPart);
           }
         }
         contents.push({ role: 'model', parts });
@@ -329,6 +334,9 @@ export class UniversalAiGateway {
         content?: {
           parts?: {
             text?: string;
+            thought?: boolean;
+            thoughtSignature?: string;
+            thought_signature?: string;
             functionCall?: { name: string; args: Record<string, unknown> };
           }[];
         };
@@ -346,13 +354,17 @@ export class UniversalAiGateway {
 
     const firstCandidate = data.candidates?.[0];
     const parts = firstCandidate?.content?.parts || [];
-    const textPart = parts.find((p) => p.text);
+    const textPart = parts.find((p) => p.text && !p.thought) ?? parts.find((p) => p.text);
     const functionCalls = parts
       .filter((p) => p.functionCall && p.functionCall.name)
-      .map((p) => ({
-        name: p.functionCall!.name,
-        args: p.functionCall!.args || {},
-      }));
+      .map((p) => {
+        const sig = p.thoughtSignature ?? p.thought_signature;
+        return {
+          name: p.functionCall!.name,
+          args: p.functionCall!.args || {},
+          ...(sig ? { thoughtSignature: sig } : {}),
+        };
+      });
 
     const groundingMeta = firstCandidate?.groundingMetadata;
     const sources: GroundingSource[] = [];

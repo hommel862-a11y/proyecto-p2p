@@ -1532,10 +1532,14 @@ export class GeminiOrchestrator {
         const data = (await res.json()) as {
           candidates?: {
             content?: {
-              parts?: {
+              parts?: Array<{
                 text?: string;
+                thought?: boolean;
+                thoughtSignature?: string;
+                thought_signature?: string;
                 functionCall?: { name: string; args: Record<string, unknown> };
-              }[];
+                [key: string]: unknown;
+              }>;
             };
             groundingMetadata?: {
               groundingChunks?: { web?: { uri?: string; title?: string } }[];
@@ -1554,7 +1558,7 @@ export class GeminiOrchestrator {
         const firstCandidate = data.candidates?.[0];
         const parts = firstCandidate?.content?.parts || [];
         const functionCallParts = parts.filter((p) => p.functionCall && p.functionCall.name);
-        const textPart = parts.find((p) => p.text);
+        const textPart = parts.find((p) => p.text && !p.thought) ?? parts.find((p) => p.text);
 
         const groundingMeta = firstCandidate?.groundingMetadata;
         if (groundingMeta?.groundingChunks && Array.isArray(groundingMeta.groundingChunks)) {
@@ -1605,11 +1609,11 @@ export class GeminiOrchestrator {
           };
         }
 
+        // Preserve the EXACT model parts verbatim (including `thoughtSignature` / `thought` parts)
+        // required by Gemini 3.x / 4.x thinking models on multi-step tool calls.
         conversationContents.push({
           role: 'model',
-          parts: functionCallParts.map((p) => ({
-            functionCall: p.functionCall,
-          })),
+          parts: parts.map((p) => ({ ...p })),
         });
 
         const toolResponseParts: {
