@@ -33,9 +33,20 @@
     </div>
 
     <div class="ribbon-metrics">
-      <span class="metric-pill" [class.pill-live]="liveParallelRate() !== null">
-        {{ liveParallelRate() !== null ? 'FEED LIVE' : 'SIN FEED' }}
-      </span>
+      <button
+        type="button"
+        class="metric-pill"
+        [class.pill-live]="liveParallelRate() !== null"
+        [disabled]="isSyncingFeed()"
+        [title]="feedSyncError() ? 'Error feed: ' + feedSyncError() + ' (clic para reintentar)' : 'Clic para sincronizar Binance P2P, Paralelo y BCV en vivo'"
+        (click)="syncLiveMarketFeed()"
+      >
+        @if (isSyncingFeed()) {
+          ↻ SINCRONIZANDO...
+        } @else {
+          {{ liveParallelRate() !== null ? '● FEED LIVE' : '↻ SIN FEED' }}
+        }
+      </button>
       <span class="metric-pill mono">
         Paralelo: {{ liveParallelRate() !== null ? (liveParallelRate()! | number: '1.2-2') + ' VES' : 'SIN DATO' }}
       </span>

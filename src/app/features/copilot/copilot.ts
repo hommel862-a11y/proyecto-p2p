@@ -170,6 +170,11 @@ export class Copilot implements OnInit, OnDestroy {
   });
 
   // Real Market & Treasury Telemetry (Zero-Seed)
+  readonly isSyncingFeed = computed(() => this.triangulationService.isSyncingMarket());
+  readonly feedLastSync = computed(() => this.triangulationService.lastSyncTimestamp());
+  readonly feedSyncError = signal<string | null>(null);
+  private feedRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
   readonly liveParallelRate = computed<number | null>(() => {
     const snap = this.triangulationService.liveRates();
     const parallel =
@@ -222,14 +227,20 @@ export class Copilot implements OnInit, OnDestroy {
     this.bindIpcPushListeners();
     this.applyIncomingAgentQueryParams();
     void this.loadInitialState();
+    void this.syncLiveMarketFeed();
 
     this.refreshTimer = setInterval(() => {
       void this.refreshOperationalData();
     }, 15_000);
+
+    this.feedRefreshTimer = setInterval(() => {
+      void this.syncLiveMarketFeed();
+    }, 30_000);
   }
 
   ngOnDestroy(): void {
     if (this.refreshTimer) clearInterval(this.refreshTimer);
+    if (this.feedRefreshTimer) clearInterval(this.feedRefreshTimer);
     if (this.killSwitchTimer) clearInterval(this.killSwitchTimer);
     for (const unsub of this.unsubscribers) {
       try {
@@ -280,6 +291,30 @@ export class Copilot implements OnInit, OnDestroy {
 
   navigateTo(path: string): void {
     void this.router.navigateByUrl(path);
+  }
+
+  async syncLiveMarketFeed(): Promise<void> {
+    if (typeof this.triangulationService.fetchLiveMarketRates !== 'function') return;
+    this.feedSyncError.set(null);
+    try {
+      const snap = await this.triangulationService.fetchLiveMarketRates();
+      const hasParallel = snap.parallelAvg.status === 'live' || snap.binanceVesSell.status === 'live';
+      const hasBcv = snap.bcvUsd.status === 'live';
+      if (!hasParallel && !hasBcv) {
+        this.feedSyncError.set(
+          snap.bcvUsd.unavailableReason ?? snap.binanceVesSell.unavailableReason ?? 'Sin respuesta de API',
+        );
+      }
+      // Keep Electron main treasury snapshot synchronized
+      const win = window as unknown as {
+        electron?: { treasury?: { syncSnapshot?: (s: TreasurySnapshot) => Promise<unknown> } };
+      };
+      if (win.electron?.treasury?.syncSnapshot) {
+        await win.electron.treasury.syncSnapshot(this.accountsService.buildTreasurySnapshot());
+      }
+    } catch (err: unknown) {
+      this.feedSyncError.set(err instanceof Error ? err.message : 'Error al sincronizar feed');
+    }
   }
 
   private applyIncomingAgentQueryParams(): void {
