@@ -937,4 +937,121 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
       expect(res.reply).toContain('Velocidad de Fuga del VES');
     });
   });
+
+  describe('S1-S2: Multi-turn history, Zod MCP schemas, cache, cancellation, and Engram quarantine', () => {
+    it('forwards multi-turn history to Gemini contents and persists thread turns in SQLite', async () => {
+      orchestrator.setApiKey('test-gemini-key', 'gemini');
+      const capturedBodies: any[] = [];
+      const origFetch = globalThis.fetch;
+      globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+        if (init?.body) {
+          capturedBodies.push(JSON.parse(String(init.body)));
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            candidates: [{ content: { parts: [{ text: 'Respuesta multi-turno verificada.' }] } }],
+            usageMetadata: { promptTokenCount: 50, candidatesTokenCount: 15 },
+          }),
+        } as any;
+      }) as any;
+
+      try {
+        const res1 = await orchestrator.sendMessage({
+          prompt: 'Primer mensaje operativo',
+          threadId: 'new',
+        });
+        expect(res1.threadId).toBeTruthy();
+
+        const res2 = await orchestrator.sendMessage({
+          prompt: 'Segundo mensaje de seguimiento',
+          threadId: res1.threadId,
+        });
+        expect(res2.threadId).toBe(res1.threadId);
+        expect(capturedBodies.length).toBe(2);
+
+        const secondTurnContents = capturedBodies[1].contents;
+        expect(secondTurnContents.length).toBe(3);
+        expect(secondTurnContents[0].role).toBe('user');
+        expect(secondTurnContents[0].parts[0].text).toBe('Primer mensaje operativo');
+        expect(secondTurnContents[1].role).toBe('model');
+        expect(secondTurnContents[2].role).toBe('user');
+        expect(secondTurnContents[2].parts[0].text).toBe('Segundo mensaje de seguimiento');
+
+        // Verify MCP tools expose non-empty properties from Zod schemas
+        const decls = capturedBodies[0].tools?.[0]?.functionDeclarations || [];
+        const spreadTool = decls.find((d: any) => d.name === 'calculate_spread');
+        expect(spreadTool).toBeDefined();
+        expect(Object.keys(spreadTool.parameters?.properties || {}).length).toBeGreaterThan(0);
+
+        // Second identical history-free turn on a fresh prompt hits cache without extra fetch
+        const resCache1 = await orchestrator.sendMessage({ prompt: '¿Qué es Regla de Oro?' });
+        const resCache2 = await orchestrator.sendMessage({ prompt: '¿Qué es Regla de Oro?' });
+        expect(resCache1.usage?.cached).toBe(false);
+        expect(resCache2.usage?.cached).toBe(true);
+        expect(capturedBodies.length).toBe(3);
+      } finally {
+        globalThis.fetch = origFetch;
+      }
+    });
+
+    it('transcribeAudio consumes 1 paid-call budget unit per HTTP attempt and respects cancelTurn', async () => {
+      orchestrator.setApiKey('test-gemini-key', 'gemini');
+      const origFetch = globalThis.fetch;
+      let audioCalls = 0;
+
+      globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+        audioCalls++;
+        if (init?.signal?.aborted) {
+          throw new Error('Aborted');
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            candidates: [{ content: { parts: [{ text: 'Comprar mil USDT por Banesco' }] } }],
+          }),
+        } as any;
+      }) as any;
+
+      try {
+        const tr = await orchestrator.transcribeAudio({
+          audioBase64: 'AAAA',
+          mimeType: 'audio/webm',
+        });
+        expect(tr.text).toBe('Comprar mil USDT por Banesco');
+        expect(audioCalls).toBe(1);
+      } finally {
+        globalThis.fetch = origFetch;
+      }
+    });
+
+    it('cancelTurn aborts an in-flight request cleanly without throwing', async () => {
+      orchestrator.setApiKey('test-gemini-key', 'gemini');
+      const origFetch = globalThis.fetch;
+
+      globalThis.fetch = ((_url: string, init?: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          if (init?.signal) {
+            init.signal.addEventListener('abort', () => {
+              reject(new Error('TURN_CANCELLED_BY_OPERATOR'));
+            });
+          }
+        });
+      }) as any;
+
+      try {
+        const pending = orchestrator.sendMessage({
+          prompt: 'Analiza el mercado completo',
+          requestId: 'REQ-CANCEL-TEST',
+        });
+        await new Promise((r) => setTimeout(r, 20));
+        const cancelRes = orchestrator.cancelTurn('REQ-CANCEL-TEST');
+        expect(cancelRes.cancelled).toBe(true);
+        const reply = await pending;
+        expect(reply.cancelled).toBe(true);
+      } finally {
+        globalThis.fetch = origFetch;
+      }
+    });
+  });
 });

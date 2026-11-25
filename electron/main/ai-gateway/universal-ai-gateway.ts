@@ -19,7 +19,7 @@ import type {
 } from './types';
 
 export const DEFAULT_PROVIDER_MODELS: Record<AiProviderType, string> = {
-  gemini: 'gemini-3.7-flash',
+  gemini: 'gemini-3.8-flash',
   openai: 'gpt-4o',
   anthropic: 'claude-3-5-sonnet-20241022',
   deepseek: 'deepseek-chat',
@@ -28,6 +28,14 @@ export const DEFAULT_PROVIDER_MODELS: Record<AiProviderType, string> = {
 };
 
 export class UniversalAiGateway {
+  private buildFetchSignal(callerSignal?: AbortSignal, timeoutMs = 30_000): AbortSignal {
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    if (callerSignal && typeof AbortSignal.any === 'function') {
+      return AbortSignal.any([timeoutSignal, callerSignal]);
+    }
+    return callerSignal ?? timeoutSignal;
+  }
+
   /**
    * Dispatches a single chat completion step to the configured AI provider.
    */
@@ -37,7 +45,7 @@ export class UniversalAiGateway {
     tools: UniversalToolDefinition[] = [],
   ): Promise<AiCompletionResult> {
     const provider = config.provider;
-    const model = config.model || DEFAULT_PROVIDER_MODELS[provider] || 'gemini-flash-latest';
+    const model = config.model || DEFAULT_PROVIDER_MODELS[provider] || 'gemini-3.8-flash';
 
     switch (provider) {
       case 'gemini':
@@ -48,6 +56,7 @@ export class UniversalAiGateway {
           tools,
           config.temperature,
           config.enableGoogleSearch,
+          config.signal,
         );
       case 'openai':
       case 'deepseek':
@@ -55,7 +64,14 @@ export class UniversalAiGateway {
       case 'openrouter':
         return this.completeOpenAiCompatible(provider, config.apiKey, model, messages, tools, config);
       case 'anthropic':
-        return this.completeAnthropic(config.apiKey, model, messages, tools, config.temperature);
+        return this.completeAnthropic(
+          config.apiKey,
+          model,
+          messages,
+          tools,
+          config.temperature,
+          config.signal,
+        );
       default:
         throw new Error(`Proveedor de IA no reconocido: ${provider}`);
     }
@@ -74,13 +90,14 @@ export class UniversalAiGateway {
 
     try {
       if (provider === 'gemini') {
-        const url = 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1';
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(effectiveModel)}`;
         const res = await fetch(url, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
             'x-goog-api-key': apiKey,
           },
+          signal: this.buildFetchSignal(undefined, 12_000),
         });
         if (res.ok) {
           return {
@@ -185,6 +202,7 @@ export class UniversalAiGateway {
     tools: UniversalToolDefinition[],
     temperature = 0.2,
     enableGoogleSearch = true,
+    callerSignal?: AbortSignal,
   ): Promise<AiCompletionResult> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
@@ -284,6 +302,7 @@ export class UniversalAiGateway {
         'x-goog-api-key': apiKey,
       },
       body: JSON.stringify(body),
+      signal: this.buildFetchSignal(callerSignal, 30_000),
     });
 
     if (!res.ok && functionDeclarations.length > 0) {
@@ -296,6 +315,7 @@ export class UniversalAiGateway {
           'x-goog-api-key': apiKey,
         },
         body: JSON.stringify(body),
+        signal: this.buildFetchSignal(callerSignal, 30_000),
       });
     }
 
@@ -440,6 +460,7 @@ export class UniversalAiGateway {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(body),
+      signal: this.buildFetchSignal(config.signal, 30_000),
     });
 
     if (!res.ok) {
@@ -506,6 +527,7 @@ export class UniversalAiGateway {
     messages: ChatMessage[],
     tools: UniversalToolDefinition[],
     temperature = 0.2,
+    callerSignal?: AbortSignal,
   ): Promise<AiCompletionResult> {
     const url = 'https://api.anthropic.com/v1/messages';
 
@@ -576,6 +598,7 @@ export class UniversalAiGateway {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify(body),
+      signal: this.buildFetchSignal(callerSignal, 30_000),
     });
 
     if (!res.ok) {

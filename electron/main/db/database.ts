@@ -3,7 +3,16 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { app } from 'electron';
-import type { FsmOrderContext, P2POrderState } from '../../shared/types';
+import type {
+  CopilotThreadDto,
+  CopilotThreadMessageDto,
+  CopilotUsageSummaryDto,
+  EngramReviewResult,
+  FsmOrderContext,
+  P2POrderState,
+  ProvenanceMetadata,
+  ToolCallTrace,
+} from '../../shared/types';
 import {
   SqliteDecisionJournalRepository,
   purgeMarketSnapshotsBefore,
@@ -411,7 +420,7 @@ export class P2PDatabaseService {
         description TEXT,
         system_prompt TEXT NOT NULL,
         model_provider TEXT NOT NULL DEFAULT 'gemini',
-        model_name TEXT NOT NULL DEFAULT 'gemini-3.7-flash',
+        model_name TEXT NOT NULL DEFAULT 'gemini-3.8-flash',
         temperature REAL NOT NULL DEFAULT 0.1,
         is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
         execution_mode TEXT NOT NULL DEFAULT 'on_demand' CHECK (execution_mode IN ('on_demand', 'ambient_daemon')),
@@ -429,6 +438,47 @@ export class P2PDatabaseService {
         PRIMARY KEY (agent_id, skill_id)
       );
       CREATE INDEX IF NOT EXISTS idx_custom_agent_skills_agent ON custom_agent_skills(agent_id);
+
+      CREATE TABLE IF NOT EXISTS copilot_threads (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        agent_id TEXT,
+        pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_copilot_threads_updated ON copilot_threads(pinned DESC, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS copilot_messages (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL REFERENCES copilot_threads(id) ON DELETE CASCADE,
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+        content TEXT NOT NULL,
+        model TEXT,
+        provider TEXT,
+        provenance_json TEXT,
+        tool_traces_json TEXT,
+        plan_id TEXT,
+        tokens_in INTEGER NOT NULL DEFAULT 0,
+        tokens_out INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL NOT NULL DEFAULT 0,
+        latency_ms INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_copilot_messages_thread ON copilot_messages(thread_id, created_at ASC);
+
+      CREATE TABLE IF NOT EXISTS copilot_usage_ledger (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        tokens_in INTEGER NOT NULL DEFAULT 0,
+        tokens_out INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL NOT NULL DEFAULT 0,
+        latency_ms INTEGER NOT NULL DEFAULT 0,
+        cached INTEGER NOT NULL DEFAULT 0 CHECK (cached IN (0, 1)),
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_copilot_usage_created ON copilot_usage_ledger(created_at DESC);
 
       CREATE TABLE IF NOT EXISTS arm_leads (
         id TEXT PRIMARY KEY,
@@ -1577,6 +1627,334 @@ export class P2PDatabaseService {
 
   get finance360(): Finance360Repository {
     return this.getFinance360Repo();
+  }
+
+  /**
+   * Marks a proposed strategy plan as REJECTED by the operator.
+   */
+  rejectStrategyPlan(planId: string, reason?: string): { success: boolean } {
+    const existing = this.getStrategyPlan(planId);
+    if (!existing) {
+      return { success: false };
+    }
+    const nextRationale = reason
+      ? `${existing.rationale} [RECHAZADO: ${reason}]`
+      : existing.rationale;
+    this.db
+      .prepare(`UPDATE strategy_plans SET status = 'REJECTED', rationale = ?, updated_at = ? WHERE id = ?`)
+      .run(nextRationale, Date.now(), planId);
+    return { success: true };
+  }
+
+  /**
+   * Resolves a quarantined Engram observation (`needs_review`) by approving or discarding it.
+   */
+  reviewEngramObservation(id: number, action: 'approve' | 'discard'): EngramReviewResult {
+    const existing = this.db
+      .prepare(`SELECT id FROM engram_observations WHERE id = ?`)
+      .get(id) as { id: number } | undefined;
+    if (!existing) {
+      return { success: false, id, status: 'not_found' };
+    }
+
+    if (action === 'approve') {
+      this.db
+        .prepare(`UPDATE engram_observations SET status = 'active', updated_at = ? WHERE id = ?`)
+        .run(Date.now(), id);
+      return { success: true, id, status: 'active' };
+    }
+
+    this.db.prepare(`DELETE FROM engram_observations WHERE id = ?`).run(id);
+    return { success: true, id, status: 'discarded' };
+  }
+
+  /**
+   * Creates a persistent Copilot conversation thread.
+   */
+  createCopilotThread(params: { id?: string; title: string; agentId?: string | null }): CopilotThreadDto {
+    const now = Date.now();
+    const id = params.id || `THR-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    const title = params.title.trim() || 'Nueva conversación táctica';
+    this.db
+      .prepare(
+        `INSERT INTO copilot_threads (id, title, agent_id, pinned, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?)`,
+      )
+      .run(id, title, params.agentId ?? null, now, now);
+    return {
+      id,
+      title,
+      agentId: params.agentId ?? null,
+      pinned: false,
+      createdAt: now,
+      updatedAt: now,
+      messageCount: 0,
+    };
+  }
+
+  /**
+   * Lists persistent Copilot conversation threads with message counts.
+   */
+  listCopilotThreads(limit = 30): CopilotThreadDto[] {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT t.*, COUNT(m.id) AS message_count
+        FROM copilot_threads t
+        LEFT JOIN copilot_messages m ON m.thread_id = t.id
+        GROUP BY t.id
+        ORDER BY t.pinned DESC, t.updated_at DESC
+        LIMIT ?
+      `,
+      )
+      .all(limit) as Record<string, unknown>[];
+
+    return rows.map((row) => ({
+      id: String(row['id']),
+      title: String(row['title']),
+      agentId: row['agent_id'] ? String(row['agent_id']) : null,
+      pinned: Number(row['pinned']) === 1,
+      createdAt: Number(row['created_at']),
+      updatedAt: Number(row['updated_at']),
+      messageCount: Number(row['message_count'] ?? 0),
+    }));
+  }
+
+  /**
+   * Returns chronological messages for a persistent Copilot thread.
+   */
+  getCopilotThreadMessages(threadId: string, limit = 50): CopilotThreadMessageDto[] {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT * FROM (
+          SELECT *, rowid AS _rid FROM copilot_messages
+          WHERE thread_id = ?
+          ORDER BY created_at DESC, rowid DESC
+          LIMIT ?
+        ) sub
+        ORDER BY created_at ASC, _rid ASC
+      `,
+      )
+      .all(threadId, limit) as Record<string, unknown>[];
+
+    return rows.map((row) => {
+      let provenance: ProvenanceMetadata | null = null;
+      let toolTraces: ToolCallTrace[] | null = null;
+      try {
+        if (row['provenance_json']) {
+          provenance = JSON.parse(String(row['provenance_json'])) as ProvenanceMetadata;
+        }
+      } catch {
+        provenance = null;
+      }
+      try {
+        if (row['tool_traces_json']) {
+          toolTraces = JSON.parse(String(row['tool_traces_json'])) as ToolCallTrace[];
+        }
+      } catch {
+        toolTraces = null;
+      }
+
+      return {
+        id: String(row['id']),
+        threadId: String(row['thread_id']),
+        role: row['role'] as 'user' | 'assistant',
+        content: String(row['content']),
+        model: row['model'] ? String(row['model']) : null,
+        provider: row['provider'] ? String(row['provider']) : null,
+        provenance,
+        toolTraces,
+        planId: row['plan_id'] ? String(row['plan_id']) : null,
+        tokensIn: Number(row['tokens_in'] ?? 0),
+        tokensOut: Number(row['tokens_out'] ?? 0),
+        costUsd: Number(row['cost_usd'] ?? 0),
+        latencyMs: Number(row['latency_ms'] ?? 0),
+        createdAt: Number(row['created_at']),
+      };
+    });
+  }
+
+  /**
+   * Appends a message to a Copilot thread (auto-creating the thread if missing) and bumps updated_at.
+   */
+  appendCopilotMessage(
+    msg: Omit<CopilotThreadMessageDto, 'id' | 'createdAt'> & { id?: string; createdAt?: number },
+  ): CopilotThreadMessageDto {
+    const now = msg.createdAt ?? Date.now();
+    const id = msg.id || `MSG-${crypto.randomUUID().slice(0, 10).toUpperCase()}`;
+
+    const threadExists = this.db
+      .prepare(`SELECT id FROM copilot_threads WHERE id = ?`)
+      .get(msg.threadId) as { id: string } | undefined;
+    if (!threadExists) {
+      const autoTitle = msg.content.replace(/\s+/g, ' ').trim().slice(0, 48) || 'Conversación táctica';
+      this.createCopilotThread({ id: msg.threadId, title: autoTitle });
+    }
+
+    this.db
+      .prepare(
+        `
+        INSERT INTO copilot_messages (
+          id, thread_id, role, content, model, provider,
+          provenance_json, tool_traces_json, plan_id,
+          tokens_in, tokens_out, cost_usd, latency_ms, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      )
+      .run(
+        id,
+        msg.threadId,
+        msg.role,
+        msg.content,
+        msg.model ?? null,
+        msg.provider ?? null,
+        msg.provenance ? JSON.stringify(msg.provenance) : null,
+        msg.toolTraces ? JSON.stringify(msg.toolTraces) : null,
+        msg.planId ?? null,
+        msg.tokensIn ?? 0,
+        msg.tokensOut ?? 0,
+        msg.costUsd ?? 0,
+        msg.latencyMs ?? 0,
+        now,
+      );
+
+    this.db.prepare(`UPDATE copilot_threads SET updated_at = ? WHERE id = ?`).run(now, msg.threadId);
+
+    return {
+      id,
+      threadId: msg.threadId,
+      role: msg.role,
+      content: msg.content,
+      model: msg.model ?? null,
+      provider: msg.provider ?? null,
+      provenance: msg.provenance ?? null,
+      toolTraces: msg.toolTraces ?? null,
+      planId: msg.planId ?? null,
+      tokensIn: msg.tokensIn ?? 0,
+      tokensOut: msg.tokensOut ?? 0,
+      costUsd: msg.costUsd ?? 0,
+      latencyMs: msg.latencyMs ?? 0,
+      createdAt: now,
+    };
+  }
+
+  /**
+   * Deletes a persistent Copilot thread and its cascaded messages.
+   */
+  deleteCopilotThread(threadId: string): boolean {
+    const res = this.db.prepare(`DELETE FROM copilot_threads WHERE id = ?`).run(threadId);
+    return Number(res.changes ?? 0) > 0;
+  }
+
+  /**
+   * Records a metered LLM or cache-hit turn into the usage ledger.
+   */
+  recordCopilotUsage(entry: {
+    provider: string;
+    model: string;
+    tokensIn: number;
+    tokensOut: number;
+    costUsd: number;
+    latencyMs: number;
+    cached: boolean;
+  }): void {
+    this.db
+      .prepare(
+        `
+        INSERT INTO copilot_usage_ledger (
+          provider, model, tokens_in, tokens_out, cost_usd, latency_ms, cached, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      )
+      .run(
+        entry.provider,
+        entry.model,
+        Math.max(0, Math.round(entry.tokensIn)),
+        Math.max(0, Math.round(entry.tokensOut)),
+        Math.max(0, entry.costUsd),
+        Math.max(0, Math.round(entry.latencyMs)),
+        entry.cached ? 1 : 0,
+        Date.now(),
+      );
+  }
+
+  /**
+   * Aggregates real Copilot token usage, cost, cache hits, and P95 latency over a time window.
+   */
+  getCopilotUsageSummary(windowHours = 24): CopilotUsageSummaryDto {
+    const cutoff = Date.now() - Math.max(1, windowHours) * 3_600_000;
+    const rows = this.db
+      .prepare(
+        `SELECT provider, model, tokens_in, tokens_out, cost_usd, latency_ms, cached FROM copilot_usage_ledger WHERE created_at >= ?`,
+      )
+      .all(cutoff) as Record<string, unknown>[];
+
+    let totalCalls = 0;
+    let cachedCalls = 0;
+    let totalTokensIn = 0;
+    let totalTokensOut = 0;
+    let totalCostUsd = 0;
+    const latencies: number[] = [];
+    const byModelMap = new Map<
+      string,
+      {
+        provider: string;
+        model: string;
+        calls: number;
+        tokensIn: number;
+        tokensOut: number;
+        costUsd: number;
+      }
+    >();
+
+    for (const r of rows) {
+      totalCalls++;
+      const isCached = Number(r['cached']) === 1;
+      if (isCached) cachedCalls++;
+      const tIn = Number(r['tokens_in'] ?? 0);
+      const tOut = Number(r['tokens_out'] ?? 0);
+      const cost = Number(r['cost_usd'] ?? 0);
+      const lat = Number(r['latency_ms'] ?? 0);
+      totalTokensIn += tIn;
+      totalTokensOut += tOut;
+      totalCostUsd += cost;
+      if (!isCached && lat > 0) latencies.push(lat);
+
+      const provider = String(r['provider']);
+      const model = String(r['model']);
+      const key = `${provider}:${model}`;
+      const existing = byModelMap.get(key) || {
+        provider,
+        model,
+        calls: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+        costUsd: 0,
+      };
+      existing.calls++;
+      existing.tokensIn += tIn;
+      existing.tokensOut += tOut;
+      existing.costUsd += cost;
+      byModelMap.set(key, existing);
+    }
+
+    let p95LatencyMs: number | null = null;
+    if (latencies.length > 0) {
+      latencies.sort((a, b) => a - b);
+      const idx = Math.min(latencies.length - 1, Math.ceil(latencies.length * 0.95) - 1);
+      p95LatencyMs = latencies[idx];
+    }
+
+    return {
+      windowHours,
+      totalCalls,
+      cachedCalls,
+      totalTokensIn,
+      totalTokensOut,
+      totalCostUsd: Number(totalCostUsd.toFixed(6)),
+      p95LatencyMs,
+      byModel: Array.from(byModelMap.values()),
+    };
   }
 
   close(): void {

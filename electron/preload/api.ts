@@ -149,6 +149,34 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
         ipc('copilot:toggle-agent', params) as Promise<boolean>,
       saveAgent: (params: { agent: any }) =>
         ipc('copilot:save-agent', params) as Promise<boolean>,
+      cancelTurn: (params: { requestId?: string }) =>
+        ipc('copilot:cancel-turn', params) as Promise<{ cancelled: boolean }>,
+      listThreads: (params?: { limit?: number }) =>
+        ipc('copilot:list-threads', params) as Promise<any[]>,
+      createThread: (params?: { title?: string; agentId?: string }) =>
+        ipc('copilot:create-thread', params) as Promise<any>,
+      getThreadMessages: (params: { threadId: string; limit?: number }) =>
+        ipc('copilot:get-thread-messages', params) as Promise<any[]>,
+      deleteThread: (params: { threadId: string }) =>
+        ipc('copilot:delete-thread', params) as Promise<boolean>,
+      rejectPlan: (params: { planId: string; reason?: string }) =>
+        ipc('copilot:reject-plan', params) as Promise<{ success: boolean }>,
+      reviewEngramObservation: (params: { id: number; action: 'approve' | 'discard' }) =>
+        ipc('copilot:review-engram', params) as Promise<any>,
+      getUsageSummary: (params?: { windowHours?: number }) =>
+        ipc('copilot:get-usage-summary', params) as Promise<any>,
+      onAlphaOpportunity: (callback: (data: any) => void) => {
+        if (!onEvent) return () => {};
+        return onEvent('copilot:alpha-opportunity-detected', (payload) => callback(payload));
+      },
+      onProactiveAlert: (callback: (payload: unknown) => void) => {
+        if (!onEvent) return () => {};
+        return onEvent('copilot:proactive-event-alert', (payload) => callback(payload));
+      },
+      onStreamEvent: (callback: (event: any) => void) => {
+        if (!onEvent) return () => {};
+        return onEvent('copilot:stream-event', (payload) => callback(payload));
+      },
     },
     screenPipe: {
       getSources: () => ipc('p2p:screen-pipe-sources') as Promise<any>,
@@ -303,6 +331,14 @@ export const ALLOWED_CHANNELS = [
   'copilot:list-agents',
   'copilot:toggle-agent',
   'copilot:save-agent',
+  'copilot:cancel-turn',
+  'copilot:list-threads',
+  'copilot:create-thread',
+  'copilot:get-thread-messages',
+  'copilot:delete-thread',
+  'copilot:reject-plan',
+  'copilot:review-engram',
+  'copilot:get-usage-summary',
   'p2p:screen-pipe-sources',
   'p2p:screen-pipe-capture',
   'p2p:mcp-status',
@@ -340,5 +376,6 @@ export const ALLOWED_LISTEN_CHANNELS = [
   'p2p:clipboard-payment-detected',
   'copilot:alpha-opportunity-detected',
   'copilot:proactive-event-alert',
+  'copilot:stream-event',
   'p2p:killswitch-triggered',
 ] as const;

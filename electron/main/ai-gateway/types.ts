@@ -61,6 +61,7 @@ export interface AiGatewayConfig {
   temperature?: number;
   maxTokens?: number;
   enableGoogleSearch?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface GroundingSource {

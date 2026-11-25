@@ -322,5 +322,123 @@ describe('P2PDatabaseService (SQLite WAL Mode)', () => {
     expect(dbService.getBankAccount('acc-banesco-01')).toBeNull();
     expect(dbService.deleteBankAccount('acc-banesco-01')).toBe(false);
   });
+
+  it('should persist Copilot threads, messages, usage ledger (P95), rejectStrategyPlan, and Engram quarantine', () => {
+    const thread = dbService.createCopilotThread({ title: 'Arbitraje Banesco' });
+    expect(thread.id).toBeTruthy();
+
+    dbService.appendCopilotMessage({
+      threadId: thread.id,
+      role: 'user',
+      content: '¿Cómo está el spread?',
+      tokensIn: 0,
+      tokensOut: 0,
+      costUsd: 0,
+      latencyMs: 0,
+    });
+    dbService.appendCopilotMessage({
+      threadId: thread.id,
+      role: 'assistant',
+      content: 'Spread neto en +1.05%.',
+      model: 'gemini-3.8-flash',
+      provider: 'gemini',
+      tokensIn: 120,
+      tokensOut: 40,
+      costUsd: 0.000042,
+      latencyMs: 320,
+    });
+
+    const threads = dbService.listCopilotThreads(10);
+    expect(threads.length).toBe(1);
+    expect(threads[0].messageCount).toBe(2);
+
+    const msgs = dbService.getCopilotThreadMessages(thread.id, 10);
+    expect(msgs.map((m) => m.role)).toEqual(['user', 'assistant']);
+
+    dbService.recordCopilotUsage({
+      provider: 'gemini',
+      model: 'gemini-3.8-flash',
+      tokensIn: 100,
+      tokensOut: 50,
+      costUsd: 0.0001,
+      latencyMs: 200,
+      cached: false,
+    });
+    dbService.recordCopilotUsage({
+      provider: 'gemini',
+      model: 'gemini-3.8-flash',
+      tokensIn: 200,
+      tokensOut: 80,
+      costUsd: 0.0002,
+      latencyMs: 650,
+      cached: false,
+    });
+    dbService.recordCopilotUsage({
+      provider: 'gemini',
+      model: 'gemini-3.8-flash',
+      tokensIn: 0,
+      tokensOut: 0,
+      costUsd: 0,
+      latencyMs: 2,
+      cached: true,
+    });
+
+    const usageSummary = dbService.getCopilotUsageSummary(24);
+    expect(usageSummary.totalCalls).toBe(3);
+    expect(usageSummary.cachedCalls).toBe(1);
+    expect(usageSummary.p95LatencyMs).toBe(650);
+
+    // Engram quarantine: needs_review must not appear in getEngramContextSummary() until approved
+    const quarantinedId = dbService.saveEngramObservation({
+      topicKey: 'quarantine/test',
+      type: 'discovery',
+      scope: 'project',
+      what: 'Observación automática en cuarentena',
+      why: 'Salida automática de tool',
+      whereAffected: 'Banesco',
+      learned: 'No inyectar hasta aprobar',
+      status: 'needs_review',
+    });
+    expect(dbService.getEngramContextSummary(10)).not.toContain('Observación automática en cuarentena');
+
+    const approved = dbService.reviewEngramObservation(quarantinedId, 'approve');
+    expect(approved.status).toBe('active');
+    expect(dbService.getEngramContextSummary(10)).toContain('Observación automática en cuarentena');
+
+    const toDiscardId = dbService.saveEngramObservation({
+      topicKey: 'quarantine/discard',
+      type: 'discovery',
+      scope: 'project',
+      what: 'Observación descartable',
+      why: 'Ruido',
+      whereAffected: 'N/A',
+      learned: 'Borrar',
+      status: 'needs_review',
+    });
+    expect(dbService.reviewEngramObservation(toDiscardId, 'discard').status).toBe('discarded');
+    expect(dbService.reviewEngramObservation(999999, 'approve').status).toBe('not_found');
+
+    // rejectStrategyPlan
+    dbService.saveStrategyPlan({
+      id: 'PLAN-REJ-1',
+      title: 'Test Reject',
+      route: 'USDT -> VES',
+      capitalRequiredUsdt: 500,
+      expectedNetSpreadPct: 0.9,
+      expectedProfitUsdt: 4.5,
+      riskLevel: 'LOW',
+      rationale: 'Prueba',
+      status: 'PROPOSED',
+      esSimulado: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    expect(dbService.rejectStrategyPlan('PLAN-REJ-1', 'Cupo saturado').success).toBe(true);
+    expect(dbService.getStrategyPlan('PLAN-REJ-1')?.status).toBe('REJECTED');
+    expect(dbService.rejectStrategyPlan('NO-SUCH-PLAN').success).toBe(false);
+
+    expect(dbService.deleteCopilotThread(thread.id)).toBe(true);
+    expect(dbService.getCopilotThreadMessages(thread.id, 10)).toEqual([]);
+  });
 });
 

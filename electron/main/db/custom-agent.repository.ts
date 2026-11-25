@@ -66,7 +66,7 @@ export const DEFAULT_SWARM_AGENTS: readonly CreateCustomAgentDto[] = [
     systemPrompt:
       'Eres el Estratega Cuantitativo Institucional de la mesa P2P. Tu misión es detectar spreads viables mayores a la Regla de Oro (0.50% neto), analizar libros de órdenes P2P y Spot, y formular rutas operativas seguras.',
     modelProvider: 'gemini',
-    modelName: 'gemini-3.7-flash',
+    modelName: 'gemini-3.8-flash',
     temperature: 0.1,
     isActive: true,
     executionMode: 'on_demand',
@@ -126,7 +126,7 @@ export const DEFAULT_SWARM_AGENTS: readonly CreateCustomAgentDto[] = [
     systemPrompt:
       'Eres el Auditor Legal y de Disputas P2P. Tu función es armar expedientes forenses con pruebas de tiempo, comprobantes bancarios y chats para ganar apelaciones en Binance P2P, y respaldar recibos en Google Drive.',
     modelProvider: 'gemini',
-    modelName: 'gemini-3.7-flash',
+    modelName: 'gemini-3.8-flash',
     temperature: 0.1,
     isActive: true,
     executionMode: 'on_demand',
@@ -144,7 +144,7 @@ export const DEFAULT_SWARM_AGENTS: readonly CreateCustomAgentDto[] = [
     systemPrompt:
       'Eres el Agente Coordinador (Router/Triage) de la plataforma ARM. Tu única misión es analizar el mensaje entrante, clasificar intención y sentimiento, y ejecutar route_conversation hacia SDR_QUALIFIER, QUOTER, SCHEDULER o HUMAN_TAKEOVER respetando el aislamiento del workspace_id.',
     modelProvider: 'gemini',
-    modelName: 'gemini-3.7-flash',
+    modelName: 'gemini-3.8-flash',
     temperature: 0.1,
     isActive: true,
     executionMode: 'on_demand',
@@ -195,7 +195,7 @@ export const DEFAULT_SWARM_AGENTS: readonly CreateCustomAgentDto[] = [
     systemPrompt:
       'Eres el Especialista de Agenda (Scheduler) ARM. Verificas horarios reales con check_calendar_slots antes de ofrecer horas, confirmas correo y zona horaria del prospecto y ejecutas book_appointment generando el briefing_for_human.',
     modelProvider: 'gemini',
-    modelName: 'gemini-3.7-flash',
+    modelName: 'gemini-3.8-flash',
     temperature: 0.1,
     isActive: true,
     executionMode: 'on_demand',

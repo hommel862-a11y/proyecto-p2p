@@ -1,4 +1,4 @@
-import { ipcMain, app, net, safeStorage, desktopCapturer, type IpcMainInvokeEvent } from 'electron';
+import { ipcMain, app, net, safeStorage, desktopCapturer, BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { createHmac } from 'crypto';
@@ -1272,6 +1272,19 @@ export function registerIpcHandlers(): void {
   );
 
   const orchestrator = getOrchestrator();
+  orchestrator.setStreamEmitter((streamEvent) => {
+    try {
+      if (typeof BrowserWindow?.getAllWindows === 'function') {
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.isDestroyed()) {
+            win.webContents.send('copilot:stream-event', streamEvent);
+          }
+        }
+      }
+    } catch {
+      // Ignore in headless/test environments without BrowserWindow
+    }
+  });
 
   ipcMain.removeHandler('copilot:send-message');
   ipcMain.handle(
@@ -1281,12 +1294,80 @@ export function registerIpcHandlers(): void {
       params: {
         prompt: string;
         history?: any[];
+        threadId?: string;
+        agentId?: string;
+        contextScope?: any;
+        requestId?: string;
         apiKey?: string;
         provider?: any;
         model?: string;
       },
     ) => {
       return orchestrator.sendMessage(params);
+    },
+  );
+
+  ipcMain.removeHandler('copilot:cancel-turn');
+  ipcMain.handle(
+    'copilot:cancel-turn',
+    (_event: IpcMainInvokeEvent, params?: { requestId?: string }) => {
+      return orchestrator.cancelTurn(params?.requestId);
+    },
+  );
+
+  ipcMain.removeHandler('copilot:list-threads');
+  ipcMain.handle(
+    'copilot:list-threads',
+    (_event: IpcMainInvokeEvent, params?: { limit?: number }) => {
+      return orchestrator.listThreads(params?.limit);
+    },
+  );
+
+  ipcMain.removeHandler('copilot:create-thread');
+  ipcMain.handle(
+    'copilot:create-thread',
+    (_event: IpcMainInvokeEvent, params?: { title?: string; agentId?: string }) => {
+      return orchestrator.createThread(params);
+    },
+  );
+
+  ipcMain.removeHandler('copilot:get-thread-messages');
+  ipcMain.handle(
+    'copilot:get-thread-messages',
+    (_event: IpcMainInvokeEvent, params: { threadId: string; limit?: number }) => {
+      return orchestrator.getThreadMessages(params.threadId, params.limit);
+    },
+  );
+
+  ipcMain.removeHandler('copilot:delete-thread');
+  ipcMain.handle(
+    'copilot:delete-thread',
+    (_event: IpcMainInvokeEvent, params: { threadId: string }) => {
+      return orchestrator.deleteThread(params.threadId);
+    },
+  );
+
+  ipcMain.removeHandler('copilot:reject-plan');
+  ipcMain.handle(
+    'copilot:reject-plan',
+    (_event: IpcMainInvokeEvent, params: { planId: string; reason?: string }) => {
+      return orchestrator.rejectPlan(params.planId, params.reason);
+    },
+  );
+
+  ipcMain.removeHandler('copilot:review-engram');
+  ipcMain.handle(
+    'copilot:review-engram',
+    (_event: IpcMainInvokeEvent, params: { id: number; action: 'approve' | 'discard' }) => {
+      return orchestrator.reviewEngramObservation(params.id, params.action);
+    },
+  );
+
+  ipcMain.removeHandler('copilot:get-usage-summary');
+  ipcMain.handle(
+    'copilot:get-usage-summary',
+    (_event: IpcMainInvokeEvent, params?: { windowHours?: number }) => {
+      return orchestrator.getUsageSummary(params?.windowHours);
     },
   );
 

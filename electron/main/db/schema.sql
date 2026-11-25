@@ -339,7 +339,7 @@ CREATE TABLE IF NOT EXISTS custom_agents (
   description TEXT,
   system_prompt TEXT NOT NULL,
   model_provider TEXT NOT NULL DEFAULT 'gemini',
-  model_name TEXT NOT NULL DEFAULT 'gemini-3.7-flash',
+  model_name TEXT NOT NULL DEFAULT 'gemini-3.8-flash',
   temperature REAL NOT NULL DEFAULT 0.1,
   is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
   execution_mode TEXT NOT NULL DEFAULT 'on_demand' CHECK (execution_mode IN ('on_demand', 'ambient_daemon')),
@@ -676,7 +676,48 @@ CREATE TABLE IF NOT EXISTS f360_cashea_merchant_sales (
 );
 CREATE INDEX IF NOT EXISTS idx_f360_merchant_sales_workspace_date ON f360_cashea_merchant_sales(workspace_id, sale_date DESC);
 
+-- ============================================================================
+-- Tactical Copilot Persistent Threads, Messages & Token Usage Ledger
+-- ============================================================================
 
+CREATE TABLE IF NOT EXISTS copilot_threads (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  agent_id TEXT,
+  pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_copilot_threads_updated ON copilot_threads(pinned DESC, updated_at DESC);
 
+CREATE TABLE IF NOT EXISTS copilot_messages (
+  id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL REFERENCES copilot_threads(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  model TEXT,
+  provider TEXT,
+  provenance_json TEXT,
+  tool_traces_json TEXT,
+  plan_id TEXT,
+  tokens_in INTEGER NOT NULL DEFAULT 0,
+  tokens_out INTEGER NOT NULL DEFAULT 0,
+  cost_usd REAL NOT NULL DEFAULT 0,
+  latency_ms INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_copilot_messages_thread ON copilot_messages(thread_id, created_at ASC);
 
+CREATE TABLE IF NOT EXISTS copilot_usage_ledger (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  tokens_in INTEGER NOT NULL DEFAULT 0,
+  tokens_out INTEGER NOT NULL DEFAULT 0,
+  cost_usd REAL NOT NULL DEFAULT 0,
+  latency_ms INTEGER NOT NULL DEFAULT 0,
+  cached INTEGER NOT NULL DEFAULT 0 CHECK (cached IN (0, 1)),
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_copilot_usage_created ON copilot_usage_ledger(created_at DESC);
 

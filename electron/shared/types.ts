@@ -277,7 +277,7 @@ export interface P2PIpcChannels {
     response: boolean;
   };
   'copilot:send-message': {
-    request: { prompt: string; history?: CopilotChatMessage[] };
+    request: CopilotSendMessageParams;
     response: CopilotResponse;
   };
   'copilot:execute-plan': {
@@ -735,6 +735,37 @@ export interface ProvenanceMetadata {
   paidCallsBudget?: number;
 }
 
+/** One tool invocation inside a ReAct turn, surfaced to the operator as an audit trail. */
+export interface ToolCallTrace {
+  step: number;
+  toolName: string;
+  /** Short, redacted summary of the arguments the model passed. */
+  argsSummary: string;
+  durationMs: number;
+  status: 'ok' | 'error';
+  /** LIVE when the tool read a verified live feed, FALLBACK when it used offline values. */
+  provenance: 'LIVE' | 'FALLBACK';
+  outputSummary?: string;
+}
+
+/** Real token and cost metering for a single turn. */
+export interface CopilotUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+  latencyMs: number;
+  cached: boolean;
+}
+
+/** Selects which live data domains are injected into the system instruction. */
+export interface CopilotContextScope {
+  orderbook?: boolean;
+  treasury?: boolean;
+  orders?: boolean;
+  finance360?: boolean;
+}
+
 export interface CopilotResponse {
   reply: string;
   suggestedPlan?: StrategyPlanCard;
@@ -743,6 +774,98 @@ export interface CopilotResponse {
   provenance?: ProvenanceMetadata;
   sources?: GroundingSource[];
   searchQueries?: string[];
+  /** Audit trail of every tool executed during the turn. */
+  toolTraces?: ToolCallTrace[];
+  /** Token, cost and latency metering for the turn. */
+  usage?: CopilotUsage;
+  /** Thread the turn was persisted to, when thread persistence is active. */
+  threadId?: string;
+  /** Echo of the caller request id, used to correlate stream events and cancellation. */
+  requestId?: string;
+  /** True when the operator cancelled the turn before completion. */
+  cancelled?: boolean;
+}
+
+export interface CopilotSendMessageParams {
+  prompt: string;
+  history?: CopilotChatMessage[];
+  threadId?: string;
+  agentId?: string;
+  contextScope?: CopilotContextScope;
+  requestId?: string;
+  apiKey?: string;
+  provider?: string;
+  model?: string;
+}
+
+export interface CopilotThreadDto {
+  id: string;
+  title: string;
+  agentId?: string | null;
+  pinned: boolean;
+  createdAt: number;
+  updatedAt: number;
+  messageCount?: number;
+}
+
+export interface CopilotThreadMessageDto {
+  id: string;
+  threadId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  model?: string | null;
+  provider?: string | null;
+  provenance?: ProvenanceMetadata | null;
+  toolTraces?: ToolCallTrace[] | null;
+  planId?: string | null;
+  tokensIn: number;
+  tokensOut: number;
+  costUsd: number;
+  latencyMs: number;
+  createdAt: number;
+}
+
+export interface CopilotUsageSummaryDto {
+  windowHours: number;
+  totalCalls: number;
+  cachedCalls: number;
+  totalTokensIn: number;
+  totalTokensOut: number;
+  totalCostUsd: number;
+  p95LatencyMs: number | null;
+  byModel: {
+    provider: string;
+    model: string;
+    calls: number;
+    tokensIn: number;
+    tokensOut: number;
+    costUsd: number;
+  }[];
+}
+
+export type CopilotStreamPhase =
+  | 'started'
+  | 'tool_start'
+  | 'tool_end'
+  | 'synthesizing'
+  | 'completed'
+  | 'cancelled'
+  | 'error';
+
+/** Progress event pushed on `copilot:stream-event` while a turn is running. */
+export interface CopilotStreamEvent {
+  requestId: string;
+  phase: CopilotStreamPhase;
+  step?: number;
+  toolName?: string;
+  message?: string;
+  timestamp: number;
+}
+
+export interface EngramReviewResult {
+  success: boolean;
+  id: number;
+  status: 'active' | 'discarded' | 'not_found';
 }
 
 /**
@@ -873,10 +996,7 @@ export interface ElectronAPI {
    */
   announceTreasury(snapshot: TreasurySnapshotDto): Promise<boolean>;
   copilot: {
-    sendMessage(params: {
-      prompt: string;
-      history?: CopilotChatMessage[];
-    }): Promise<CopilotResponse>;
+    sendMessage(params: CopilotSendMessageParams): Promise<CopilotResponse>;
     executePlan(params: {
       planId: string;
     }): Promise<{ success: boolean; error?: string; dispatchSummary?: any }>;
@@ -886,9 +1006,25 @@ export interface ElectronAPI {
     testConnection(): Promise<{ success: boolean; model: string; message: string }>;
     getWatcherStatus(): Promise<AlphaWatcherStatus>;
     setWatcherConfig(params: Partial<AlphaWatcherConfigDto>): Promise<boolean>;
+    cancelTurn?(params: { requestId?: string }): Promise<{ cancelled: boolean }>;
+    listThreads?(params?: { limit?: number }): Promise<CopilotThreadDto[]>;
+    createThread?(params?: { title?: string; agentId?: string }): Promise<CopilotThreadDto>;
+    getThreadMessages?(params: {
+      threadId: string;
+      limit?: number;
+    }): Promise<CopilotThreadMessageDto[]>;
+    deleteThread?(params: { threadId: string }): Promise<boolean>;
+    rejectPlan?(params: { planId: string; reason?: string }): Promise<{ success: boolean }>;
+    reviewEngramObservation?(params: {
+      id: number;
+      action: 'approve' | 'discard';
+    }): Promise<EngramReviewResult>;
+    getUsageSummary?(params?: { windowHours?: number }): Promise<CopilotUsageSummaryDto>;
     onAlphaOpportunity?(
       callback: (data: { plan: StrategyPlanCard; detectedAt: number }) => void,
     ): () => void;
+    onProactiveAlert?(callback: (payload: unknown) => void): () => void;
+    onStreamEvent?(callback: (event: CopilotStreamEvent) => void): () => void;
   };
   screenPipe: {
     getSources(): Promise<ScreenPipeSource[]>;

@@ -646,4 +646,48 @@ describe('Electron preload bridge (secure IPC)', () => {
       },
     ]);
   });
+
+  it('forwards new copilot threads, cancelTurn, rejectPlan, reviewEngram, usageSummary, and push listeners', async () => {
+    const calls: { channel: string; args: unknown[] }[] = [];
+    const listenChannels: string[] = [];
+    const api = createP2PApi(
+      (channel, ...args) => {
+        calls.push({ channel, args });
+        return Promise.resolve({ ok: true });
+      },
+      (channel) => {
+        listenChannels.push(channel);
+        return () => {};
+      },
+    );
+
+    await api.copilot.cancelTurn?.({ requestId: 'REQ-1' });
+    await api.copilot.listThreads?.({ limit: 10 });
+    await api.copilot.createThread?.({ title: 'Nuevo hilo' });
+    await api.copilot.getThreadMessages?.({ threadId: 'THR-1', limit: 20 });
+    await api.copilot.deleteThread?.({ threadId: 'THR-1' });
+    await api.copilot.rejectPlan?.({ planId: 'PLAN-1', reason: 'Cupo lleno' });
+    await api.copilot.reviewEngramObservation?.({ id: 5, action: 'approve' });
+    await api.copilot.getUsageSummary?.({ windowHours: 24 });
+
+    api.copilot.onAlphaOpportunity?.(() => {});
+    api.copilot.onProactiveAlert?.(() => {});
+    api.copilot.onStreamEvent?.(() => {});
+
+    expect(calls.map((c) => c.channel)).toEqual([
+      'copilot:cancel-turn',
+      'copilot:list-threads',
+      'copilot:create-thread',
+      'copilot:get-thread-messages',
+      'copilot:delete-thread',
+      'copilot:reject-plan',
+      'copilot:review-engram',
+      'copilot:get-usage-summary',
+    ]);
+    expect(listenChannels).toEqual([
+      'copilot:alpha-opportunity-detected',
+      'copilot:proactive-event-alert',
+      'copilot:stream-event',
+    ]);
+  });
 });

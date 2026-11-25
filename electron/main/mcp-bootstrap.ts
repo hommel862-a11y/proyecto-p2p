@@ -512,6 +512,33 @@ export async function loadMcpModule(): Promise<any> {
   return cachedMcpModule;
 }
 
+let cachedToolSchemaMap: Map<string, unknown> | null = null;
+
+/**
+ * Returns a cached map of MCP tool names -> compiled Zod inputSchema objects
+ * from `ALL_MCP_TOOLS` so AI orchestrators can export real JSON Schemas.
+ */
+export async function getMcpToolSchemaMap(): Promise<Map<string, unknown>> {
+  if (cachedToolSchemaMap) return cachedToolSchemaMap;
+  const map = new Map<string, unknown>();
+  try {
+    process.env['MCP_EMBEDDED_IMPORT'] = 'true';
+    const mcpModule = await loadMcpModule();
+    const tools: { name: string; inputSchema?: unknown }[] = mcpModule?.ALL_MCP_TOOLS || [];
+    for (const t of tools) {
+      if (t?.name && t?.inputSchema) {
+        map.set(t.name, t.inputSchema);
+      }
+    }
+    if (map.size > 0) {
+      cachedToolSchemaMap = map;
+    }
+  } catch {
+    // Non-fatal when compiled MCP bundle is absent in isolated environments.
+  }
+  return map;
+}
+
 /**
  * Initializes the embedded P2P MCP server if MCP_ENABLED=1 or --enable-mcp flag is passed.
  * Does not block Electron application startup if disabled or fails.

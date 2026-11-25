@@ -98,4 +98,28 @@ describe('UniversalAiGateway Schema Sanitizer & Multi-Provider Normalization', (
       globalThis.fetch = origFetch;
     }
   });
+
+  it('validates the exact target Gemini model endpoint in testConnection and returns false on 404', async () => {
+    const gateway = new UniversalAiGateway();
+    const origFetch = globalThis.fetch;
+    let requestedUrl = '';
+
+    globalThis.fetch = (async (url: string) => {
+      requestedUrl = url;
+      return {
+        ok: false,
+        status: 404,
+        text: async () => JSON.stringify({ error: { message: 'Model not found' } }),
+      } as any;
+    }) as any;
+
+    try {
+      const res = await gateway.testConnection('gemini', 'test-key', 'gemini-nonexistent-99');
+      expect(requestedUrl).toContain('/v1beta/models/gemini-nonexistent-99');
+      expect(res.success).toBe(false);
+      expect(res.message).toContain('HTTP 404');
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
 });
