@@ -921,6 +921,12 @@ export interface CopilotResponse {
   cancelled?: boolean;
 }
 
+export interface CopilotAttachmentDto {
+  mimeType: string;
+  base64: string;
+  name?: string;
+}
+
 export interface CopilotSendMessageParams {
   prompt: string;
   history?: CopilotChatMessage[];
@@ -931,6 +937,7 @@ export interface CopilotSendMessageParams {
   apiKey?: string;
   provider?: string;
   model?: string;
+  attachments?: CopilotAttachmentDto[];
 }
 
 export interface CopilotThreadDto {
@@ -960,6 +967,16 @@ export interface CopilotThreadMessageDto {
   createdAt: number;
 }
 
+export interface CopilotWinRateSummaryDto {
+  totalDecisions: number;
+  verifiedOutcomes: number;
+  winCount: number;
+  winRatePct: number | null;
+  avgModeledSpreadPct: number | null;
+  avgRealizedSpreadPct: number | null;
+  realizedProfitUsdt: number;
+}
+
 export interface CopilotUsageSummaryDto {
   windowHours: number;
   totalCalls: number;
@@ -976,6 +993,7 @@ export interface CopilotUsageSummaryDto {
     tokensOut: number;
     costUsd: number;
   }[];
+  winRate?: CopilotWinRateSummaryDto;
 }
 
 export type CopilotStreamPhase =
@@ -983,6 +1001,7 @@ export type CopilotStreamPhase =
   | 'tool_start'
   | 'tool_end'
   | 'synthesizing'
+  | 'delta'
   | 'completed'
   | 'cancelled'
   | 'error';
@@ -993,6 +1012,7 @@ export interface CopilotStreamEvent {
   phase: CopilotStreamPhase;
   step?: number;
   toolName?: string;
+  delta?: string;
   message?: string;
   timestamp: number;
 }

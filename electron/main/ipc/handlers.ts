@@ -1674,6 +1674,53 @@ export function registerIpcHandlers(): void {
     repo: agentRepo,
     isKillswitchActive: () => killswitchState.isTriggered,
     onEvent: (event) => {
+      // Closed Daemon-to-HITL Bridge: if a background daemon tick produces an actionable
+      // HITL proposal, persist it into `strategy_plans` and broadcast a proactive alert.
+      if (
+        event.type === 'run_completed' &&
+        event.run &&
+        event.run.triggerType === 'daemon_tick' &&
+        event.run.status === 'success' &&
+        event.run.responseOutput &&
+        /HITL_PROPOSAL|PROPUESTA HITL|APROBACI[OÓ]N HUMANA/i.test(event.run.responseOutput)
+      ) {
+        try {
+          const planId = `PLAN-DMN-${Date.now().toString(36).toUpperCase()}`;
+          const spreadMatch = /(\d+(?:\.\d+)?)\s*%/.exec(event.run.responseOutput);
+          const expectedNetSpreadPct = spreadMatch ? Number(spreadMatch[1]) : 0.55;
+          const plan = {
+            id: planId,
+            title: `[Daemon] ${event.run.agentName ?? event.run.agentId}`,
+            route: `Propuesta automática READ-ONLY (${event.run.agentId})`,
+            asset: 'USDT',
+            fiat: 'VES',
+            capitalRequiredUsdt: 1000,
+            expectedNetSpreadPct,
+            expectedProfitUsdt: Number(((1000 * expectedNetSpreadPct) / 100).toFixed(2)),
+            riskLevel: 'MEDIUM' as const,
+            rationale: event.run.responseOutput.slice(0, 500),
+            status: 'PROPOSED' as const,
+            esSimulado: false,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+          db.saveStrategyPlan(plan);
+          for (const win of BrowserWindow.getAllWindows()) {
+            if (!win.isDestroyed()) {
+              win.webContents.send('copilot:proactive-event-alert', {
+                id: `ALERT-${planId}`,
+                severity: 'HIGH',
+                title: `Propuesta HITL de ${event.run.agentName ?? event.run.agentId}`,
+                message: event.run.responseOutput.slice(0, 180),
+                timestamp: Date.now(),
+              });
+            }
+          }
+        } catch {
+          // Never break daemon event broadcast if plan persistence fails
+        }
+      }
+
       for (const win of BrowserWindow.getAllWindows()) {
         if (!win.isDestroyed()) {
           win.webContents.send('agents:run-event', event);

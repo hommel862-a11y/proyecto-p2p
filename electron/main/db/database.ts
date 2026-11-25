@@ -2003,7 +2003,60 @@ export class P2PDatabaseService {
       totalCostUsd: Number(totalCostUsd.toFixed(6)),
       p95LatencyMs,
       byModel: Array.from(byModelMap.values()),
+      winRate: this.getCopilotWinRateSummary(),
     };
+  }
+
+  getCopilotWinRateSummary(): NonNullable<CopilotUsageSummaryDto['winRate']> {
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT
+             COUNT(*) AS total_decisions,
+             SUM(CASE WHEN fill_count > 0 THEN 1 ELSE 0 END) AS verified_outcomes,
+             SUM(CASE WHEN fill_count > 0 AND COALESCE(realized_profit_usdt, 0) > 0 THEN 1 ELSE 0 END) AS win_count,
+             AVG(modeled_spread_pct) AS avg_modeled,
+             SUM(CASE WHEN spread_weighted_denominator > 0 THEN spread_weighted_numerator ELSE 0 END) AS w_num,
+             SUM(CASE WHEN spread_weighted_denominator > 0 THEN spread_weighted_denominator ELSE 0 END) AS w_den,
+             COALESCE(SUM(realized_profit_usdt), 0) AS total_profit
+           FROM decision_performance`,
+        )
+        .get() as Record<string, unknown> | undefined;
+
+      const totalDecisions = Number(row?.['total_decisions'] ?? 0);
+      const verifiedOutcomes = Number(row?.['verified_outcomes'] ?? 0);
+      const winCount = Number(row?.['win_count'] ?? 0);
+      const winRatePct =
+        verifiedOutcomes > 0 ? Number(((winCount / verifiedOutcomes) * 100).toFixed(1)) : null;
+      const avgModeledSpreadPct =
+        totalDecisions > 0 && row?.['avg_modeled'] !== null && row?.['avg_modeled'] !== undefined
+          ? Number(Number(row['avg_modeled']).toFixed(2))
+          : null;
+      const wNum = Number(row?.['w_num'] ?? 0);
+      const wDen = Number(row?.['w_den'] ?? 0);
+      const avgRealizedSpreadPct = wDen > 0 ? Number((wNum / wDen).toFixed(2)) : null;
+      const realizedProfitUsdt = Number(Number(row?.['total_profit'] ?? 0).toFixed(2));
+
+      return {
+        totalDecisions,
+        verifiedOutcomes,
+        winCount,
+        winRatePct,
+        avgModeledSpreadPct,
+        avgRealizedSpreadPct,
+        realizedProfitUsdt,
+      };
+    } catch {
+      return {
+        totalDecisions: 0,
+        verifiedOutcomes: 0,
+        winCount: 0,
+        winRatePct: null,
+        avgModeledSpreadPct: null,
+        avgRealizedSpreadPct: null,
+        realizedProfitUsdt: 0,
+      };
+    }
   }
 
   close(): void {

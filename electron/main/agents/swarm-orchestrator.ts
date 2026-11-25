@@ -21,13 +21,8 @@ import type {
   TreasuryRiskContext,
 } from './types';
 
-/**
- * Placeholders used ONLY while the renderer has not announced a real treasury snapshot.
- * They keep the pre-bridge behavior identical instead of failing closed, so an un-bridged
- * renderer degrades to the previous (deliberately conservative) numbers.
- */
-const FALLBACK_DAILY_VOLUME_USDT = 4500;
-const FALLBACK_DAILY_LIMIT_USDT = 15000;
+// Zero-Seed fail-closed: never fabricate fallback USDT volumes or limits when no
+// real treasury snapshot has been announced by the renderer.
 
 export class AgentSwarmOrchestrator {
   private sentinel: SentinelAgent;
@@ -141,8 +136,8 @@ export class AgentSwarmOrchestrator {
         : (params?.parallelRate ?? 0);
 
     const riskVerdict: RiskVerdict = this.riskGatekeeper.evaluateProposal(strategistProposal, {
-      dailyVolumeProcessedUsdt: FALLBACK_DAILY_VOLUME_USDT,
-      dailyLimitUsdt: FALLBACK_DAILY_LIMIT_USDT,
+      dailyVolumeProcessedUsdt: 0,
+      dailyLimitUsdt: 0,
       ...(treasuryContext
         ? {
             dailySpentVes: treasuryContext.totalSpentTodayVes,
