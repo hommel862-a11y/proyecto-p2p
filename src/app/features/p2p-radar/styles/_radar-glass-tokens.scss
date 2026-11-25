@@ -1,0 +1,385 @@
+// =============================================================================
+// RADAR CUANTITATIVO — SPATIAL LIQUID GLASS TOKENS & PRIMITIVES (4 THEMES)
+// Apple HIG 2-Layer Discipline:
+//   1) Floating Functional Layer -> .radar-liquid-glass (command header, popovers, drawers, ticker)
+//   2) Content Layer -> .radar-card / .radar-kpi-aura (elevated opaque/tinted var(--panel))
+//   3) Accessibility Fallbacks -> prefers-reduced-transparency, prefers-contrast, prefers-reduced-motion
+// =============================================================================
+
+:host {
+  --radar-bg-0: var(--bg-0);
+  --radar-bg-1: var(--bg-1);
+  --radar-surface: var(--panel);
+  --radar-surface-2: var(--panel-2);
+  --radar-glass-bg: color-mix(in srgb, var(--panel) 80%, transparent);
+  --radar-glass-bg-strong: color-mix(in srgb, var(--panel-2) 88%, transparent);
+  --radar-hairline: var(--line);
+  --radar-border-strong: var(--line-strong);
+  --radar-input-bg: var(--input-bg, var(--panel-2));
+  --radar-row-hover: var(--row-hover);
+  --radar-text: var(--text);
+  --radar-muted: var(--muted);
+  --radar-pill-active-bg: var(--text);
+  --radar-pill-active-fg: var(--bg-0);
+  --radar-accent: var(--accent);
+  --radar-accent-2: var(--accent-2);
+  --radar-gold: var(--gold);
+  --radar-warn: var(--warn);
+  --radar-danger: var(--danger);
+  --radar-violet: color-mix(in srgb, var(--accent-2) 56%, var(--danger) 44%);
+  --radar-radius: var(--radius);
+  --radar-radius-lg: var(--radius-lg);
+  --radar-blur: var(--blur-panel);
+  --radar-shadow: var(--shadow);
+
+  display: block;
+  width: 100%;
+  min-width: 0;
+  color: var(--radar-text);
+}
+
+// 1) Floating Functional Layer
+.radar-liquid-glass {
+  background: var(--radar-glass-bg);
+  border: 1px solid var(--radar-border-strong);
+  backdrop-filter: blur(var(--radar-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--radar-blur)) saturate(1.4);
+  box-shadow:
+    var(--radar-shadow),
+    inset 0 1px 0 color-mix(in srgb, var(--radar-text) 10%, transparent);
+}
+
+// 2) Content Layer Card (opaque elevated surface, zero glass-on-glass)
+.radar-card {
+  background: var(--radar-surface);
+  border: 1px solid var(--radar-hairline);
+  border-radius: var(--radar-radius-lg);
+  box-shadow: 0 10px 28px -14px color-mix(in srgb, var(--radar-bg-0) 48%, transparent);
+  transition: border-color 180ms ease, transform 180ms ease;
+
+  &:hover {
+    border-color: var(--radar-border-strong);
+  }
+}
+
+// Localized Corner Radial Aura for Hero KPIs
+.radar-kpi-aura {
+  position: relative;
+  overflow: hidden;
+  background: var(--radar-surface);
+  border: 1px solid var(--radar-hairline);
+  border-radius: var(--radar-radius-lg);
+  padding: 16px 18px;
+  min-width: 0;
+  transition: border-color 180ms ease, transform 180ms ease;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.92;
+    background: radial-gradient(
+      circle at 88% 12%,
+      var(--radar-kpi-glow, color-mix(in srgb, var(--radar-accent-2) 22%, transparent)),
+      transparent 62%
+    );
+  }
+
+  &.tone-cyan {
+    --radar-kpi-glow: color-mix(in srgb, var(--radar-accent-2) 26%, transparent);
+  }
+
+  &.tone-emerald {
+    --radar-kpi-glow: color-mix(in srgb, var(--radar-accent) 26%, transparent);
+  }
+
+  &.tone-gold {
+    --radar-kpi-glow: color-mix(in srgb, var(--radar-gold) 24%, transparent);
+  }
+
+  &.tone-violet {
+    --radar-kpi-glow: color-mix(in srgb, var(--radar-violet) 26%, transparent);
+  }
+
+  &.tone-danger {
+    --radar-kpi-glow: color-mix(in srgb, var(--radar-danger) 24%, transparent);
+  }
+
+  &:hover {
+    border-color: var(--radar-border-strong);
+  }
+}
+
+.radar-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.radar-mono {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+// Button & Capsule Primitives
+.radar-cta-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: var(--radar-accent-2);
+  color: var(--radar-bg-0);
+  font-weight: 700;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: filter 150ms ease, transform 120ms ease;
+
+  &:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--radar-accent-2);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.radar-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--radar-border-strong);
+  background: color-mix(in srgb, var(--radar-surface-2) 78%, transparent);
+  color: var(--radar-text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+
+  &:hover:not(:disabled) {
+    background: var(--radar-row-hover);
+    border-color: var(--radar-accent-2);
+  }
+
+  &.is-active {
+    background: var(--radar-pill-active-bg);
+    color: var(--radar-pill-active-fg);
+    border-color: transparent;
+  }
+
+  &.is-emerald-active {
+    background: color-mix(in srgb, var(--radar-accent) 18%, transparent);
+    color: var(--radar-accent);
+    border-color: color-mix(in srgb, var(--radar-accent) 44%, transparent);
+  }
+
+  &.is-gold-active {
+    background: color-mix(in srgb, var(--radar-gold) 18%, transparent);
+    color: var(--radar-gold);
+    border-color: color-mix(in srgb, var(--radar-gold) 44%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--radar-accent-2);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.radar-seg-capsule {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--radar-surface-2);
+  border: 1px solid var(--radar-hairline);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.radar-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--radar-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+
+  &:hover:not(.is-active) {
+    color: var(--radar-text);
+    background: var(--radar-row-hover);
+  }
+
+  &.is-active {
+    background: var(--radar-pill-active-bg);
+    color: var(--radar-pill-active-fg);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--radar-accent-2);
+    outline-offset: 2px;
+  }
+}
+
+.radar-cta-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--radar-hairline);
+  background: transparent;
+  color: var(--radar-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+
+  &:hover:not(:disabled) {
+    background: var(--radar-row-hover);
+    color: var(--radar-text);
+    border-color: var(--radar-border-strong);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--radar-accent-2);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.radar-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid var(--radar-hairline);
+  background: var(--radar-surface-2);
+  color: var(--radar-muted);
+
+  &.tone-emerald {
+    background: color-mix(in srgb, var(--radar-accent) 16%, transparent);
+    color: var(--radar-accent);
+    border-color: color-mix(in srgb, var(--radar-accent) 34%, transparent);
+  }
+
+  &.tone-cyan {
+    background: color-mix(in srgb, var(--radar-accent-2) 16%, transparent);
+    color: var(--radar-accent-2);
+    border-color: color-mix(in srgb, var(--radar-accent-2) 34%, transparent);
+  }
+
+  &.tone-gold,
+  &.tone-warn {
+    background: color-mix(in srgb, var(--radar-gold) 16%, transparent);
+    color: var(--radar-gold);
+    border-color: color-mix(in srgb, var(--radar-gold) 34%, transparent);
+  }
+
+  &.tone-danger {
+    background: color-mix(in srgb, var(--radar-danger) 16%, transparent);
+    color: var(--radar-danger);
+    border-color: color-mix(in srgb, var(--radar-danger) 34%, transparent);
+  }
+}
+
+.radar-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--radar-hairline);
+  background: var(--radar-input-bg);
+  color: var(--radar-text);
+  font-size: 13px;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 150ms ease;
+
+  &:focus {
+    border-color: var(--radar-accent-2);
+  }
+}
+
+// Accessibility Fallbacks
+@media (prefers-reduced-transparency: reduce) {
+  .radar-liquid-glass {
+    background: var(--radar-surface-2) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .radar-liquid-glass,
+  .radar-card,
+  .radar-kpi-aura {
+    border-color: var(--radar-text) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .radar-card,
+  .radar-kpi-aura,
+  .radar-cta-primary,
+  .radar-pill-btn,
+  .radar-seg-btn,
+  .radar-cta-ghost {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .radar-cta-primary,
+  .radar-pill-btn,
+  .radar-seg-btn,
+  .radar-cta-ghost {
+    min-height: 44px;
+  }
+}

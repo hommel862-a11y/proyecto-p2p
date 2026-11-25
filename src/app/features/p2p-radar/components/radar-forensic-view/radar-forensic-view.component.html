@@ -1,0 +1,95 @@
+<section class="forensic-shell" aria-label="Escudo forense de bots y anuncios descartados">
+  <!-- 1. Bots Detected -->
+  <article class="radar-card forensic-panel">
+    <header class="panel-header">
+      <div>
+        <h2 class="panel-title">Bots Detectados en Libros Activos</h2>
+        <p class="panel-sub">Algoritmos de guerra de centavos y alta frecuencia filtrados automáticamente.</p>
+      </div>
+      <span class="radar-status-pill tone-warn radar-mono">{{ bots().length }} activos</span>
+    </header>
+
+    @if (bots().length === 0) {
+      <div class="empty-forensic">Sin bots reactivos detectados en los libros escaneados.</div>
+    } @else {
+      <div class="table-scroll">
+        <table class="forensic-table">
+          <thead>
+            <tr>
+              <th>Anunciante</th>
+              <th>Banco</th>
+              <th>Lado</th>
+              <th>Clasificación</th>
+              <th>Confianza</th>
+              <th>Reacción</th>
+              <th>Contraofertado</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of bots(); track item.bookKey + '_' + item.bot.advertiserNo) {
+              <tr>
+                <td><strong>{{ item.bot.nickName }}</strong></td>
+                <td>{{ bankName(item.bank) }}</td>
+                <td class="radar-mono">{{ item.side }}</td>
+                <td><span class="radar-status-pill tone-warn">{{ item.bot.botType }}</span></td>
+                <td class="radar-mono confidence-cell">
+                  <strong>{{ item.bot.confidenceScore | number:'1.0-0' }}%</strong>
+                </td>
+                <td class="radar-mono">{{ item.bot.reactionTimeSecondsAverage | number:'1.1-1' }}s</td>
+                <td class="radar-mono">
+                  {{ item.bot.recommendedCounterPrice !== null ? (item.bot.recommendedCounterPrice | number:'1.2-2') : '--' }}
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </article>
+
+  <!-- 2. Rejected Offers Audit -->
+  <article class="radar-card forensic-panel">
+    <header class="panel-header">
+      <div>
+        <h2 class="panel-title">Auditoría de Anuncios Filtrados</h2>
+        <p class="panel-sub">Señuelos de centavos, trampas de liquidez, candados KYC taker y muros merchant excluidos.</p>
+      </div>
+      <span class="radar-status-pill tone-danger radar-mono">{{ rejectedOffers().length }} excluidos</span>
+    </header>
+
+    @if (rejectedOffers().length === 0) {
+      <div class="empty-forensic">Todos los anuncios escaneados cumplieron los parámetros Clean Mode.</div>
+    } @else {
+      <div class="table-scroll">
+        <table class="forensic-table">
+          <thead>
+            <tr>
+              <th>Anunciante</th>
+              <th>Banco / Lado</th>
+              <th>Tasa</th>
+              <th>Liquidez</th>
+              <th>Motivos de Exclusión</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of rejectedOffers(); track row.bookKey + '_' + row.offer.advNo) {
+              <tr>
+                <td><strong>{{ row.offer.nickName }}</strong></td>
+                <td class="radar-mono">{{ bankName(row.bank) }} · {{ row.side }}</td>
+                <td class="radar-mono">{{ row.offer.price | number:'1.2-2' }}</td>
+                <td class="radar-mono">{{ row.offer.surplusAmount | number:'1.0-0' }} USDT</td>
+                <td>
+                  <div class="reasons-wrap">
+                    @for (reason of row.offer.verdict.reasons; track reason) {
+                      <span class="radar-status-pill tone-danger">{{ formatReason(reason) }}</span>
+                    }
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </article>
+</section>

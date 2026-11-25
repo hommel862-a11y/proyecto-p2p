@@ -1,0 +1,153 @@
+@use '../../styles/radar-glass-tokens';
+
+.radar-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+}
+
+.kpi-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.kpi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  position: relative;
+  z-index: 1;
+}
+
+.kpi-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--radar-muted);
+  letter-spacing: 0.01em;
+}
+
+.kpi-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.kpi-value {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--radar-text);
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &.is-positive {
+    color: var(--radar-accent);
+  }
+
+  &.is-negative {
+    color: var(--radar-danger);
+  }
+
+  &.is-gold {
+    color: var(--radar-gold);
+  }
+}
+
+.kpi-sub {
+  font-size: 11.5px;
+  color: var(--radar-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.niche-body {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.radial-wrap {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.radial-arc {
+  stroke: var(--radar-accent);
+  transition: stroke-dashoffset 280ms ease;
+}
+
+.radial-pct {
+  position: absolute;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--radar-text);
+}
+
+.kpi-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  position: relative;
+  z-index: 1;
+  padding-top: 6px;
+  border-top: 1px solid var(--radar-hairline);
+}
+
+.kpi-caption {
+  font-size: 11px;
+  color: var(--radar-muted);
+}
+
+.kpi-action-link {
+  border: 0;
+  background: transparent;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: var(--radar-accent-2);
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    background: var(--radar-row-hover);
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--radar-accent-2);
+    outline-offset: 2px;
+  }
+}
+
+@media (max-width: 1120px) {
+  .radar-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .radar-kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

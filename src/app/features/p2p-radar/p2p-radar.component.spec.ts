@@ -334,6 +334,98 @@ describe('P2PRadarComponent DOM & ViewModel', () => {
     fixture.detectChanges();
     expect(el.querySelector('[role="dialog"]')).toBeNull();
   });
+
+  it('T4: renders 0-100 confidenceScore as 85% (not 8500%), preserves 0 modal settings, guards NaN price input, syncs audio mute, and exposes Estándar controls', () => {
+    const isMutedSig = vi.fn(() => true);
+    const toggleMuteFn = vi.fn();
+
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [P2PRadarComponent],
+      providers: [
+        {
+          provide: AudioAlertsService,
+          useValue: {
+            playOpportunityAlert: vi.fn(),
+            isMuted: isMutedSig,
+            toggleMute: toggleMuteFn,
+          },
+        },
+        {
+          provide: ToastService,
+          useValue: { info: vi.fn(), success: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(P2PRadarComponent);
+    const cmp = fixture.componentInstance as P2PRadarComponent & {
+      setMerchantLevel?: (lvl: 'STANDARD' | 'BRONZE' | 'SILVER' | 'GOLD') => void;
+      onSimPriceChange?: (side: 'BUY' | 'SELL', raw: unknown) => void;
+      setCockpitTab?: (tab: 'SIMULATOR' | 'FEE_SCHEDULE') => void;
+      cockpitTab?: () => string;
+    };
+    const service = TestBed.inject(P2PRadarService);
+
+    // 1. Audio mute synced on init + toggle
+    expect(cmp.soundAlertsActive()).toBe(false);
+    cmp.toggleSoundAlerts();
+    expect(toggleMuteFn).toHaveBeenCalledTimes(1);
+
+    // 2. Preserve explicit 0 in modal settings
+    cmp.openCleanModal();
+    cmp.modalMinOrders.set(0);
+    cmp.saveCleanModalSettings();
+    expect(service.cleanConfig().minMonthOrderCount).toBe(0);
+
+    // 3. Guard NaN simulator input
+    cmp.simBuyPrice.set(74.5);
+    if (cmp.onSimPriceChange) {
+      cmp.onSimPriceChange('BUY', 'not-a-number');
+    } else {
+      cmp.simBuyPrice.set(Number('not-a-number'));
+    }
+    expect(Number.isFinite(cmp.simBuyPrice())).toBe(true);
+    expect(cmp.simBuyPrice()).toBe(74.5);
+
+    // 4. Bot confidence 85 renders as 85%, never 8500%
+    service.botReports.set(
+      new Map([
+        [
+          'Banesco_SELL',
+          [
+            {
+              advertiserNo: 'bot-85',
+              nickName: 'GhostMaker',
+              botType: 'BOT_GUERRA_CENTAVOS',
+              confidenceScore: 85,
+              priceStepAverage: 0.01,
+              reactionTimeSecondsAverage: 4,
+              updateCountInWindow: 9,
+              estimatedLimitPrice: 78.2,
+              recommendedCounterPrice: 78.21,
+              details: 'Rebote automático',
+            },
+          ],
+        ],
+      ]),
+    );
+    cmp.setViewMode('FORENSIC');
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent).toContain('85%');
+    expect(el.textContent).not.toContain('8500%');
+
+    // 5. Merchant level & cockpit subtabs exposed
+    expect(typeof cmp.setMerchantLevel).toBe('function');
+    cmp.setMerchantLevel?.('GOLD');
+    expect(service.merchantLevel()).toBe('GOLD');
+    expect(typeof cmp.setCockpitTab).toBe('function');
+    cmp.setCockpitTab?.('FEE_SCHEDULE');
+    fixture.detectChanges();
+    expect(cmp.cockpitTab?.()).toBe('FEE_SCHEDULE');
+    expect(el.querySelector('[data-testid="radar-hero-kpis"]')).not.toBeNull();
+  });
 });
 
 

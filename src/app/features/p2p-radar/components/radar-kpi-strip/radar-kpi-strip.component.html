@@ -1,0 +1,133 @@
+<section
+  class="radar-kpi-grid"
+  data-testid="radar-hero-kpis"
+  aria-label="Indicadores cuantitativos principales del radar P2P"
+>
+  <!-- KPI 1: Mejor Ruta Neta -->
+  <article class="radar-kpi-aura tone-cyan kpi-tile">
+    <div class="kpi-head">
+      <span class="kpi-label">Mejor Ruta Neta</span>
+      @if (summary().bestRoute; as best) {
+        <span class="radar-status-pill tone-cyan radar-mono">
+          {{ best.isInterbank ? 'Interbanco' : 'Monobanco' }}
+        </span>
+      } @else {
+        <span class="radar-status-pill">En espera</span>
+      }
+    </div>
+
+    @if (summary().bestRoute; as best) {
+      <div class="kpi-main">
+        <strong class="kpi-value radar-mono" [class.is-positive]="best.metrics.netSpreadPct >= 0" [class.is-negative]="best.metrics.netSpreadPct < 0">
+          {{ best.metrics.netSpreadPct >= 0 ? '+' : '' }}{{ best.metrics.netSpreadPct | number:'1.2-2' }}%
+        </strong>
+        <span class="kpi-sub radar-mono">
+          {{ bankName(best.sourceBank) }} ➔ {{ bankName(best.targetBank) }} · +${{ best.metrics.netProfitUsdt | number:'1.2-2' }} USDT
+        </span>
+      </div>
+      <div class="kpi-foot">
+        <span class="kpi-caption">Liquidez {{ best.liquidityCoveragePct ?? 100 }}%</span>
+        <button type="button" class="kpi-action-link" (click)="loadRoute.emit(best)">
+          Cargar ruta
+        </button>
+      </div>
+    } @else {
+      <div class="kpi-main">
+        <strong class="kpi-value radar-mono">--</strong>
+        <span class="kpi-sub">{{ loading() ? 'Consultando libros Binance P2P...' : 'Ejecuta un escaneo para rankear pares.' }}</span>
+      </div>
+    }
+  </article>
+
+  <!-- KPI 2: Nicho Menor Presión Merchant -->
+  <article class="radar-kpi-aura tone-emerald kpi-tile">
+    <div class="kpi-head">
+      <span class="kpi-label">Nicho Estándar (Menor Muro)</span>
+      @if (summary().lowestWallBank; as niche) {
+        <span class="radar-status-pill tone-emerald radar-mono">Muro {{ niche.wallPct | number:'1.0-0' }}%</span>
+      }
+    </div>
+
+    @if (summary().lowestWallBank; as niche) {
+      <div class="niche-body">
+        <div class="radial-wrap" aria-hidden="true">
+          <svg width="52" height="52" viewBox="0 0 52 52">
+            <circle cx="26" cy="26" [attr.r]="ringRadius" fill="none" stroke="var(--radar-hairline)" stroke-width="4.5" />
+            <circle
+              cx="26"
+              cy="26"
+              [attr.r]="ringRadius"
+              fill="none"
+              class="radial-arc"
+              stroke-width="4.5"
+              stroke-linecap="round"
+              [attr.stroke-dasharray]="ringCircumference"
+              [attr.stroke-dashoffset]="freeShareOffset()"
+              transform="rotate(-90 26 26)"
+            />
+          </svg>
+          <span class="radial-pct radar-mono">{{ freeSharePct() }}%</span>
+        </div>
+        <div class="kpi-main">
+          <strong class="kpi-value">{{ niche.label }}</strong>
+          <span class="kpi-sub radar-mono">{{ niche.freeCount }} anunciantes no verificados</span>
+        </div>
+      </div>
+    } @else {
+      <div class="kpi-main">
+        <strong class="kpi-value radar-mono">--</strong>
+        <span class="kpi-sub">Sin libros evaluados</span>
+      </div>
+    }
+  </article>
+
+  <!-- KPI 3: Ventaja Híbrida para No Verificados -->
+  <article class="radar-kpi-aura tone-gold kpi-tile">
+    <div class="kpi-head">
+      <span class="kpi-label">Ventaja Híbrida Taker+Maker</span>
+      <span class="radar-status-pill tone-gold radar-mono">Taker 0%</span>
+    </div>
+
+    <div class="kpi-main">
+      @if (summary().hybridEdgeRoute; as hRoute) {
+        <strong class="kpi-value radar-mono is-gold">
+          +{{ summary().hybridDeltaPct | number:'1.2-2' }}% ahorro
+        </strong>
+        <span class="kpi-sub radar-mono">
+          {{ bankName(hRoute.sourceBank) }} ➔ {{ bankName(hRoute.targetBank) }} · Neto {{ (hRoute.optimalHybridNetSpreadPct ?? hRoute.metrics.netSpreadPct) | number:'1.2-2' }}%
+        </span>
+      } @else {
+        <strong class="kpi-value radar-mono">0.25% total</strong>
+        <span class="kpi-sub">Taker Compra 0% + Maker Venta 0.25% iguala Doble Maker Oro</span>
+      }
+    </div>
+    <div class="kpi-foot">
+      <span class="kpi-caption">Sin insignia Bronce/Oro</span>
+      <button type="button" class="kpi-action-link" (click)="openHybridMode.emit()">
+        Activar Híbrido
+      </button>
+    </div>
+  </article>
+
+  <!-- KPI 4: Escudo Forense & Muestras -->
+  <article class="radar-kpi-aura tone-violet kpi-tile">
+    <div class="kpi-head">
+      <span class="kpi-label">Escudo Forense</span>
+      <span class="radar-status-pill radar-mono">{{ summary().samplesCount }}/12 muestras</span>
+    </div>
+
+    <div class="kpi-main">
+      <strong class="kpi-value radar-mono">{{ summary().cleanOffersTotal }} ofertas limpias</strong>
+      <span class="kpi-sub radar-mono">
+        {{ summary().botsDetectedCount }} bots · {{ summary().rejectedCount }} trampas filtradas
+      </span>
+    </div>
+
+    <div class="kpi-foot">
+      <span class="kpi-caption">Outliers &amp; candados KYC</span>
+      <button type="button" class="kpi-action-link" (click)="openForensicView.emit()">
+        Auditar Escudo
+      </button>
+    </div>
+  </article>
+</section>

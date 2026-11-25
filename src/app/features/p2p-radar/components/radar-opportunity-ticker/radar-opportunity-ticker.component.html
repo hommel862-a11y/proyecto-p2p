@@ -1,0 +1,19 @@
+@if (route(); as r) {
+  <div class="radar-liquid-glass ticker-bar" role="status" aria-live="polite">
+    <div class="ticker-leading">
+      <span class="radar-status-pill tone-emerald radar-mono">{{ totalViable() }} viables</span>
+      <span class="ticker-route radar-mono">
+        {{ bankName(r.sourceBank) }} ({{ r.sellPrice | number:'1.2-2' }}) ➔ {{ bankName(r.targetBank) }} ({{ r.buyPrice | number:'1.2-2' }})
+      </span>
+    </div>
+
+    <div class="ticker-trailing">
+      <span class="ticker-spread radar-mono" [class.is-positive]="r.metrics.netSpreadPct >= 0">
+        {{ r.metrics.netSpreadPct >= 0 ? '+' : '' }}{{ r.metrics.netSpreadPct | number:'1.2-2' }}% (+${{ r.metrics.netProfitUsdt | number:'1.2-2' }} USDT)
+      </span>
+      <button type="button" class="radar-pill-btn ticker-btn" (click)="inspectRoute.emit(r)">
+        Simular
+      </button>
+    </div>
+  </div>
+}

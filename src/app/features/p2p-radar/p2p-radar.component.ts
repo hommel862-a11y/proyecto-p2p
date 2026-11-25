@@ -2,19 +2,20 @@ import {
   ChangeDetectionStrategy,
   Component,
   HostListener,
-  OnInit,
   OnDestroy,
+  OnInit,
   computed,
   inject,
   signal,
 } from '@angular/core';
-import { CommonModule, DecimalPipe } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { DecimalPipe } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   P2PRadarService,
-  RADAR_BANK_LABELS,
   BANK_PRESETS,
+  RADAR_BANK_LABELS,
+  RADAR_METHOD_TO_BANK_CODE,
+  resolveRadarFiat,
   type BankPresetId,
   type AutoRefreshIntervalSec,
 } from '../../core/p2p-radar.service';
@@ -23,80 +24,85 @@ import { AudioAlertsService } from '../../core/audio-alerts.service';
 import { ToastService } from '../../core/toast.service';
 import {
   type P2PUserTier,
+  type MakerMerchantLevel,
   type ExecutionMode,
   type CleanRadarOffer,
   type RadarCleanBook,
   type ArbitrageRoute,
   type BotDetectionResult,
   type MarketTrendResult,
-  type BankCode,
   RADAR_VOLUME_BRACKETS,
+  calculateArbitrageCycle,
+  resolveMakerFeeRatio,
 } from '@p2p/core';
+import type {
+  BankSudebanHealthView,
+  EnrichedOfferRow,
+  MatrixRouteFilter,
+  RadarBankFeeRow,
+  RadarBankGroup,
+  RadarBankViewModel,
+  RadarBotReportRow,
+  RadarCockpitTab,
+  RadarCockpitViewInput,
+  RadarDensityMode,
+  RadarHeroKpiSummary,
+  RadarRejectedOfferRow,
+  RadarViewMode,
+  TacticalPriceStrategy,
+} from './p2p-radar-ui.models';
+import { RadarCommandHeaderComponent } from './components/radar-command-header/radar-command-header.component';
+import { RadarKpiStripComponent } from './components/radar-kpi-strip/radar-kpi-strip.component';
+import { RadarBooksGridComponent } from './components/radar-books-grid/radar-books-grid.component';
+import { RadarTacticalCockpitComponent } from './components/radar-tactical-cockpit/radar-tactical-cockpit.component';
+import { RadarMatrixViewComponent } from './components/radar-matrix-view/radar-matrix-view.component';
+import { RadarForensicViewComponent } from './components/radar-forensic-view/radar-forensic-view.component';
+import { RadarOpportunityTickerComponent } from './components/radar-opportunity-ticker/radar-opportunity-ticker.component';
 
-export type RadarViewMode = 'BOOKS' | 'MATRIX' | 'FORENSIC';
-export type RadarDensityMode = 'COMFORT' | 'COMPACT';
-export type MatrixRouteFilter = 'ALL' | 'MONOBANK' | 'INTERBANK' | 'VIABLE';
-export type TacticalPriceStrategy = 'TOP1' | 'BEAT_TICK' | 'VWAP' | 'ANTI_BOT';
-
-export interface EnrichedOfferRow {
-  readonly offer: CleanRadarOffer;
-  readonly bot: BotDetectionResult | undefined;
-  readonly depthPct: number;
-}
-
-export interface BankSudebanHealthView {
-  readonly label: string;
-  readonly isBlocked: boolean;
-  readonly statusClass: 'optimal' | 'warn' | 'blocked';
-}
-
-export interface RadarBankViewModel {
-  readonly buyBook: RadarCleanBook | undefined;
-  readonly sellBook: RadarCleanBook | undefined;
-  readonly sellTrend: MarketTrendResult | undefined;
-  readonly buyLiquidity: number;
-  readonly sellLiquidity: number;
-  readonly buyTopOffers: readonly EnrichedOfferRow[];
-  readonly sellTopOffers: readonly EnrichedOfferRow[];
-  readonly intraSpreadVes: number | null;
-  readonly intraSpreadPct: number | null;
-  readonly sudebanHealth: BankSudebanHealthView | null;
-}
-
-const P2P_METHOD_TO_BANK_CODE: Partial<Record<string, BankCode>> = {
-  Banesco: 'BANESCO',
-  Mercantil: 'MERCANTIL',
-  SpecificBank: 'BDV',
-  BBVA: 'PROVINCIAL',
-  BNC: 'BNC',
-  Bancaribe: 'BANCARIBE',
-  Banplus: 'BANPLUS',
-};
+export type {
+  RadarViewMode,
+  RadarDensityMode,
+  MatrixRouteFilter,
+  TacticalPriceStrategy,
+  RadarCockpitTab,
+  EnrichedOfferRow,
+  BankSudebanHealthView,
+  RadarBankViewModel,
+} from './p2p-radar-ui.models';
 
 @Component({
   selector: 'app-p2p-radar',
   standalone: true,
-  imports: [CommonModule, FormsModule, DecimalPipe],
+  imports: [
+    DecimalPipe,
+    RadarCommandHeaderComponent,
+    RadarKpiStripComponent,
+    RadarBooksGridComponent,
+    RadarTacticalCockpitComponent,
+    RadarMatrixViewComponent,
+    RadarForensicViewComponent,
+    RadarOpportunityTickerComponent,
+  ],
   templateUrl: './p2p-radar.component.html',
-  styleUrls: ['./p2p-radar.component.scss'],
+  styleUrl: './p2p-radar.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class P2PRadarComponent implements OnInit, OnDestroy {
   readonly radarService = inject(P2PRadarService);
   private readonly accountsService = inject(AccountsService, { optional: true });
-  private readonly router = inject(Router, { optional: true });
-  private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly audioAlerts = inject(AudioAlertsService);
   private readonly toast = inject(ToastService);
+  private readonly route = inject(ActivatedRoute, { optional: true });
+  private readonly router = inject(Router, { optional: true });
 
   readonly bankLabels = RADAR_BANK_LABELS;
   readonly volumeBrackets = RADAR_VOLUME_BRACKETS;
   readonly availableBanks = Object.keys(RADAR_BANK_LABELS);
 
-  readonly bankGroups = [
+  readonly bankGroups: readonly RadarBankGroup[] = [
     {
       id: 'TOP_VES',
-      label: 'Top Líderes',
+      label: 'Top Líderes VES',
       banks: ['Banesco', 'Mercantil', 'SpecificBank', 'PagoMovil'],
     },
     {
@@ -105,30 +111,28 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
       banks: ['BBVA', 'BNC', 'Bancaribe', 'Banplus'],
     },
     {
-      id: 'INTL_USD',
-      label: 'Divisas / Fintech',
+      id: 'USD_RAILS',
+      label: 'Rieles USD',
       banks: ['BanescoPanama', 'Zinli'],
     },
   ];
 
-  // ─── Component Local State ─────────────────────────────────────────
   readonly cleanModalOpen = signal<boolean>(false);
-  readonly soundAlertsActive = signal<boolean>(true);
+  readonly paramsDrawerOpen = signal<boolean>(false);
+  readonly soundAlertsActive = signal<boolean>(!(this.audioAlerts?.isMuted?.() ?? false));
   readonly currentTickerIndex = signal<number>(0);
   readonly copiedTarget = signal<string | null>(null);
 
-  // Visual Adaptability & Intelligence View State
   readonly activeViewMode = signal<RadarViewMode>('BOOKS');
   readonly booksDensityMode = signal<RadarDensityMode>('COMFORT');
   readonly routeFilterMode = signal<MatrixRouteFilter>('ALL');
+  readonly cockpitTab = signal<RadarCockpitTab>('SIMULATOR');
 
-  // Interactive Simulator inputs
   readonly simBuyBank = signal<string>('Banesco');
   readonly simSellBank = signal<string>('Banesco');
   readonly simBuyPrice = signal<number>(0);
   readonly simSellPrice = signal<number>(0);
 
-  // Modal temporary values for Clean Mode tuning
   readonly modalMaxPayTime = signal<number>(15);
   readonly modalMinFinishRate = signal<number>(92);
   readonly modalMinOrders = signal<number>(30);
@@ -142,49 +146,40 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
   onEscapeKey(): void {
     if (this.cleanModalOpen()) {
       this.closeCleanModal();
+      return;
+    }
+    if (this.paramsDrawerOpen()) {
+      this.paramsDrawerOpen.set(false);
     }
   }
 
-  // ─── Computed Properties ───────────────────────────────────────────
   readonly activeBanks = computed(() => this.radarService.activePaymentMethods());
 
   readonly activePreset = computed<BankPresetId | 'CUSTOM'>(() => {
     const current = this.radarService.activePaymentMethods();
     if (current.length === 0) return 'CLEAR';
     const top = BANK_PRESETS.TOP_VES;
-    if (current.length === top.length && top.every((b) => current.includes(b))) {
-      return 'TOP_VES';
-    }
+    if (current.length === top.length && top.every((b) => current.includes(b))) return 'TOP_VES';
     const all = BANK_PRESETS.ALL_VES;
-    if (current.length === all.length && all.every((b) => current.includes(b))) {
-      return 'ALL_VES';
-    }
+    if (current.length === all.length && all.every((b) => current.includes(b))) return 'ALL_VES';
     const exp = BANK_PRESETS.EXPANDED;
-    if (current.length === exp.length && exp.every((b) => current.includes(b))) {
-      return 'EXPANDED';
-    }
+    if (current.length === exp.length && exp.every((b) => current.includes(b))) return 'EXPANDED';
     return 'CUSTOM';
   });
 
   readonly filteredMatrixRoutes = computed<ArbitrageRoute[]>(() => {
-    const all = this.radarService.allRoutes();
+    const routes = this.radarService.allRoutes();
     const filter = this.routeFilterMode();
-    const targetMargin = this.radarService.targetNetMarginPct();
-
-    return all.filter((route) => {
-      if (filter === 'MONOBANK') return !route.isInterbank;
-      if (filter === 'INTERBANK') return route.isInterbank;
-      if (filter === 'VIABLE') return route.metrics.netSpreadPct >= targetMargin;
-      return true;
-    });
+    if (filter === 'MONOBANK') return routes.filter((r) => !r.isInterbank);
+    if (filter === 'INTERBANK') return routes.filter((r) => r.isInterbank);
+    if (filter === 'VIABLE') return routes.filter((r) => r.metrics.isViable);
+    return [...routes];
   });
 
   readonly simulatedMetrics = computed(() => {
     const buy = this.simBuyPrice();
     const sell = this.simSellPrice();
-    const buyBank = this.simBuyBank();
-    const sellBank = this.simSellBank();
-    const isInterbank = buyBank !== sellBank;
+    const isInterbank = this.simBuyBank() !== this.simSellBank();
     const friction = isInterbank ? this.radarService.interbankFrictionPct() : 0;
 
     return this.radarService.simulateArbitrage(buy, sell, {
@@ -197,9 +192,18 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     const usages = this.accountsService?.usages();
     if (!usages || usages.length === 0) return map;
 
-    for (const [methodKey, code] of Object.entries(P2P_METHOD_TO_BANK_CODE)) {
+    for (const [methodKey, code] of Object.entries(RADAR_METHOD_TO_BANK_CODE)) {
       if (!code) continue;
-      const matching = usages.filter((u) => u.account.bankCode === code);
+      const matching = usages.filter((u) => {
+        if (methodKey === 'PagoMovil') return u.account.rail === 'PAGO_MOVIL';
+        if (methodKey === 'BanescoPanama') {
+          return /panam[aá]/i.test(u.account.bankName);
+        }
+        if (methodKey === 'Zinli') {
+          return /zinli/i.test(u.account.bankName);
+        }
+        return u.account.bankCode === code;
+      });
       if (matching.length === 0) continue;
 
       const active = matching.filter((u) => u.account.status !== 'DISABLED');
@@ -214,71 +218,90 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
       }
       const near = active.find((u) => !u.isOverLimit);
       if (near) {
-        map.set(methodKey, { label: 'Cupo ≥ 80%', isBlocked: false, statusClass: 'warn' });
+        map.set(methodKey, { label: 'Cupo >= 80%', isBlocked: false, statusClass: 'warn' });
       } else {
-        map.set(methodKey, { label: 'Límite Diario 100%', isBlocked: true, statusClass: 'blocked' });
+        map.set(methodKey, { label: 'Tope Diario', isBlocked: true, statusClass: 'blocked' });
       }
     }
     return map;
   });
 
-  /** Precomputed bank card view-models so OnPush 1s countdown never recalculates @for depth/bot rows. */
   readonly booksViewModels = computed<Map<string, RadarBankViewModel>>(() => {
     const books = this.radarService.radarBooks();
-    const healths = this.bankHealthMap();
-    const map = new Map<string, RadarBankViewModel>();
+    const trends = this.radarService.marketTrends();
+    const bots = this.radarService.botReports();
+    const healthMap = this.bankHealthMap();
+    const density = this.booksDensityMode();
+    const offerCap = density === 'COMPACT' ? 3 : 6;
+    const result = new Map<string, RadarBankViewModel>();
 
-    const enrichTop5 = (
-      book: RadarCleanBook | undefined,
-      bots: BotDetectionResult[],
-    ): EnrichedOfferRow[] => {
-      if (!book || book.cleanOffers.length === 0) return [];
-      const top5 = book.cleanOffers.slice(0, 5);
-      let maxSurplus = 1;
-      for (const o of top5) {
-        if (o.surplusAmount > maxSurplus) maxSurplus = o.surplusAmount;
-      }
-      return top5.map((offer) => ({
+    for (const payMethod of this.activeBanks()) {
+      const buyBook = books.get(`${payMethod}_BUY`);
+      const sellBook = books.get(`${payMethod}_SELL`);
+      const sellTrend = trends.get(`${payMethod}_SELL`);
+      const buyBots = bots.get(`${payMethod}_BUY`) ?? [];
+      const sellBots = bots.get(`${payMethod}_SELL`) ?? [];
+
+      const buyBotMap = new Map<string, BotDetectionResult>(
+        buyBots.map((b) => [b.advertiserNo, b]),
+      );
+      const sellBotMap = new Map<string, BotDetectionResult>(
+        sellBots.map((b) => [b.advertiserNo, b]),
+      );
+
+      const buyOffers = buyBook?.cleanOffers ?? [];
+      const sellOffers = sellBook?.cleanOffers ?? [];
+
+      const maxBuySurplus = Math.max(1, ...buyOffers.slice(0, offerCap).map((o) => o.surplusAmount));
+      const maxSellSurplus = Math.max(1, ...sellOffers.slice(0, offerCap).map((o) => o.surplusAmount));
+
+      const buyTopOffers: EnrichedOfferRow[] = buyOffers.slice(0, offerCap).map((offer) => ({
         offer,
-        bot: bots.find((b) => b.advertiserNo === offer.advertiserNo),
-        depthPct: Math.min(100, Math.max(8, Math.round((offer.surplusAmount / maxSurplus) * 100))),
+        bot: buyBotMap.get(offer.advertiserNo),
+        depthPct: Math.min(100, Math.round((offer.surplusAmount / maxBuySurplus) * 100)),
       }));
-    };
 
-    const sumTop5Liquidity = (book: RadarCleanBook | undefined): number => {
-      if (!book) return 0;
-      let total = 0;
-      const limit = Math.min(5, book.cleanOffers.length);
-      for (let i = 0; i < limit; i++) {
-        total += book.cleanOffers[i].surplusAmount || 0;
+      const sellTopOffers: EnrichedOfferRow[] = sellOffers.slice(0, offerCap).map((offer) => ({
+        offer,
+        bot: sellBotMap.get(offer.advertiserNo),
+        depthPct: Math.min(100, Math.round((offer.surplusAmount / maxSellSurplus) * 100)),
+      }));
+
+      const buyLiquidity = buyOffers.reduce((sum, o) => sum + o.surplusAmount, 0);
+      const sellLiquidity = sellOffers.reduce((sum, o) => sum + o.surplusAmount, 0);
+
+      const topSell = sellBook?.effectiveTopPrice ?? null;
+      const topBuy = buyBook?.effectiveTopPrice ?? null;
+      let intraSpreadVes: number | null = null;
+      let intraSpreadPct: number | null = null;
+      if (topSell !== null && topBuy !== null && topBuy > 0) {
+        intraSpreadVes = topSell - topBuy;
+        intraSpreadPct = (intraSpreadVes / topBuy) * 100;
       }
-      return total;
-    };
 
-    for (const bank of this.activeBanks()) {
-      const buyBook = books.get(`${bank}_BUY`);
-      const sellBook = books.get(`${bank}_SELL`);
-      const sellTrend = this.radarService.getTrendForBook(bank, 'SELL');
-      const buyBots = this.radarService.getBotsForBook(bank, 'BUY');
-      const sellBots = this.radarService.getBotsForBook(bank, 'SELL');
-      const buyTop = buyBook?.effectiveTopPrice ?? 0;
-      const sellTop = sellBook?.effectiveTopPrice ?? 0;
+      const sellFree = sellBook?.freeAdvertiserCount ?? sellOffers.filter((o) => !o.isVerifiedCompetitor).length;
+      const openCount = sellBook?.openTakerCount ?? sellOffers.filter((o) => o.takerEligibility !== 'RESTRICTED').length;
 
-      map.set(bank, {
+      result.set(payMethod, {
+        payMethod,
         buyBook,
         sellBook,
         sellTrend,
-        buyLiquidity: sumTop5Liquidity(buyBook),
-        sellLiquidity: sumTop5Liquidity(sellBook),
-        buyTopOffers: enrichTop5(buyBook, buyBots),
-        sellTopOffers: enrichTop5(sellBook, sellBots),
-        intraSpreadVes: buyTop > 0 && sellTop > 0 ? sellTop - buyTop : null,
-        intraSpreadPct: buyTop > 0 && sellTop > 0 ? (sellTop / buyTop - 1) * 100 : null,
-        sudebanHealth: healths.get(bank) ?? null,
+        buyLiquidity,
+        sellLiquidity,
+        buyTopOffers,
+        sellTopOffers,
+        intraSpreadVes,
+        intraSpreadPct,
+        sudebanHealth: healthMap.get(payMethod) ?? null,
+        buyMerchantWallPct: buyBook?.merchantWallPct ?? 0,
+        sellMerchantWallPct: sellBook?.merchantWallPct ?? 0,
+        freeAdvertisersCount: sellFree,
+        openTakerOffersCount: openCount,
       });
     }
 
-    return map;
+    return result;
   });
 
   readonly currentTickerRoute = computed<ArbitrageRoute | null>(() => {
@@ -288,15 +311,123 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     return routes[idx] ?? null;
   });
 
+  readonly feeScheduleRows = computed<readonly RadarBankFeeRow[]>(() => {
+    const level = this.radarService.merchantLevel();
+    const userTier = this.radarService.userTier();
+    const makerRatio = resolveMakerFeeRatio(userTier, undefined, level);
+    const makerPct = makerRatio * 100;
+    const frictionDefault = this.radarService.interbankFrictionPct();
+    const vms = this.booksViewModels();
+    const healthMap = this.bankHealthMap();
+
+    return this.availableBanks.map((payMethod) => {
+      const vm = vms.get(payMethod);
+      const fiat = resolveRadarFiat(payMethod, 'VES');
+      return {
+        payMethod,
+        label: this.bankLabels[payMethod] || payMethod,
+        fiat,
+        interbankFrictionPct: fiat === 'VES' ? frictionDefault : 0,
+        makerFeePct: makerPct,
+        hybridCombinedFeePct: makerPct,
+        merchantWallPct: vm?.sellMerchantWallPct ?? 0,
+        openTakerCount: vm?.openTakerOffersCount ?? 0,
+        health: vm?.sudebanHealth ?? healthMap.get(payMethod) ?? null,
+      };
+    });
+  });
+
+  readonly heroKpiSummary = computed<RadarHeroKpiSummary>(() => {
+    const bestRoute = this.radarService.bestRoute();
+    const allRoutes = this.radarService.allRoutes();
+    const vms = this.booksViewModels();
+
+    let lowestWallBank: RadarHeroKpiSummary['lowestWallBank'] = null;
+    for (const vm of vms.values()) {
+      if (!vm.sellBook && !vm.buyBook) continue;
+      const avgWall = (vm.buyMerchantWallPct + vm.sellMerchantWallPct) / 2;
+      if (!lowestWallBank || avgWall < lowestWallBank.wallPct) {
+        lowestWallBank = {
+          payMethod: vm.payMethod,
+          label: this.bankLabels[vm.payMethod] || vm.payMethod,
+          wallPct: avgWall,
+          freeCount: vm.freeAdvertisersCount,
+        };
+      }
+    }
+
+    let hybridEdgeRoute: ArbitrageRoute | null = null;
+    let hybridDeltaPct = 0;
+    for (const r of allRoutes) {
+      if (r.optimalHybridNetSpreadPct !== undefined) {
+        const delta = Math.max(0, r.optimalHybridNetSpreadPct - r.metrics.netSpreadPct);
+        if (!hybridEdgeRoute || delta > hybridDeltaPct) {
+          hybridEdgeRoute = r;
+          hybridDeltaPct = delta;
+        }
+      }
+    }
+
+    return {
+      bestRoute,
+      lowestWallBank,
+      hybridEdgeRoute,
+      hybridDeltaPct,
+      cleanOffersTotal: this.radarService.totalCleanOffers(),
+      botsDetectedCount: this.radarService.totalBotsDetected(),
+      rejectedCount: this.radarService.allRejectedOffers().length,
+      samplesCount: this.radarService.bufferSampleCount(),
+    };
+  });
+
+  readonly cockpitViewInput = computed<RadarCockpitViewInput>(() => ({
+    merchantLevel: this.radarService.merchantLevel(),
+    userTier: this.radarService.userTier(),
+    executionMode: this.radarService.executionMode(),
+    operatingCapitalUsdt: this.radarService.operatingCapitalUsdt(),
+    targetNetMarginPct: this.radarService.targetNetMarginPct(),
+    simBuyBank: this.simBuyBank(),
+    simSellBank: this.simSellBank(),
+    simBuyPrice: this.simBuyPrice(),
+    simSellPrice: this.simSellPrice(),
+    metrics: this.simulatedMetrics(),
+    activeRoute: this.radarService.bestRoute(),
+    currentMakerFeePct: this.radarService.currentMakerFeePct(),
+    volumeBracket: this.radarService.selectedBracket(),
+    bankLabels: this.bankLabels,
+    dailyCyclesCount: this.radarService.dailyConsolidated().totalCycles,
+    dailyProfitUsdt: this.radarService.dailyConsolidated().totalNetProfitUsdt,
+    feeRows: this.feeScheduleRows(),
+  }));
+
+  readonly mappedBotRows = computed<readonly RadarBotReportRow[]>(() =>
+    this.radarService.allDetectedBots().map((entry) => ({
+      bookKey: `${entry.payMethod}_${entry.side}`,
+      bank: entry.payMethod,
+      side: entry.side,
+      bot: entry,
+    })),
+  );
+
+  readonly mappedRejectedRows = computed<readonly RadarRejectedOfferRow[]>(() =>
+    this.radarService.allRejectedOffers().map((entry) => ({
+      bookKey: `${entry.payMethod}_${entry.side}`,
+      bank: entry.payMethod,
+      side: entry.side,
+      offer: entry,
+    })),
+  );
+
+  readonly formatRejectionReasonBound = (reason: string): string =>
+    this.formatRejectionReason(reason);
+
   ngOnInit(): void {
-    // Sync modal values with active clean config
     const cfg = this.radarService.cleanConfig();
     this.modalMaxPayTime.set(cfg.maxPayTimeMinutes);
     this.modalMinFinishRate.set(cfg.minMonthFinishRate);
     this.modalMinOrders.set(cfg.minMonthOrderCount);
     this.modalMaxOutlierDevPct.set(cfg.outlierDeviationPct);
 
-    // Optional deep-link hydration (?bank=Banesco&capital=500)
     const params = this.route?.snapshot?.queryParamMap;
     const queryBank = params?.get('bank');
     if (queryBank && this.availableBanks.includes(queryBank)) {
@@ -311,14 +442,8 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
       this.radarService.setOperatingCapital(queryCap);
     }
 
-    // Initial scan if books are empty
-    if (this.radarService.radarBooks().size === 0) {
-      void this.scanRadar();
-    } else {
-      this.initSimulatorFromBestRoute();
-    }
+    this.initSimulatorFromBestRoute();
 
-    // Auto-rotative ticker every 8 seconds
     this.tickerTimer = setInterval(() => {
       const routes = this.radarService.topRoutes();
       if (routes.length > 0) {
@@ -340,7 +465,6 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     this.radarService.stopAutoRefresh();
   }
 
-  // ─── Actions & Live Stream Controls ────────────────────────────────
   async scanRadar(): Promise<void> {
     const books = await this.radarService.scanRadar();
     if (books.size > 0) {
@@ -373,8 +497,28 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     this.routeFilterMode.set(filter);
   }
 
+  setCockpitTab(tab: RadarCockpitTab): void {
+    this.cockpitTab.set(tab);
+  }
+
+  toggleParamsDrawer(): void {
+    this.paramsDrawerOpen.update((v) => !v);
+  }
+
+  setMerchantLevel(level: MakerMerchantLevel): void {
+    this.radarService.setMerchantLevel(level);
+  }
+
   setUserTier(tier: P2PUserTier): void {
     this.radarService.setUserTier(tier);
+  }
+
+  setExcludeMerchantCompetitors(exclude: boolean): void {
+    this.radarService.setExcludeMerchantCompetitors(exclude);
+  }
+
+  setRequireOpenTakerOffers(requireOpen: boolean): void {
+    this.radarService.setRequireOpenTakerOffers(requireOpen);
   }
 
   setExecutionMode(mode: ExecutionMode): void {
@@ -405,7 +549,6 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     this.radarService.setInterbankFriction(val);
   }
 
-  // ─── Interactive Simulator & Tactical Positioning ──────────────────
   selectOfferForSimulation(bank: string, side: 'BUY' | 'SELL', offer: CleanRadarOffer): void {
     if (side === 'BUY') {
       this.simBuyBank.set(bank);
@@ -414,7 +557,10 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
       this.simSellBank.set(bank);
       this.simSellPrice.set(offer.price);
     }
-    this.toast.info(`Cargado ${offer.price.toFixed(2)} VES (${this.bankLabels[bank] || bank} ${side}) en simulador`);
+    this.cockpitTab.set('SIMULATOR');
+    this.toast.info(
+      `Tasa cargada: ${side === 'BUY' ? 'Compra' : 'Venta'} @ ${offer.price.toFixed(2)} (${this.bankLabels[bank] || bank})`,
+    );
   }
 
   loadRouteIntoSimulator(route: ArbitrageRoute): void {
@@ -422,7 +568,10 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     this.simSellPrice.set(route.sellPrice);
     this.simBuyBank.set(route.targetBank);
     this.simBuyPrice.set(route.buyPrice);
-    this.toast.success(`Ruta ${route.sourceBank} ➔ ${route.targetBank} cargada en simulador`);
+    this.cockpitTab.set('SIMULATOR');
+    this.toast.success(
+      `Ruta cargada: ${this.bankLabels[route.sourceBank] || route.sourceBank} -> ${this.bankLabels[route.targetBank] || route.targetBank}`,
+    );
   }
 
   swapSimulatorBanks(): void {
@@ -434,12 +583,24 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     this.simBuyBank.set(prevSellBank);
     this.simSellBank.set(prevBuyBank);
 
-    const newBuyTop = this.getBook(prevSellBank, 'BUY')?.effectiveTopPrice;
-    const newSellTop = this.getBook(prevBuyBank, 'SELL')?.effectiveTopPrice;
+    if (prevSellPrice > 0 || prevBuyPrice > 0) {
+      const targetBuyTop = this.getBook(prevSellBank, 'BUY')?.effectiveTopPrice ?? prevSellPrice;
+      const targetSellTop = this.getBook(prevBuyBank, 'SELL')?.effectiveTopPrice ?? prevBuyPrice;
+      this.simBuyPrice.set(targetBuyTop);
+      this.simSellPrice.set(targetSellTop);
+    }
+  }
 
-    this.simBuyPrice.set(newBuyTop && newBuyTop > 0 ? newBuyTop : prevSellPrice);
-    this.simSellPrice.set(newSellTop && newSellTop > 0 ? newSellTop : prevBuyPrice);
-    this.toast.info('Bancos de compra y venta invertidos en el simulador.');
+  onSimPriceChange(side: 'BUY' | 'SELL', rawValue: unknown): void {
+    if (rawValue === '' || rawValue === null || rawValue === undefined) return;
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed) || parsed < 0) return;
+    const rounded = Math.round(parsed * 100) / 100;
+    if (side === 'BUY') {
+      this.simBuyPrice.set(rounded);
+    } else {
+      this.simSellPrice.set(rounded);
+    }
   }
 
   nudgeSimPrice(side: 'BUY' | 'SELL', delta: number): void {
@@ -465,7 +626,6 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     } else if (strategy === 'BEAT_TICK') {
       const top = book?.effectiveTopPrice ?? 0;
       if (top > 0) {
-        // Maker BUY beats #1 by paying +0.01 Bs more; Maker SELL beats #1 by offering -0.01 Bs cheaper
         targetPrice = Math.round((side === 'BUY' ? top + 0.01 : top - 0.01) * 100) / 100;
       }
     } else if (strategy === 'VWAP') {
@@ -473,37 +633,37 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
         targetPrice = Math.round(trend.currentVWAP * 100) / 100;
       }
     } else if (strategy === 'ANTI_BOT') {
-      const topBot = bots.find((b) => b.recommendedCounterPrice != null && b.recommendedCounterPrice > 0);
-      if (topBot?.recommendedCounterPrice) {
-        targetPrice = Math.round(topBot.recommendedCounterPrice * 100) / 100;
+      const botWithLimit = bots.find((b) => b.recommendedCounterPrice !== null);
+      if (botWithLimit && botWithLimit.recommendedCounterPrice !== null) {
+        targetPrice = botWithLimit.recommendedCounterPrice;
+      } else {
+        targetPrice = book?.effectiveTopPrice ?? null;
       }
     }
 
-    if (targetPrice && targetPrice > 0) {
-      if (side === 'BUY') {
-        this.simBuyPrice.set(targetPrice);
-      } else {
-        this.simSellPrice.set(targetPrice);
-      }
-      this.toast.info(`Posicionamiento ${strategy} aplicado en ${this.bankLabels[bank] || bank}: ${targetPrice.toFixed(2)} Bs`);
+    if (targetPrice !== null && targetPrice > 0) {
+      if (side === 'BUY') this.simBuyPrice.set(targetPrice);
+      else this.simSellPrice.set(targetPrice);
+      this.toast.info(`Posición ${strategy} aplicada en ${side}: ${targetPrice.toFixed(2)}`);
     } else {
-      this.toast.warn('No hay datos suficientes en este libro para aplicar ese posicionamiento.');
+      this.toast.warn(`No hay datos suficientes en ${this.bankLabels[bank] || bank} para estrategia ${strategy}.`);
     }
   }
 
   copyRateToClipboard(rate: number, label: string): void {
+    const formatted = rate.toFixed(2);
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(rate.toFixed(2));
-      this.copiedTarget.set(label);
-      this.toast.info(`Tasa copiada: ${rate.toFixed(2)} VES`);
-      if (this.copiedTimer) clearTimeout(this.copiedTimer);
-      this.copiedTimer = setTimeout(() => {
-        if (this.copiedTarget() === label) {
-          this.copiedTarget.set(null);
-        }
-        this.copiedTimer = null;
-      }, 2500);
+      navigator.clipboard.writeText(formatted);
     }
+    this.copiedTarget.set(label);
+    this.toast.info(`Tasa copiada (${label}): ${formatted}`);
+    if (this.copiedTimer) {
+      clearTimeout(this.copiedTimer);
+    }
+    this.copiedTimer = setTimeout(() => {
+      this.copiedTarget.set(null);
+      this.copiedTimer = null;
+    }, 2000);
   }
 
   copyMakerAdCard(): void {
@@ -511,10 +671,10 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     const buyBankLabel = this.bankLabels[this.simBuyBank()] || this.simBuyBank();
     const sellBankLabel = this.bankLabels[this.simSellBank()] || this.simSellBank();
     const text = [
-      `🎯 FICHA TÁCTICA RADAR P2P (${this.radarService.executionMode()})`,
-      `• Compra (${buyBankLabel}): ${this.simBuyPrice().toFixed(2)} Bs/USDT`,
-      `• Venta (${sellBankLabel}): ${this.simSellPrice().toFixed(2)} Bs/USDT`,
-      `• Break-Even Venta: ${metrics.breakEvenSellPrice.toFixed(2)} Bs | Target (+${this.radarService.targetNetMarginPct()}%): ${metrics.targetSellPrice.toFixed(2)} Bs`,
+      `FICHA TÁCTICA RADAR P2P (${this.radarService.merchantLevel()} · ${this.radarService.executionMode()})`,
+      `• Compra (${buyBankLabel}): ${this.simBuyPrice().toFixed(2)}`,
+      `• Venta (${sellBankLabel}): ${this.simSellPrice().toFixed(2)}`,
+      `• Break-Even Venta: ${metrics.breakEvenSellPrice.toFixed(2)} | Target (+${this.radarService.targetNetMarginPct()}%): ${metrics.targetSellPrice.toFixed(2)}`,
       `• Spread Neto: ${metrics.netSpreadPct >= 0 ? '+' : ''}${metrics.netSpreadPct.toFixed(2)}% (+$${metrics.netProfitUsdt.toFixed(2)} USDT sobre $${this.radarService.operatingCapitalUsdt()} USDT)`,
     ].join('\n');
 
@@ -527,6 +687,7 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
   toggleSoundAlerts(): void {
     const next = !this.soundAlertsActive();
     this.soundAlertsActive.set(next);
+    this.audioAlerts?.toggleMute?.();
     if (next) {
       this.audioAlerts.playOpportunityAlert();
       this.toast.info('Alertas sonoras activadas.');
@@ -535,7 +696,6 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     }
   }
 
-  // ─── Phase 5: Cycle Recording, CRM Bridge & Daily Journal ──────────
   recordCurrentSimulatedCycle(): void {
     const metrics = this.simulatedMetrics();
     const buyPrice = this.simBuyPrice();
@@ -592,15 +752,13 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     }
 
     const text = [
-      `📊 RESUMEN DIARIO ARBITRAJE P2P [${summary.dateKey}]`,
+      `RESUMEN DIARIO ARBITRAJE P2P [${summary.dateKey}]`,
       `──────────────────────────────────────────────`,
       `• Ciclos Completados: ${summary.totalCycles} (${summary.monobankCyclesCount} monobanco, ${summary.interbankCyclesCount} interbancario)`,
-      `• Volumen Operado: $${summary.totalTurnoverUsdt.toFixed(2)} USDT`,
-      `• Ganancia Neta Total: +$${summary.totalNetProfitUsdt.toFixed(2)} USDT (+Bs ${summary.totalNetProfitFiat.toFixed(2)})`,
-      `• Spread Neto Promedio: +${summary.averageNetSpreadPct.toFixed(2)}%`,
-      `• Mejor Spread del Día: +${summary.bestSpreadPct.toFixed(2)}%`,
-      `──────────────────────────────────────────────`,
-      `Generado por P2P Decisor - Terminal Cuantitativa`,
+      `• Volumen Operado: $${summary.totalTurnoverUsdt.toLocaleString('es-VE', { minimumFractionDigits: 2 })} USDT`,
+      `• Ganancia Neta Total: +$${summary.totalNetProfitUsdt.toFixed(2)} USDT`,
+      `• Rentabilidad Media: +${summary.averageNetSpreadPct.toFixed(2)}% por ciclo`,
+      `• Nivel Operador: ${this.radarService.merchantLevel()} (${this.radarService.executionMode()})`,
     ].join('\n');
 
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -610,10 +768,10 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
   }
 
   toggleHudBridge(): void {
-    this.radarService.toggleHudBroadcasting();
+    const nextState = this.radarService.toggleHudBroadcasting();
+    this.toast.info(nextState ? 'HUD Extension Bridge ACTIVADO' : 'HUD Extension Bridge PAUSADO');
   }
 
-  // ─── Modal Clean Mode Management ───────────────────────────────────
   openCleanModal(): void {
     const cfg = this.radarService.cleanConfig();
     this.modalMaxPayTime.set(cfg.maxPayTimeMinutes);
@@ -627,49 +785,61 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     this.cleanModalOpen.set(false);
   }
 
-  saveCleanModalSettings(): void {
-    this.radarService.updateCleanConfig({
-      maxPayTimeMinutes: Number(this.modalMaxPayTime()) || 15,
-      minMonthFinishRate: Number(this.modalMinFinishRate()) || 92,
-      minMonthOrderCount: Number(this.modalMinOrders()) || 30,
-      outlierDeviationPct: Number(this.modalMaxOutlierDevPct()) || 0.8,
-    });
-    this.cleanModalOpen.set(false);
-    this.toast.success('Reglas de Modo Limpio actualizadas y libros re-filtrados.');
+  onModalNumericChange(
+    field: 'payTime' | 'finishRate' | 'minOrders' | 'outlierDev',
+    event: Event,
+  ): void {
+    const raw = (event.target as HTMLInputElement | null)?.value;
+    if (raw === '' || raw === null || raw === undefined) return;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) return;
+    if (field === 'payTime') this.modalMaxPayTime.set(parsed);
+    else if (field === 'finishRate') this.modalMinFinishRate.set(Math.min(100, parsed));
+    else if (field === 'minOrders') this.modalMinOrders.set(Math.floor(parsed));
+    else this.modalMaxOutlierDevPct.set(parsed);
   }
 
-  // ─── Microstructure & Forensic Helpers ─────────────────────────────
+  saveCleanModalSettings(): void {
+    this.radarService.updateCleanConfig({
+      maxPayTimeMinutes: this.resolveCleanNumber(this.modalMaxPayTime(), 15, 1),
+      minMonthFinishRate: Math.min(100, this.resolveCleanNumber(this.modalMinFinishRate(), 92, 0)),
+      minMonthOrderCount: Math.floor(this.resolveCleanNumber(this.modalMinOrders(), 30, 0)),
+      outlierDeviationPct: this.resolveCleanNumber(this.modalMaxOutlierDevPct(), 0.8, 0),
+    });
+    this.closeCleanModal();
+    this.toast.success('Configuración Clean Mode guardada y libros recalculados.');
+  }
+
   getBook(bank: string, side: 'BUY' | 'SELL'): RadarCleanBook | undefined {
     return this.radarService.radarBooks().get(`${bank}_${side}`);
   }
 
   getTrend(bank: string, side: 'BUY' | 'SELL'): MarketTrendResult | undefined {
-    return this.radarService.getTrendForBook(bank, side);
+    return this.radarService.marketTrends().get(`${bank}_${side}`);
   }
 
   getBots(bank: string, side: 'BUY' | 'SELL'): BotDetectionResult[] {
-    return this.radarService.getBotsForBook(bank, side);
+    return this.radarService.botReports().get(`${bank}_${side}`) ?? [];
   }
 
   isOfferBot(bank: string, side: 'BUY' | 'SELL', offer: CleanRadarOffer): BotDetectionResult | undefined {
-    const bots = this.getBots(bank, side);
-    return bots.find((b) => b.advertiserNo === offer.advertiserNo);
+    return this.getBots(bank, side).find((b) => b.advertiserNo === offer.advertiserNo);
   }
 
   getBookCleanLiquidityUsdt(bank: string, side: 'BUY' | 'SELL'): number {
     const book = this.getBook(bank, side);
     if (!book) return 0;
-    return book.cleanOffers.slice(0, 5).reduce((sum, o) => sum + (o.surplusAmount || 0), 0);
+    return book.cleanOffers.reduce((sum, offer) => sum + offer.surplusAmount, 0);
   }
 
   getOfferDepthPct(bank: string, side: 'BUY' | 'SELL', surplusUsdt: number): number {
     const book = this.getBook(bank, side);
-    if (!book || book.cleanOffers.length === 0) return 10;
+    if (!book || book.cleanOffers.length === 0) return 0;
     const maxSurplus = Math.max(
-      ...book.cleanOffers.slice(0, 5).map((o) => o.surplusAmount || 1),
       1,
+      ...book.cleanOffers.slice(0, 6).map((o) => o.surplusAmount),
     );
-    return Math.min(100, Math.max(8, Math.round((surplusUsdt / maxSurplus) * 100)));
+    return Math.min(100, Math.round((surplusUsdt / maxSurplus) * 100));
   }
 
   formatRejectionReason(reason: string): string {
@@ -684,9 +854,33 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
         return 'Baja Finalización (<Mín)';
       case 'LOW_ORDER_COUNT':
         return 'Pocas Órdenes / Cuenta Nueva';
+      case 'TAKER_RESTRICTED':
+        return 'Candado Taker (KYC / Reg / BTC)';
+      case 'MERCHANT_COMPETITOR_FILTERED':
+        return 'Competidor Verificado Filtrado';
       default:
         return reason;
     }
+  }
+
+  calculateCyclePreview(buyPrice: number, sellPrice: number, isInterbank: boolean): number {
+    const res = calculateArbitrageCycle({
+      buyPrice,
+      sellPrice,
+      capitalUsdt: this.radarService.operatingCapitalUsdt(),
+      mode: this.radarService.executionMode(),
+      userTier: this.radarService.userTier(),
+      merchantLevel: this.radarService.merchantLevel(),
+      fiatFrictionPct: isInterbank ? this.radarService.interbankFrictionPct() : 0,
+      targetNetMarginPct: this.radarService.targetNetMarginPct(),
+    });
+    return res.netSpreadPct;
+  }
+
+  private resolveCleanNumber(raw: unknown, fallback: number, min: number): number {
+    if (raw === '' || raw === null || raw === undefined) return fallback;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed >= min ? parsed : fallback;
   }
 
   private initSimulatorFromBestRoute(): void {
@@ -710,7 +904,7 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
       return;
     }
 
-    if (route.routeId !== this.lastAlertedRouteId) {
+    if (this.lastAlertedRouteId !== route.routeId) {
       this.lastAlertedRouteId = route.routeId;
       this.audioAlerts.playOpportunityAlert();
     }

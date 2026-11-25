@@ -1,0 +1,283 @@
+@use '../../styles/radar-glass-tokens';
+
+.radar-command-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.command-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radar-radius-lg);
+  box-sizing: border-box;
+}
+
+.header-leading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 280px;
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.brand-emblem {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--radar-accent-2) 15%, var(--radar-surface-2));
+  border: 1px solid color-mix(in srgb, var(--radar-accent-2) 34%, var(--radar-hairline));
+  color: var(--radar-accent-2);
+}
+
+.brand-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.brand-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--radar-text);
+  line-height: 1.2;
+}
+
+.telemetry-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.live-chip,
+.level-chip,
+.sync-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--radar-hairline);
+  background: var(--radar-surface-2);
+  color: var(--radar-muted);
+  white-space: nowrap;
+}
+
+.live-chip {
+  color: var(--radar-accent);
+  border-color: color-mix(in srgb, var(--radar-accent) 28%, var(--radar-hairline));
+}
+
+.level-chip {
+  color: var(--radar-gold);
+  border-color: color-mix(in srgb, var(--radar-gold) 30%, var(--radar-hairline));
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--radar-accent);
+}
+
+.live-chip.is-scanning .live-dot {
+  animation: radarPulse 1s ease-in-out infinite;
+}
+
+.view-nav {
+  flex: 0 1 auto;
+}
+
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--radar-warn) 22%, transparent);
+  color: var(--radar-warn);
+}
+
+.radar-seg-btn.is-active .tab-badge {
+  background: color-mix(in srgb, var(--radar-pill-active-fg) 16%, transparent);
+  color: var(--radar-pill-active-fg);
+}
+
+.header-trailing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.compact-seg {
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.icon-only {
+  padding: 0;
+  width: 34px;
+}
+
+.hud-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--radar-muted);
+
+  &.is-live {
+    background: var(--radar-accent);
+  }
+}
+
+.spin {
+  animation: radarSpin 0.9s linear infinite;
+}
+
+// Collapsible Parameters Drawer
+.params-drawer {
+  padding: 14px 16px;
+  border-radius: var(--radar-radius-lg);
+  box-sizing: border-box;
+}
+
+.params-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.param-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+
+  &.wide-block {
+    grid-column: span 2;
+  }
+}
+
+.param-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.param-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--radar-muted);
+}
+
+.param-hint {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--radar-accent);
+}
+
+.fee-sub {
+  font-size: 10.5px;
+  opacity: 0.78;
+}
+
+.toggles-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  grid-column: span 4 !important;
+}
+
+@keyframes radarPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes radarSpin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 1120px) {
+  .params-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .param-block.wide-block,
+  .toggles-row {
+    grid-column: span 2 !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .command-bar {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .header-leading,
+  .view-nav,
+  .header-trailing {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .refresh-capsule {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .compact-seg {
+    flex: 1 1 0;
+    min-height: 44px;
+  }
+
+  .icon-only {
+    width: 44px;
+  }
+
+  .params-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .param-block.wide-block,
+  .toggles-row {
+    grid-column: span 1 !important;
+  }
+}

@@ -1,0 +1,87 @@
+<section class="radar-card matrix-shell" aria-label="Matriz cuantitativa de arbitraje P2P">
+  <header class="matrix-header">
+    <div class="matrix-title-wrap">
+      <h2 class="matrix-title">Matriz de Rutas Cross-Bank &amp; Estrategia</h2>
+      <span class="matrix-sub radar-mono">{{ routes().length }} rutas filtradas · Meta >= {{ targetMarginPct() }}%</span>
+    </div>
+
+    <div class="radar-seg-capsule" role="group" aria-label="Filtros de matriz">
+      @for (opt of filterOptions; track opt.id) {
+        <button
+          type="button"
+          class="radar-seg-btn"
+          [class.is-active]="filterMode() === opt.id"
+          (click)="filterChange.emit(opt.id)"
+        >
+          {{ opt.label }}
+        </button>
+      }
+    </div>
+  </header>
+
+  @if (routes().length === 0) {
+    <div class="matrix-empty">
+      <strong>Sin rutas para este filtro</strong>
+      <span>Ejecuta un escaneo o amplía los bancos seleccionados en Libros Limpios.</span>
+    </div>
+  } @else {
+    <div class="matrix-table-scroll">
+      <table class="matrix-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Ruta Bancaria</th>
+            <th>Venta / Compra</th>
+            <th>Spread Neto</th>
+            <th>Utilidad</th>
+            <th>Muro Merch</th>
+            <th>Modo Óptimo</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (route of routes(); track route.routeId; let idx = $index) {
+            <tr [class.is-viable]="route.metrics.isViable">
+              <td class="radar-mono rank-cell">#{{ idx + 1 }}</td>
+              <td>
+                <div class="route-cell">
+                  <strong class="radar-mono">{{ bankName(route.sourceBank) }} ➔ {{ bankName(route.targetBank) }}</strong>
+                  <span class="radar-status-pill" [class.tone-cyan]="route.isInterbank" [class.tone-emerald]="!route.isInterbank">
+                    {{ route.isInterbank ? 'Interbanco' : 'Monobanco' }}
+                  </span>
+                </div>
+              </td>
+              <td class="radar-mono">
+                {{ route.sellPrice | number:'1.2-2' }} / {{ route.buyPrice | number:'1.2-2' }}
+              </td>
+              <td class="radar-mono" [class.is-positive]="route.metrics.netSpreadPct >= targetMarginPct()" [class.is-negative]="route.metrics.netSpreadPct < 0">
+                <strong>{{ route.metrics.netSpreadPct >= 0 ? '+' : '' }}{{ route.metrics.netSpreadPct | number:'1.2-2' }}%</strong>
+              </td>
+              <td class="radar-mono">
+                {{ route.metrics.netProfitUsdt >= 0 ? '+' : '' }}{{ route.metrics.netProfitUsdt | number:'1.2-2' }} USDT
+              </td>
+              <td class="radar-mono">
+                {{ (route.sourceMerchantWallPct ?? 0) | number:'1.0-0' }}% / {{ (route.targetMerchantWallPct ?? 0) | number:'1.0-0' }}%
+              </td>
+              <td>
+                <div class="optimal-cell">
+                  <span class="radar-status-pill" [class.tone-gold]="route.recommendedMode === 'TAKER_COMPRA_MAKER_VENTA'">
+                    {{ strategyBadge(route) }}
+                  </span>
+                  @if (route.optimalHybridNetSpreadPct !== undefined && route.recommendedMode === 'TAKER_COMPRA_MAKER_VENTA') {
+                    <span class="opt-spread radar-mono">Híbrido {{ route.optimalHybridNetSpreadPct | number:'1.2-2' }}%</span>
+                  }
+                </div>
+              </td>
+              <td>
+                <button type="button" class="radar-pill-btn load-btn" (click)="selectRoute.emit(route)">
+                  Simular
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>

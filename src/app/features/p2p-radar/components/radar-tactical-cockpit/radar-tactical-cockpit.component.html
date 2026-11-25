@@ -1,0 +1,244 @@
+<aside class="radar-card cockpit-rail" aria-label="Cockpit táctico de simulación y tarifario bancario">
+  <!-- Cockpit Mode Switcher -->
+  <header class="cockpit-header">
+    <div class="radar-seg-capsule full-seg" role="tablist" aria-label="Panel táctico">
+      <button
+        type="button"
+        role="tab"
+        class="radar-seg-btn seg-equal"
+        data-testid="cockpit-tab-simulator"
+        [class.is-active]="cockpitTab() === 'SIMULATOR'"
+        [attr.aria-selected]="cockpitTab() === 'SIMULATOR'"
+        (click)="cockpitTabChange.emit('SIMULATOR')"
+      >
+        Simulador
+      </button>
+      <button
+        type="button"
+        role="tab"
+        class="radar-seg-btn seg-equal"
+        data-testid="cockpit-tab-fees"
+        [class.is-active]="cockpitTab() === 'FEE_SCHEDULE'"
+        [attr.aria-selected]="cockpitTab() === 'FEE_SCHEDULE'"
+        (click)="cockpitTabChange.emit('FEE_SCHEDULE')"
+      >
+        Tarifario Bancos
+      </button>
+    </div>
+  </header>
+
+  @if (cockpitTab() === 'SIMULATOR') {
+    <!-- Non-verified Standard Strategy Callout -->
+    @if (view().merchantLevel === 'STANDARD' && view().executionMode === 'DOBLE_MAKER') {
+      <div class="hybrid-callout">
+        <div class="callout-copy">
+          <strong>Estrategia Estándar (0.25% total)</strong>
+          <span>Operando Taker en compra (0%) + Maker en venta (0.25%) igualas el costo de comisión de Doble Maker Oro sin requerir insignia.</span>
+        </div>
+        <button
+          type="button"
+          class="radar-pill-btn is-gold-active callout-btn"
+          (click)="switchExecutionMode.emit('TAKER_COMPRA_MAKER_VENTA')"
+        >
+          Aplicar Híbrido
+        </button>
+      </div>
+    }
+
+    <!-- Execution Pair Selector -->
+    <div class="pair-grid">
+      <div class="pair-field">
+        <label class="field-label" for="sim-buy-bank">Compra USDT (Destino)</label>
+        <select
+          id="sim-buy-bank"
+          class="radar-input"
+          [value]="view().simBuyBank"
+          (change)="onBankSelect('BUY', $event)"
+        >
+          @for (b of availableBanks(); track b) {
+            <option [value]="b">{{ bankName(b) }}</option>
+          }
+        </select>
+      </div>
+
+      <button
+        type="button"
+        class="radar-pill-btn swap-btn"
+        title="Invertir bancos compra / venta"
+        aria-label="Invertir bancos compra y venta"
+        (click)="swapBanks.emit()"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m7 16-4-4 4-4" />
+          <path d="M3 12h18" />
+          <path d="m17 8 4 4-4 4" />
+        </svg>
+      </button>
+
+      <div class="pair-field">
+        <label class="field-label" for="sim-sell-bank">Venta USDT (Origen)</label>
+        <select
+          id="sim-sell-bank"
+          class="radar-input"
+          [value]="view().simSellBank"
+          (change)="onBankSelect('SELL', $event)"
+        >
+          @for (b of availableBanks(); track b) {
+            <option [value]="b">{{ bankName(b) }}</option>
+          }
+        </select>
+      </div>
+    </div>
+
+    <!-- Buy / Sell Price Steppers -->
+    <div class="rates-stack">
+      <div class="rate-box">
+        <div class="rate-box-head">
+          <label class="field-label" for="sim-buy-price">Tasa Compra ({{ bankName(view().simBuyBank) }})</label>
+          <div class="tactical-chips">
+            <button type="button" class="tac-chip" (click)="tacticalStrategy.emit({ side: 'BUY', strategy: 'TOP1' })">Top 1</button>
+            <button type="button" class="tac-chip" (click)="tacticalStrategy.emit({ side: 'BUY', strategy: 'BEAT_TICK' })">+0.01</button>
+            <button type="button" class="tac-chip" (click)="tacticalStrategy.emit({ side: 'BUY', strategy: 'VWAP' })">VWAP</button>
+            <button type="button" class="tac-chip" (click)="tacticalStrategy.emit({ side: 'BUY', strategy: 'ANTI_BOT' })">Anti-Bot</button>
+          </div>
+        </div>
+        <div class="stepper-row">
+          <button type="button" class="radar-nudge-btn" (click)="nudgePrice.emit({ side: 'BUY', delta: -0.01 })">-0.01</button>
+          <input
+            id="sim-buy-price"
+            type="number"
+            step="0.01"
+            min="0"
+            class="radar-input radar-mono center-input"
+            [value]="view().simBuyPrice"
+            (change)="onPriceChange('BUY', $event)"
+          />
+          <button type="button" class="radar-nudge-btn" (click)="nudgePrice.emit({ side: 'BUY', delta: 0.01 })">+0.01</button>
+        </div>
+      </div>
+
+      <div class="rate-box">
+        <div class="rate-box-head">
+          <label class="field-label" for="sim-sell-price">Tasa Venta ({{ bankName(view().simSellBank) }})</label>
+          <div class="tactical-chips">
+            <button type="button" class="tac-chip" (click)="tacticalStrategy.emit({ side: 'SELL', strategy: 'TOP1' })">Top 1</button>
+            <button type="button" class="tac-chip" (click)="tacticalStrategy.emit({ side: 'SELL', strategy: 'BEAT_TICK' })">-0.01</button>
+            <button type="button" class="tac-chip" (click)="tacticalStrategy.emit({ side: 'SELL', strategy: 'VWAP' })">VWAP</button>
+            <button type="button" class="tac-chip" (click)="tacticalStrategy.emit({ side: 'SELL', strategy: 'ANTI_BOT' })">Anti-Bot</button>
+          </div>
+        </div>
+        <div class="stepper-row">
+          <button type="button" class="radar-nudge-btn" (click)="nudgePrice.emit({ side: 'SELL', delta: -0.01 })">-0.01</button>
+          <input
+            id="sim-sell-price"
+            type="number"
+            step="0.01"
+            min="0"
+            class="radar-input radar-mono center-input"
+            [value]="view().simSellPrice"
+            (change)="onPriceChange('SELL', $event)"
+          />
+          <button type="button" class="radar-nudge-btn" (click)="nudgePrice.emit({ side: 'SELL', delta: 0.01 })">+0.01</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cycle Metrics Output Grid -->
+    <div class="metrics-grid">
+      <div class="metric-cell">
+        <span class="cell-label">Spread Neto</span>
+        <strong
+          class="cell-val radar-mono"
+          [class.is-positive]="view().metrics.netSpreadPct >= view().targetNetMarginPct"
+          [class.is-negative]="view().metrics.netSpreadPct < 0"
+        >
+          {{ view().metrics.netSpreadPct >= 0 ? '+' : '' }}{{ view().metrics.netSpreadPct | number:'1.2-2' }}%
+        </strong>
+      </div>
+      <div class="metric-cell">
+        <span class="cell-label">Ganancia ({{ view().operatingCapitalUsdt | number:'1.0-0' }} USDT)</span>
+        <strong class="cell-val radar-mono" [class.is-positive]="view().metrics.netProfitUsdt >= 0" [class.is-negative]="view().metrics.netProfitUsdt < 0">
+          {{ view().metrics.netProfitUsdt >= 0 ? '+' : '' }}{{ view().metrics.netProfitUsdt | number:'1.2-2' }} USDT
+        </strong>
+      </div>
+      <div class="metric-cell">
+        <span class="cell-label">Break-Even Venta</span>
+        <strong class="cell-val radar-mono">{{ view().metrics.breakEvenSellPrice | number:'1.2-2' }}</strong>
+      </div>
+      <div class="metric-cell">
+        <span class="cell-label">Target (+{{ view().targetNetMarginPct }}%)</span>
+        <button
+          type="button"
+          class="target-copy-btn radar-mono"
+          (click)="copyTargetRate.emit({ rate: view().metrics.targetSellPrice, label: 'Target Venta' })"
+        >
+          {{ view().metrics.targetSellPrice | number:'1.2-2' }}
+          <span>{{ copiedTarget() === 'Target Venta' ? '✓' : 'Copiar' }}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions-stack">
+      <button type="button" class="radar-cta-primary full-width" (click)="dispatchToCrm.emit()">
+        Enviar Ruta a Pipeline CRM
+      </button>
+
+      <div class="actions-pair">
+        <button type="button" class="radar-pill-btn" (click)="recordCycle.emit()">
+          Registrar Ciclo
+        </button>
+        <button type="button" class="radar-cta-ghost" (click)="copyMakerCard.emit()">
+          Copiar Ficha Maker
+        </button>
+      </div>
+
+      <div class="daily-strip">
+        <div class="daily-stats radar-mono">
+          <span>Hoy: {{ view().dailyCyclesCount }} ciclos · +${{ view().dailyProfitUsdt | number:'1.2-2' }} USDT</span>
+        </div>
+        <div class="daily-btns">
+          <button type="button" class="tac-chip" (click)="copyDailySummary.emit()">Resumen</button>
+          <button type="button" class="tac-chip" (click)="openCrm.emit()">Abrir CRM</button>
+        </div>
+      </div>
+    </div>
+  } @else {
+    <!-- Fee Schedule Sub-Tab -->
+    <div class="fee-table-wrap">
+      <div class="fee-summary-note">
+        <span>Maker actual ({{ view().merchantLevel }}):</span>
+        <strong class="radar-mono">{{ view().currentMakerFeePct | number:'1.2-3' }}%</strong>
+      </div>
+      <table class="fee-table">
+        <thead>
+          <tr>
+            <th>Banco / Riel</th>
+            <th>Fiat</th>
+            <th>Muro Merch</th>
+            <th>2x Maker</th>
+            <th>Híbrido T+M</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of view().feeRows; track row.payMethod) {
+            <tr>
+              <td>
+                <div class="bank-cell">
+                  <strong>{{ row.label }}</strong>
+                  @if (row.health; as h) {
+                    <span class="health-mini" [class.is-blocked]="h.isBlocked">{{ h.label }}</span>
+                  }
+                </div>
+              </td>
+              <td class="radar-mono">{{ row.fiat }}</td>
+              <td class="radar-mono">{{ row.merchantWallPct | number:'1.0-0' }}%</td>
+              <td class="radar-mono">{{ (row.makerFeePct * 2 + row.interbankFrictionPct) | number:'1.2-2' }}%</td>
+              <td class="radar-mono is-hybrid">{{ (row.hybridCombinedFeePct + row.interbankFrictionPct) | number:'1.2-2' }}%</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</aside>

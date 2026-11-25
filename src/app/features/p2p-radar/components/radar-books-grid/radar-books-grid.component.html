@@ -1,0 +1,207 @@
+<section class="books-shell" aria-label="Libros limpios multibanco y análisis de muro merchant">
+  <!-- Bank Filters & Density Strip -->
+  <div class="radar-card bank-toolbar">
+    <div class="toolbar-top">
+      <div class="radar-seg-capsule" role="group" aria-label="Presets rápidos de bancos">
+        @for (preset of presetOptions; track preset.id) {
+          <button
+            type="button"
+            class="radar-seg-btn"
+            [class.is-active]="activePreset() === preset.id"
+            (click)="presetChange.emit(preset.id)"
+          >
+            {{ preset.label }}
+          </button>
+        }
+      </div>
+
+      <button
+        type="button"
+        class="radar-pill-btn"
+        [attr.aria-pressed]="densityMode() === 'COMPACT'"
+        (click)="densityToggle.emit()"
+      >
+        <span>{{ densityMode() === 'COMFORT' ? 'Vista Detallada' : 'Vista Compacta' }}</span>
+      </button>
+    </div>
+
+    <div class="bank-groups-row">
+      @for (group of bankGroups(); track group.id) {
+        <div class="bank-group">
+          <span class="group-title">{{ group.label }}</span>
+          <div class="group-pills">
+            @for (bankKey of group.banks; track bankKey) {
+              <button
+                type="button"
+                class="radar-pill-btn bank-chip"
+                [class.is-active]="isBankActive(bankKey)"
+                [attr.aria-pressed]="isBankActive(bankKey)"
+                (click)="bankToggle.emit(bankKey)"
+              >
+                {{ bankLabel(bankKey) }}
+              </button>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- Orderbooks Bento Grid -->
+  @if (activeBanks().length === 0) {
+    <div class="radar-card empty-books">
+      <strong>Sin rieles bancarios seleccionados</strong>
+      <p>Activa al menos un banco arriba o selecciona el preset Top Líderes para analizar profundidad P2P.</p>
+    </div>
+  } @else {
+    <div class="books-grid" [class.is-compact]="densityMode() === 'COMPACT'">
+      @for (bankKey of activeBanks(); track bankKey) {
+        @if (viewModelFor(bankKey); as vm) {
+          <article class="radar-card bank-book" [attr.data-bank]="bankKey">
+            <header class="book-header">
+              <div class="book-title-row">
+                <div class="book-identity">
+                  <h2 class="bank-name">{{ bankLabel(bankKey) }}</h2>
+                  @if (vm.sudebanHealth; as health) {
+                    <span
+                      class="radar-status-pill"
+                      [class.tone-emerald]="health.statusClass === 'optimal'"
+                      [class.tone-warn]="health.statusClass === 'warn'"
+                      [class.tone-danger]="health.statusClass === 'blocked'"
+                    >
+                      {{ health.label }}
+                    </span>
+                  }
+                </div>
+
+                <div class="book-meta-pills">
+                  @if (vm.intraSpreadPct !== null) {
+                    <span class="radar-status-pill tone-cyan radar-mono">
+                      Spread {{ vm.intraSpreadPct >= 0 ? '+' : '' }}{{ vm.intraSpreadPct | number:'1.2-2' }}%
+                    </span>
+                  }
+                  @if (vm.sellTrend; as trend) {
+                    <span
+                      class="radar-status-pill radar-mono"
+                      [class.tone-emerald]="trend.trend === 'ALCISTA'"
+                      [class.tone-danger]="trend.trend === 'BAJISTA'"
+                      [class.tone-gold]="trend.trend === 'LATERAL'"
+                    >
+                      {{ trend.trend }}
+                    </span>
+                  }
+                </div>
+              </div>
+
+              <!-- Merchant Wall & Open Offer Telemetry Bar -->
+              <div class="merchant-wall-strip">
+                <div class="wall-labels radar-mono">
+                  <span>Muro Merchant: C {{ vm.buyMerchantWallPct | number:'1.0-0' }}% · V {{ vm.sellMerchantWallPct | number:'1.0-0' }}%</span>
+                  <span>{{ vm.freeAdvertisersCount }} libres · {{ vm.openTakerOffersCount }} abiertas</span>
+                </div>
+                <div class="wall-track" aria-hidden="true">
+                  <div class="wall-fill" [style.width.%]="vm.sellMerchantWallPct"></div>
+                </div>
+              </div>
+            </header>
+
+            <!-- Two Book Legs: Buy & Sell -->
+            <div class="book-sides-grid">
+              <!-- BUY SIDE (Operator sells to BUY ads or buys from SELL ads; Binance BUY book = buyers of USDT) -->
+              <div class="book-side">
+                <div class="side-header">
+                  <span class="side-label is-buy">Anuncios Venta (Compras USDT)</span>
+                  <span class="side-liq radar-mono">{{ vm.sellLiquidity | number:'1.0-0' }} USDT</span>
+                </div>
+                <div class="offers-list">
+                  @for (row of vm.sellTopOffers; track row.offer.advNo; let i = $index) {
+                    <button
+                      type="button"
+                      class="radar-offer-row"
+                      (click)="offerSelect.emit({ bank: bankKey, side: 'SELL', offer: row.offer })"
+                    >
+                      <span class="depth-bar is-buy-depth" [style.width.%]="row.depthPct" aria-hidden="true"></span>
+                      <span class="offer-rank radar-mono">#{{ i + 1 }}</span>
+                      <span class="offer-main">
+                        <span class="offer-nick">{{ row.offer.nickName }}</span>
+                        <span class="offer-tags">
+                          <span
+                            class="mini-tag"
+                            [class.is-merchant]="row.offer.isVerifiedCompetitor"
+                            [class.is-free]="!row.offer.isVerifiedCompetitor"
+                          >
+                            {{ row.offer.isVerifiedCompetitor ? 'MERCH' : 'LIBRE' }}
+                          </span>
+                          @if (row.offer.takerEligibility === 'RESTRICTED') {
+                            <span class="mini-tag is-locked" [attr.title]="restrictionTitle(row.offer)">
+                              CANDADO
+                            </span>
+                          }
+                          @if (row.bot) {
+                            <span class="mini-tag is-bot">BOT</span>
+                          }
+                        </span>
+                      </span>
+                      <span class="offer-nums radar-mono">
+                        <strong class="offer-price">{{ row.offer.price | number:'1.2-2' }}</strong>
+                        <span class="offer-surplus">{{ row.offer.surplusAmount | number:'1.0-0' }} USDT</span>
+                      </span>
+                    </button>
+                  } @empty {
+                    <div class="empty-side">Sin ofertas limpias tras filtros.</div>
+                  }
+                </div>
+              </div>
+
+              <!-- SELL SIDE (Binance SELL tab / buyBook here: buyers of your USDT / Sell USDT into) -->
+              <div class="book-side">
+                <div class="side-header">
+                  <span class="side-label is-sell">Anuncios Compra (Vendes USDT)</span>
+                  <span class="side-liq radar-mono">{{ vm.buyLiquidity | number:'1.0-0' }} USDT</span>
+                </div>
+                <div class="offers-list">
+                  @for (row of vm.buyTopOffers; track row.offer.advNo; let i = $index) {
+                    <button
+                      type="button"
+                      class="radar-offer-row"
+                      (click)="offerSelect.emit({ bank: bankKey, side: 'BUY', offer: row.offer })"
+                    >
+                      <span class="depth-bar is-sell-depth" [style.width.%]="row.depthPct" aria-hidden="true"></span>
+                      <span class="offer-rank radar-mono">#{{ i + 1 }}</span>
+                      <span class="offer-main">
+                        <span class="offer-nick">{{ row.offer.nickName }}</span>
+                        <span class="offer-tags">
+                          <span
+                            class="mini-tag"
+                            [class.is-merchant]="row.offer.isVerifiedCompetitor"
+                            [class.is-free]="!row.offer.isVerifiedCompetitor"
+                          >
+                            {{ row.offer.isVerifiedCompetitor ? 'MERCH' : 'LIBRE' }}
+                          </span>
+                          @if (row.offer.takerEligibility === 'RESTRICTED') {
+                            <span class="mini-tag is-locked" [attr.title]="restrictionTitle(row.offer)">
+                              CANDADO
+                            </span>
+                          }
+                          @if (row.bot) {
+                            <span class="mini-tag is-bot">BOT</span>
+                          }
+                        </span>
+                      </span>
+                      <span class="offer-nums radar-mono">
+                        <strong class="offer-price">{{ row.offer.price | number:'1.2-2' }}</strong>
+                        <span class="offer-surplus">{{ row.offer.surplusAmount | number:'1.0-0' }} USDT</span>
+                      </span>
+                    </button>
+                  } @empty {
+                    <div class="empty-side">Sin ofertas limpias tras filtros.</div>
+                  }
+                </div>
+              </div>
+            </div>
+          </article>
+        }
+      }
+    </div>
+  }
+</section>

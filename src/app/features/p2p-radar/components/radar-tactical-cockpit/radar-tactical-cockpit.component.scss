@@ -1,0 +1,357 @@
+@use '../../styles/radar-glass-tokens';
+
+.cockpit-rail {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  position: sticky;
+  top: 84px;
+  max-height: calc(100dvh - 104px);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.cockpit-header {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.full-seg {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.seg-equal {
+  width: 100%;
+}
+
+.hybrid-callout {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--radar-gold) 36%, transparent);
+  background: color-mix(in srgb, var(--radar-gold) 10%, var(--radar-surface-2));
+}
+
+.callout-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  strong {
+    font-size: 12px;
+    color: var(--radar-gold);
+  }
+
+  span {
+    font-size: 11px;
+    color: var(--radar-muted);
+    line-height: 1.35;
+  }
+}
+
+.callout-btn {
+  align-self: flex-start;
+  min-height: 30px;
+}
+
+.pair-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: end;
+}
+
+.pair-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--radar-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.swap-btn {
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+}
+
+.rates-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rate-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--radar-hairline);
+  background: var(--radar-surface-2);
+  min-width: 0;
+}
+
+.rate-box-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.tactical-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tac-chip {
+  padding: 3px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--radar-hairline);
+  background: var(--radar-surface);
+  color: var(--radar-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--radar-text);
+    border-color: var(--radar-accent-2);
+  }
+}
+
+.stepper-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.radar-nudge-btn {
+  min-height: 36px;
+  padding: 0 9px;
+  border-radius: 9px;
+  border: 1px solid var(--radar-hairline);
+  background: var(--radar-surface);
+  color: var(--radar-text);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--radar-accent-2);
+  }
+}
+
+.center-input {
+  text-align: center;
+  font-weight: 700;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.metric-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--radar-hairline);
+  background: var(--radar-surface-2);
+  min-width: 0;
+}
+
+.cell-label {
+  font-size: 10.5px;
+  color: var(--radar-muted);
+}
+
+.cell-val {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--radar-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &.is-positive {
+    color: var(--radar-accent);
+  }
+
+  &.is-negative {
+    color: var(--radar-danger);
+  }
+}
+
+.target-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--radar-accent-2);
+  font-size: 13.5px;
+  font-weight: 800;
+  cursor: pointer;
+
+  span {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--radar-muted);
+  }
+}
+
+.actions-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.actions-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.daily-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--radar-hairline);
+}
+
+.daily-stats {
+  font-size: 11px;
+  color: var(--radar-muted);
+}
+
+.daily-btns {
+  display: flex;
+  gap: 6px;
+}
+
+.fee-table-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.fee-summary-note {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--radar-muted);
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--radar-surface-2);
+
+  strong {
+    color: var(--radar-gold);
+  }
+}
+
+.fee-table {
+  width: 100%;
+  border-collapse: collapse;
+
+  th {
+    text-align: left;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--radar-muted);
+    text-transform: uppercase;
+    padding: 7px 6px;
+    border-bottom: 1px solid var(--radar-hairline);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 8px 6px;
+    font-size: 11.5px;
+    color: var(--radar-text);
+    border-bottom: 1px solid var(--radar-hairline);
+    white-space: nowrap;
+  }
+
+  .is-hybrid {
+    color: var(--radar-accent);
+    font-weight: 700;
+  }
+}
+
+.bank-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.health-mini {
+  font-size: 9.5px;
+  color: var(--radar-accent);
+
+  &.is-blocked {
+    color: var(--radar-danger);
+  }
+}
+
+@media (max-width: 1120px) {
+  .cockpit-rail {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
+@media (max-width: 768px) {
+  .pair-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .swap-btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .radar-nudge-btn {
+    min-height: 44px;
+  }
+
+  .actions-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

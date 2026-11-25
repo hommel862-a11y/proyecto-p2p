@@ -1,0 +1,369 @@
+@use '../../styles/radar-glass-tokens';
+
+.books-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+}
+
+.bank-toolbar {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.toolbar-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bank-groups-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  align-items: center;
+  padding-top: 8px;
+  border-top: 1px solid var(--radar-hairline);
+}
+
+.bank-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.group-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--radar-muted);
+  margin-right: 4px;
+}
+
+.group-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.bank-chip {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 11.5px;
+}
+
+.empty-books {
+  padding: 28px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  strong {
+    color: var(--radar-text);
+    font-size: 14px;
+  }
+
+  p {
+    margin: 0;
+    color: var(--radar-muted);
+    font-size: 12.5px;
+  }
+}
+
+.books-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+}
+
+.bank-book {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.book-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.book-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.book-identity,
+.book-meta-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bank-name {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--radar-text);
+}
+
+.merchant-wall-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wall-labels {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--radar-muted);
+}
+
+.wall-track {
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--radar-surface-2);
+  overflow: hidden;
+}
+
+.wall-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--radar-gold), var(--radar-warn));
+  transition: width 220ms ease;
+}
+
+.book-sides-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.book-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.side-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.side-label {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &.is-buy {
+    color: var(--radar-accent);
+  }
+
+  &.is-sell {
+    color: var(--radar-accent-2);
+  }
+}
+
+.side-liq {
+  font-size: 10.5px;
+  color: var(--radar-muted);
+  white-space: nowrap;
+}
+
+.offers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.radar-offer-row {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 10px;
+  border: 1px solid var(--radar-hairline);
+  background: var(--radar-surface-2);
+  color: var(--radar-text);
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: border-color 140ms ease, background-color 140ms ease;
+
+  &:hover {
+    border-color: var(--radar-accent-2);
+    background: var(--radar-row-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--radar-accent-2);
+    outline-offset: 2px;
+  }
+}
+
+.books-grid.is-compact .radar-offer-row {
+  padding: 5px 8px;
+}
+
+.depth-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  opacity: 0.14;
+
+  &.is-buy-depth {
+    background: var(--radar-accent);
+  }
+
+  &.is-sell-depth {
+    background: var(--radar-accent-2);
+  }
+}
+
+.offer-rank,
+.offer-main,
+.offer-nums {
+  position: relative;
+  z-index: 1;
+}
+
+.offer-rank {
+  font-size: 10.5px;
+  color: var(--radar-muted);
+  font-weight: 700;
+}
+
+.offer-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.offer-nick {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--radar-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.offer-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.mini-tag {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--radar-hairline);
+  letter-spacing: 0.03em;
+
+  &.is-free {
+    background: color-mix(in srgb, var(--radar-accent) 16%, transparent);
+    color: var(--radar-accent);
+    border-color: color-mix(in srgb, var(--radar-accent) 32%, transparent);
+  }
+
+  &.is-merchant {
+    background: color-mix(in srgb, var(--radar-gold) 15%, transparent);
+    color: var(--radar-gold);
+    border-color: color-mix(in srgb, var(--radar-gold) 30%, transparent);
+  }
+
+  &.is-locked {
+    background: color-mix(in srgb, var(--radar-warn) 16%, transparent);
+    color: var(--radar-warn);
+  }
+
+  &.is-bot {
+    background: color-mix(in srgb, var(--radar-danger) 16%, transparent);
+    color: var(--radar-danger);
+  }
+}
+
+.offer-nums {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  white-space: nowrap;
+}
+
+.offer-price {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--radar-text);
+}
+
+.offer-surplus {
+  font-size: 10px;
+  color: var(--radar-muted);
+}
+
+.empty-side {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--radar-hairline);
+  font-size: 11.5px;
+  color: var(--radar-muted);
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .bank-chip {
+    min-height: 44px;
+    padding: 0 12px;
+  }
+
+  .radar-offer-row {
+    min-height: 44px;
+  }
+
+  .book-sides-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
