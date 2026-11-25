@@ -1,6 +1,7 @@
 /**
  * P2P Radar HUD - Tactical Terminal Overlay (Binance P2P Content Script)
- * Injects a floating, draggable, non-intrusive quantitative decision widget.
+ * Injects a floating, draggable, non-intrusive quantitative decision widget
+ * built strictly via safe DOM APIs (zero innerHTML).
  */
 (function () {
   const HUD_ROOT_ID = 'p2p-radar-hud-root';
@@ -19,40 +20,73 @@
     Mercantil: 'Mercantil',
     SpecificBank: 'BDV',
     PagoMovil: 'Pago Móvil',
+    BBVA: 'Provincial',
     Provincial: 'Provincial',
+    BNC: 'BNC',
     Bancaribe: 'Bancaribe',
+    Banplus: 'Banplus',
+    BanescoPanama: 'Banesco Panamá',
+    Zinli: 'Zinli',
   };
 
+  function el(tag, options = {}, children = []) {
+    const node = document.createElement(tag);
+    if (options.id) node.id = options.id;
+    if (options.className) node.className = options.className;
+    if (options.text != null) node.textContent = String(options.text);
+    if (options.title) node.title = String(options.title);
+    if (options.type) node.type = String(options.type);
+    if (options.styleText) node.style.cssText = options.styleText;
+    if (options.attrs) {
+      for (const [k, v] of Object.entries(options.attrs)) {
+        if (v != null) node.setAttribute(k, String(v));
+      }
+    }
+    for (const child of children) {
+      if (child != null) node.appendChild(child);
+    }
+    return node;
+  }
+
+  function formatPrice(val) {
+    const n = Number(val);
+    return Number.isFinite(n) && n > 0 ? n.toFixed(2) : '--';
+  }
+
   function createHudElement() {
-    const root = document.createElement('div');
-    root.id = HUD_ROOT_ID;
-
-    root.innerHTML = `
-      <div class="hud-card">
-        <div class="hud-header" id="p2p-hud-drag-handle">
-          <div class="hud-brand">
-            <span class="pulse-dot"></span>
-            <span class="hud-title font-mono">Radar Intel P2P</span>
-          </div>
-          <div class="hud-header-actions">
-            <button type="button" class="hud-btn-icon" id="p2p-hud-minimize-btn" title="Minimizar / Expandir">_</button>
-          </div>
-        </div>
-
-        <div class="hud-body" id="p2p-hud-body">
-          <div class="hud-waiting">
-            <div class="hud-waiting-spinner"></div>
-            <span>Conectando con P2P Decisor Core...</span>
-            <span style="font-size: 10px; color: #64748b;">Abre tu app en localhost:4200/radar para sincronizar.</span>
-          </div>
-        </div>
-
-        <div class="hud-footer font-mono" id="p2p-hud-footer">
-          <span id="p2p-hud-sync-time">Sync: --:--:--</span>
-          <span id="p2p-hud-tier-badge">TIER: --</span>
-        </div>
-      </div>
-    `;
+    const root = el('div', { id: HUD_ROOT_ID }, [
+      el('div', { className: 'hud-card' }, [
+        el('div', { className: 'hud-header', id: 'p2p-hud-drag-handle' }, [
+          el('div', { className: 'hud-brand' }, [
+            el('span', { className: 'pulse-dot' }),
+            el('span', { className: 'hud-title font-mono', text: 'Radar Intel P2P' }),
+          ]),
+          el('div', { className: 'hud-header-actions' }, [
+            el('button', {
+              type: 'button',
+              className: 'hud-btn-icon',
+              id: 'p2p-hud-minimize-btn',
+              title: 'Minimizar / Expandir',
+              text: '_',
+            }),
+          ]),
+        ]),
+        el('div', { className: 'hud-body', id: 'p2p-hud-body' }, [
+          el('div', { className: 'hud-waiting' }, [
+            el('div', { className: 'hud-waiting-spinner' }),
+            el('span', { text: 'Conectando con P2P Decisor Core...' }),
+            el('span', {
+              styleText: 'font-size: 10px; color: #64748b;',
+              text: 'Abre tu app en localhost:4200/radar o app desktop (:51857) para sincronizar.',
+            }),
+          ]),
+        ]),
+        el('div', { className: 'hud-footer font-mono', id: 'p2p-hud-footer' }, [
+          el('span', { id: 'p2p-hud-sync-time', text: 'Sync: --:--:--' }),
+          el('span', { id: 'p2p-hud-tier-badge', text: 'NIVEL: --' }),
+        ]),
+      ]),
+    ]);
 
     document.body.appendChild(root);
     setupInteractions(root);
@@ -63,24 +97,28 @@
     const handle = root.querySelector('#p2p-hud-drag-handle');
     const minBtn = root.querySelector('#p2p-hud-minimize-btn');
 
-    // Minimization Toggle
-    minBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      isMinimized = !isMinimized;
-      root.classList.toggle('minimized', isMinimized);
-      minBtn.textContent = isMinimized ? '□' : '_';
-    });
+    if (minBtn) {
+      minBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        isMinimized = !isMinimized;
+        root.classList.toggle('minimized', isMinimized);
+        minBtn.textContent = isMinimized ? '□' : '_';
+      });
+    }
 
-    // Draggable Functionality
-    handle.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('#p2p-hud-minimize-btn')) return;
-      isDragging = true;
-      const rect = root.getBoundingClientRect();
-      dragOffset.x = e.clientX - rect.left;
-      dragOffset.y = e.clientY - rect.top;
-      root.style.right = 'auto'; // Disable right anchoring
-      root.setPointerCapture(e.pointerId);
-    });
+    if (handle) {
+      handle.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('#p2p-hud-minimize-btn')) return;
+        isDragging = true;
+        const rect = root.getBoundingClientRect();
+        dragOffset.x = e.clientX - rect.left;
+        dragOffset.y = e.clientY - dragOffset.top;
+        root.style.right = 'auto';
+        if (typeof root.setPointerCapture === 'function') {
+          root.setPointerCapture(e.pointerId);
+        }
+      });
+    }
 
     window.addEventListener('pointermove', (e) => {
       if (!isDragging) return;
@@ -95,6 +133,139 @@
     });
   }
 
+  function buildTopRouteSection(payload, topRoute) {
+    const srcName = bankLabels[topRoute.sourceBank] || String(topRoute.sourceBank || '--');
+    const tgtName = bankLabels[topRoute.targetBank] || String(topRoute.targetBank || '--');
+    const netSpreadPct = Number(topRoute.netSpreadPct ?? topRoute.metrics?.netSpreadPct ?? 0);
+    const netProfitUsdt = Number(topRoute.netProfitUsdt ?? topRoute.metrics?.netProfitUsdt ?? 0);
+    const buyPrice = Number(topRoute.buyPrice ?? 0);
+    const sellPrice = Number(topRoute.sellPrice ?? 0);
+    const spreadSign = netSpreadPct >= 0 ? '+' : '';
+    const isViable = netSpreadPct >= Number(payload.targetNetMarginPct ?? 0);
+
+    const bankTarget = payload.bankTargetRates?.[topRoute.sourceBank];
+    const targetSellPrice = Number(
+      bankTarget?.targetMakerSellPrice ?? topRoute.metrics?.targetSellPrice ?? sellPrice,
+    );
+    const targetSellFormatted = Number.isFinite(targetSellPrice) ? targetSellPrice.toFixed(2) : '0.00';
+
+    const profitSign = netProfitUsdt >= 0 ? '+' : '';
+    const estFiatProfit =
+      topRoute.metrics?.netProfitFiat ?? (sellPrice > 0 ? netProfitUsdt * sellPrice : null);
+    const profitText =
+      estFiatProfit != null && Number.isFinite(estFiatProfit)
+        ? `${profitSign}${netProfitUsdt.toFixed(2)} USDT (${profitSign}Bs ${estFiatProfit.toFixed(2)})`
+        : `${profitSign}${netProfitUsdt.toFixed(2)} USDT`;
+
+    const heroCard = el('div', { className: 'opportunity-hero' }, [
+      el('div', { className: 'opportunity-top-row' }, [
+        el('span', {
+          className: 'badge-hero font-mono',
+          text: isViable ? '⚡ MEJOR RUTA TÁCTICA' : '⚡ RUTA EN SEGUIMIENTO',
+        }),
+        el('span', {
+          className: 'spread-pill font-mono',
+          text: `${spreadSign}${netSpreadPct.toFixed(2)}% NETO`,
+        }),
+      ]),
+      el('div', { className: 'route-path-text font-mono' }, [
+        el('strong', { text: srcName }),
+        document.createTextNode(` (${sellPrice.toFixed(2)}) `),
+        el('span', { className: 'arrow-accent', text: '➔' }),
+        document.createTextNode(' '),
+        el('strong', { text: tgtName }),
+        document.createTextNode(` (${buyPrice.toFixed(2)})`),
+      ]),
+      el('div', { className: 'profit-row font-mono' }, [
+        el('span', { text: `Ganancia Neta (${payload.operatingCapitalUsdt ?? 0} USDT):` }),
+        el('span', { className: 'profit-highlight font-mono', text: profitText }),
+      ]),
+    ]);
+
+    const copyBtn = el('button', {
+      type: 'button',
+      className: 'btn-copy-target font-mono',
+      id: 'p2p-hud-btn-copy',
+      attrs: { 'data-rate': targetSellFormatted },
+      text: '📋 Copiar Tasa',
+    });
+
+    copyBtn.addEventListener('click', () => {
+      const rate = copyBtn.getAttribute('data-rate');
+      if (rate && navigator.clipboard) {
+        navigator.clipboard.writeText(rate);
+        copyBtn.textContent = '✓ ¡Copiado!';
+        copyBtn.classList.add('copied');
+        setTimeout(() => {
+          copyBtn.textContent = '📋 Copiar Tasa';
+          copyBtn.classList.remove('copied');
+        }, 1800);
+      }
+    });
+
+    const actionBox = el('div', { className: 'action-box' }, [
+      el('div', { className: 'target-rate-info font-mono' }, [
+        el('span', { className: 'target-rate-label', text: `Tasa Sugerida (${srcName})` }),
+        el('span', { className: 'target-rate-val font-mono', text: `${targetSellFormatted} VES` }),
+      ]),
+      copyBtn,
+    ]);
+
+    return [heroCard, actionBox];
+  }
+
+  function buildBankRatesSection(payload) {
+    const targetRates = Object.values(payload.bankTargetRates || {});
+    if (targetRates.length === 0) return null;
+
+    const bots = Array.isArray(payload.detectedBots) ? payload.detectedBots : [];
+    const rows = targetRates.map((rate) => {
+      const bankKey = rate.bank || '';
+      const bName = bankLabels[bankKey] || bankKey;
+      const botCount = bots.filter((b) => b.bank === bankKey).length;
+
+      const badgeChildren = [el('span', { text: bName })];
+      if (Number.isFinite(rate.targetMakerSellPrice) && rate.targetMakerSellPrice > 0) {
+        badgeChildren.push(
+          el('span', {
+            className: 'trend-mini-tag',
+            text: `M:${rate.targetMakerSellPrice.toFixed(2)}`,
+          }),
+        );
+      }
+      if (botCount > 0) {
+        badgeChildren.push(
+          el('span', {
+            className: 'bot-indicator-dot',
+            title: `${botCount} bot(s) detectados`,
+          }),
+        );
+      }
+
+      return el('div', { className: 'summary-bank-row' }, [
+        el('div', { className: 'bank-name-badge' }, badgeChildren),
+        el('div', { className: 'bank-rates-preview font-mono' }, [
+          el('span', { className: 'rate-col font-mono' }, [
+            el('span', { className: 'rate-label', text: 'C:' }),
+            el('span', { className: 'buy-val', text: formatPrice(rate.effectiveBuyPrice) }),
+          ]),
+          el('span', { className: 'rate-col font-mono' }, [
+            el('span', { className: 'rate-label', text: 'V:' }),
+            el('span', { className: 'sell-val', text: formatPrice(rate.effectiveSellPrice) }),
+          ]),
+        ]),
+      ]);
+    });
+
+    return el('div', { className: 'banks-summary-grid font-mono' }, [
+      el('div', {
+        styleText: 'font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase;',
+        text: 'Libros Limpios Activos',
+      }),
+      ...rows,
+    ]);
+  }
+
   function renderPayload(payload) {
     if (!payload) return;
     currentPayload = payload;
@@ -105,122 +276,42 @@
 
     if (!bodyEl) return;
 
-    // Update footer info
     const dateObj = new Date(payload.timestampMs);
     if (syncTimeEl) {
-      syncTimeEl.textContent = `Sync: ${dateObj.toLocaleTimeString()}`;
+      const timeLabel = Number.isFinite(dateObj.getTime()) ? dateObj.toLocaleTimeString() : '--:--:--';
+      syncTimeEl.textContent = `Sync: ${timeLabel}`;
     }
     if (tierBadgeEl) {
-      tierBadgeEl.textContent = `TIER: ${payload.userTier} (${payload.executionMode})`;
+      const level = payload.merchantLevel || payload.userTier || '--';
+      tierBadgeEl.textContent = `NIVEL: ${level} (${payload.executionMode || '--'})`;
     }
 
-    const topRoute = payload.topRoutes && payload.topRoutes.length > 0 ? payload.topRoutes[0] : null;
+    const fragment = document.createDocumentFragment();
+    const topRoute =
+      payload.topRoutes && payload.topRoutes.length > 0
+        ? payload.topRoutes[0]
+        : payload.bestRoute || null;
 
-    let html = '';
-
-    // 1. Top Opportunity Card
     if (topRoute) {
-      const srcName = bankLabels[topRoute.sourceBank] || topRoute.sourceBank;
-      const tgtName = bankLabels[topRoute.targetBank] || topRoute.targetBank;
-      const spreadSign = topRoute.metrics.netSpreadPct >= 0 ? '+' : '';
-      const isViable = topRoute.metrics.netSpreadPct >= payload.targetNetMarginPct;
-
-      html += `
-        <div class="opportunity-hero">
-          <div class="opportunity-top-row">
-            <span class="badge-hero font-mono">⚡ MEJOR RUTA TÁCTICA</span>
-            <span class="spread-pill font-mono">${spreadSign}${topRoute.metrics.netSpreadPct.toFixed(2)}% NETO</span>
-          </div>
-
-          <div class="route-path-text font-mono">
-            <strong>${srcName}</strong> (${topRoute.sellPrice.toFixed(2)})
-            <span class="arrow-accent">➔</span>
-            <strong>${tgtName}</strong> (${topRoute.buyPrice.toFixed(2)})
-          </div>
-
-          <div class="profit-row font-mono">
-            <span>Ganancia Neta (${payload.operatingCapitalUsdt} USDT):</span>
-            <span class="profit-highlight font-mono">+${topRoute.metrics.netProfitUsdt.toFixed(2)} USDT (+Bs ${topRoute.metrics.netProfitFiat.toFixed(2)})</span>
-          </div>
-        </div>
-
-        <div class="action-box">
-          <div class="target-rate-info font-mono">
-            <span class="target-rate-label">Tasa Sugerida (${srcName})</span>
-            <span class="target-rate-val font-mono">${topRoute.metrics.targetSellPrice.toFixed(2)} VES</span>
-          </div>
-          <button type="button" class="btn-copy-target font-mono" id="p2p-hud-btn-copy" data-rate="${topRoute.metrics.targetSellPrice.toFixed(2)}">
-            📋 Copiar Tasa
-          </button>
-        </div>
-      `;
-    } else {
-      html += `
-        <div class="hud-waiting">
-          <span>Libros escaneados. Sin brechas sobre el margen objetivo (+${payload.targetNetMarginPct}%).</span>
-        </div>
-      `;
-    }
-
-    // 2. Micro Orderbook Summary by Bank
-    if (payload.topBanks && payload.topBanks.length > 0) {
-      html += `
-        <div class="banks-summary-grid font-mono">
-          <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase;">
-            Libros Limpios Activos
-          </div>
-      `;
-
-      for (const bank of payload.topBanks) {
-        const bName = bankLabels[bank.bank] || bank.bank;
-        const trendClass = `trend-${bank.trend}`;
-        const hasBots = bank.botCount > 0;
-        const buyPrice = bank.topBuyPrice != null ? bank.topBuyPrice.toFixed(2) : '--';
-        const sellPrice = bank.topSellPrice != null ? bank.topSellPrice.toFixed(2) : '--';
-
-        html += `
-          <div class="summary-bank-row">
-            <div class="bank-name-badge">
-              <span>${bName}</span>
-              <span class="trend-mini-tag ${trendClass}">${bank.trend}</span>
-              ${hasBots ? `<span class="bot-indicator-dot" title="${bank.botCount} bot(s) detectados"></span>` : ''}
-            </div>
-
-            <div class="bank-rates-preview font-mono">
-              <span class="rate-col font-mono">
-                <span class="rate-label">C:</span>
-                <span class="buy-val">${buyPrice}</span>
-              </span>
-              <span class="rate-col font-mono">
-                <span class="rate-label">V:</span>
-                <span class="sell-val">${sellPrice}</span>
-              </span>
-            </div>
-          </div>
-        `;
+      for (const node of buildTopRouteSection(payload, topRoute)) {
+        fragment.appendChild(node);
       }
-
-      html += `</div>`;
+    } else {
+      fragment.appendChild(
+        el('div', { className: 'hud-waiting' }, [
+          el('span', {
+            text: `Libros escaneados. Sin brechas sobre el margen objetivo (+${payload.targetNetMarginPct ?? 0}%).`,
+          }),
+        ]),
+      );
     }
 
-    bodyEl.innerHTML = html;
-
-    // Attach copy button handler
-    const copyBtn = document.getElementById('p2p-hud-btn-copy');
-    if (copyBtn) {
-      copyBtn.addEventListener('click', () => {
-        const rate = copyBtn.getAttribute('data-rate');
-        if (rate && navigator.clipboard) {
-          navigator.clipboard.writeText(rate);
-          copyBtn.textContent = '✓ ¡Copiado!';
-          copyBtn.classList.add('copied');
-          setTimeout(() => {
-            copyBtn.textContent = '📋 Copiar Tasa';
-            copyBtn.classList.remove('copied');
-          }, 1800);
-        }
-      });
+    const banksGrid = buildBankRatesSection(payload);
+    if (banksGrid) {
+      fragment.appendChild(banksGrid);
     }
+
+    bodyEl.replaceChildren(fragment);
   }
 
   function loadCachedPayload() {
@@ -233,16 +324,14 @@
     }
   }
 
-  // Listen for real-time messages from background script
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
     chrome.runtime.onMessage.addListener((message) => {
-      if (message.action === 'HUD_UPDATE' && message.payload) {
+      if (message && message.action === 'HUD_UPDATE' && message.payload) {
         renderPayload(message.payload);
       }
     });
   }
 
-  // Initialize once DOM is ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', createHudElement);
   } else {

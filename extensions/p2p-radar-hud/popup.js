@@ -14,12 +14,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const date = new Date(payload.timestampMs);
 
       statusEl.textContent = 'En Vivo';
-      syncEl.textContent = date.toLocaleTimeString();
-      tierEl.textContent = `${payload.userTier} (${payload.executionMode})`;
+      syncEl.textContent = Number.isFinite(date.getTime()) ? date.toLocaleTimeString() : '--:--:--';
+      const tierLabel = payload.merchantLevel || payload.userTier || 'STANDARD';
+      tierEl.textContent = `${tierLabel} (${payload.executionMode || 'TAKER_MAKER'})`;
 
       if (payload.topRoutes && payload.topRoutes.length > 0) {
         const best = payload.topRoutes[0];
-        spreadEl.textContent = `+${best.metrics.netSpreadPct.toFixed(2)}% (${best.sourceBank} ➔ ${best.targetBank})`;
+        const netSpread = Number(best.netSpreadPct ?? best.metrics?.netSpreadPct ?? 0);
+        const sign = netSpread >= 0 ? '+' : '';
+        spreadEl.textContent = `${sign}${netSpread.toFixed(2)}% (${best.sourceBank} ➔ ${best.targetBank})`;
       } else {
         spreadEl.textContent = 'Sin brechas > objetivo';
       }
