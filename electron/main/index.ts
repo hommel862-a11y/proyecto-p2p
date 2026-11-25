@@ -18,6 +18,10 @@ import { getTreasurySnapshot } from './ipc/treasury-snapshot';
 import { bootstrapMcpServer } from './mcp-bootstrap';
 import { AlphaWatcher } from './alpha-watcher';
 import { ClipboardWatcherService } from './services/clipboard-watcher';
+import {
+  ensureInboundGatewayRunning,
+  stopManagedInboundGateway,
+} from './services/inbound-gateway-bootstrap';
 
 app.setName('p2p-decisor');
 try {
@@ -727,6 +731,8 @@ if (!gotTheLock) {
 
   app.whenReady().then(async () => {
     await bootstrapMcpServer();
+    const gwBoot = await ensureInboundGatewayRunning();
+    console.log(`[p2p] inbound-gateway bootstrap: ${gwBoot.status} (port ${gwBoot.port})`);
     createTray();
     await createWindow();
 
@@ -747,6 +753,7 @@ app.on('before-quit', () => {
 });
 
 app.on('will-quit', () => {
+  stopManagedInboundGateway();
   globalShortcut.unregisterAll();
   if (tray && !tray.isDestroyed()) {
     tray.destroy();
