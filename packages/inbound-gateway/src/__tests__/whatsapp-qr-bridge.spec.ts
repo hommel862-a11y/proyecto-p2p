@@ -17,8 +17,14 @@ describe('WhatsApp QR Bridge Helpers & Gateway Routes', () => {
     }
   });
 
-  it('normalizes phone numbers to WhatsApp JIDs and formats JIDs back to E.164', () => {
+  it('normalizes VE 04xx local numbers, preserves international codes (+57/+56/+593/+51), and formats JIDs', () => {
     expect(normalizePhoneToJid('+58 424-7723783')).toBe('584247723783@s.whatsapp.net');
+    expect(normalizePhoneToJid('0424-7723783')).toBe('584247723783@s.whatsapp.net');
+    expect(normalizePhoneToJid('04141234567')).toBe('584141234567@s.whatsapp.net');
+    expect(normalizePhoneToJid('+57 312 3701401')).toBe('573123701401@s.whatsapp.net');
+    expect(normalizePhoneToJid('+56 9 1234 5678')).toBe('56912345678@s.whatsapp.net');
+    expect(normalizePhoneToJid('+593 99 123 4567')).toBe('593991234567@s.whatsapp.net');
+    expect(normalizePhoneToJid('+51 987 654 321')).toBe('51987654321@s.whatsapp.net');
     expect(normalizePhoneToJid('584247723783@s.whatsapp.net')).toBe('584247723783@s.whatsapp.net');
     expect(normalizePhoneToJid('123')).toBeNull();
     expect(formatJidToPhone('584247723783:12@s.whatsapp.net')).toBe('+584247723783');

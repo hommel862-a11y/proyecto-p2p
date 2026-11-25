@@ -622,7 +622,8 @@ export class InboundGatewayServer {
       }
 
       const windowEval = evaluateMeta24hFreeWindow(body.lastInboundTimestampMs ?? null);
-      if (!windowEval.isOpen && !body.templateName) {
+      const qrActive = this.waQrBridge.isConnected();
+      if (!windowEval.isOpen && !body.templateName && !qrActive) {
         res.writeHead(409, { 'Content-Type': 'application/json' });
         res.end(
           JSON.stringify({
@@ -642,18 +643,22 @@ export class InboundGatewayServer {
 
       if (
         delivery.mode === 'DRY_RUN_NO_META_CREDENTIALS' &&
-        this.waQrBridge.isConnected() &&
+        qrActive &&
         body.recipientPhone
       ) {
         const qrRes = await this.waQrBridge.sendText(body.recipientPhone, outboundText);
-        if (qrRes.ok) {
-          delivery = {
-            delivered: true,
-            workspaceId,
-            mode: 'LIVE_WHATSAPP_QR',
-            metaMessageId: qrRes.messageId,
-          };
+        if (!qrRes.ok) {
+          this.sendJson(res, 502, {
+            error: qrRes.error || 'WHATSAPP_QR_SEND_FAILED',
+          });
+          return;
         }
+        delivery = {
+          delivered: true,
+          workspaceId,
+          mode: 'LIVE_WHATSAPP_QR',
+          metaMessageId: qrRes.messageId,
+        };
       }
 
       const evt = await this.persistOutboxEvent(

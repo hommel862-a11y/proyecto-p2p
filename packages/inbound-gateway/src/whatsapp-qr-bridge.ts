@@ -36,6 +36,8 @@ export interface WhatsAppQrBridgeOptions {
 
 /**
  * Normalize a phone number or JID into a WhatsApp 1:1 JID (`<digits>@s.whatsapp.net`).
+ * Converts Venezuelan local `04xx` 11-digit numbers (`0412/0414/0416/0424/0426`) to `58...`,
+ * while preserving international country codes (`+57`, `+56`, `+593`, `+51`, etc.) untouched.
  */
 export function normalizePhoneToJid(input: string): string | null {
   const trimmed = input.trim();
@@ -44,6 +46,9 @@ export function normalizePhoneToJid(input: string): string | null {
     return trimmed;
   }
   const digits = trimmed.replace(/\D/g, '');
+  if (/^04(?:12|14|16|24|26)\d{7}$/.test(digits)) {
+    return `58${digits.slice(1)}@s.whatsapp.net`;
+  }
   if (digits.length < 7) return null;
   return `${digits}@s.whatsapp.net`;
 }
@@ -347,7 +352,13 @@ export class WhatsAppQrBridge {
             | undefined;
           const remoteJid = key?.remoteJid || '';
           if (!remoteJid) continue;
-          if (remoteJid === 'status@broadcast' || remoteJid.endsWith('@g.us')) continue;
+          if (
+            remoteJid === 'status@broadcast' ||
+            remoteJid.endsWith('@g.us') ||
+            remoteJid.endsWith('@newsletter')
+          ) {
+            continue;
+          }
           if (key?.id && this.sentByGatewayIds.has(key.id)) continue;
 
           const tsSec = Number(raw['messageTimestamp'] || 0);

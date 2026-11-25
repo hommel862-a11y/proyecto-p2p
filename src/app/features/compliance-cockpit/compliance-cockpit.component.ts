@@ -4673,6 +4673,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
 
     const senderName = String(evt.payload['senderName'] || rawPhone).trim();
     const digits = rawPhone.replace(/\D/g, '') || rawPhone;
+    if (digits.startsWith('120363') && digits.length >= 16) return;
     const timestamp = Number(evt.payload['timestamp'] || evt.timestamp || Date.now());
     const msgId = `sse-wa-${evt.id}`;
     const targetScope: WorkspaceScope =
