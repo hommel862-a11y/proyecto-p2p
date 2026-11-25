@@ -314,6 +314,29 @@ export class P2PDatabaseService {
       }
     }
 
+    // Idempotent column migration for pre-existing custom_agents tables
+    const customAgentCols = this.db.prepare('PRAGMA table_info(custom_agents)').all() as Array<{ name: string }>;
+    if (customAgentCols.length > 0) {
+      const existingAgentCols = new Set(customAgentCols.map((c) => c.name));
+      if (!existingAgentCols.has('domain')) {
+        this.db.exec(`ALTER TABLE custom_agents ADD COLUMN domain TEXT NOT NULL DEFAULT 'P2P_DESK'`);
+      }
+      this.db.exec(`CREATE INDEX IF NOT EXISTS idx_custom_agents_domain ON custom_agents(domain)`);
+      if (!existingAgentCols.has('daily_budget_usd')) {
+        this.db.exec(`ALTER TABLE custom_agents ADD COLUMN daily_budget_usd REAL NOT NULL DEFAULT 1.5`);
+      }
+      if (!existingAgentCols.has('max_steps')) {
+        this.db.exec(`ALTER TABLE custom_agents ADD COLUMN max_steps INTEGER NOT NULL DEFAULT 6`);
+      }
+      if (!existingAgentCols.has('prompt_version')) {
+        this.db.exec(`ALTER TABLE custom_agents ADD COLUMN prompt_version INTEGER NOT NULL DEFAULT 1`);
+      }
+      // Migrate deprecated gemini-3.7-flash defaults to valid gemini-3.8-flash
+      this.db.exec(
+        `UPDATE custom_agents SET model_name = 'gemini-3.8-flash' WHERE model_name IN ('gemini-3.7-flash', 'gemini-3.6-flash')`,
+      );
+    }
+
     // Explicit migration guard: guarantee critical tables and indexes exist on any pre-existing database
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS engram_observations (
@@ -425,6 +448,10 @@ export class P2PDatabaseService {
         is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
         execution_mode TEXT NOT NULL DEFAULT 'on_demand' CHECK (execution_mode IN ('on_demand', 'ambient_daemon')),
         schedule_interval_sec INTEGER,
+        domain TEXT NOT NULL DEFAULT 'P2P_DESK' CHECK (domain IN ('P2P_DESK', 'FINANCE_360', 'ARM_B2B', 'SECURITY')),
+        daily_budget_usd REAL NOT NULL DEFAULT 1.5,
+        max_steps INTEGER NOT NULL DEFAULT 6,
+        prompt_version INTEGER NOT NULL DEFAULT 1,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
@@ -438,6 +465,28 @@ export class P2PDatabaseService {
         PRIMARY KEY (agent_id, skill_id)
       );
       CREATE INDEX IF NOT EXISTS idx_custom_agent_skills_agent ON custom_agent_skills(agent_id);
+
+      CREATE TABLE IF NOT EXISTS agent_runs (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL REFERENCES custom_agents(id) ON DELETE CASCADE,
+        trigger_type TEXT NOT NULL CHECK (trigger_type IN ('daemon_tick', 'manual_run', 'sandbox_test', 'copilot_mention')),
+        status TEXT NOT NULL CHECK (status IN ('running', 'success', 'error', 'blocked_killswitch', 'blocked_budget', 'timeout')),
+        prompt_input TEXT NOT NULL,
+        response_output TEXT,
+        tools_called_json TEXT NOT NULL DEFAULT '[]',
+        model_used TEXT NOT NULL,
+        provider_used TEXT NOT NULL DEFAULT 'gemini',
+        tokens_in INTEGER NOT NULL DEFAULT 0,
+        tokens_out INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL NOT NULL DEFAULT 0,
+        latency_ms INTEGER NOT NULL DEFAULT 0,
+        error_message TEXT,
+        started_at INTEGER NOT NULL,
+        finished_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_runs_agent_time ON agent_runs(agent_id, started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_runs_status_time ON agent_runs(status, started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_runs_started ON agent_runs(started_at DESC);
 
       CREATE TABLE IF NOT EXISTS copilot_threads (
         id TEXT PRIMARY KEY,

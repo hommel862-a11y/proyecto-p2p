@@ -41,6 +41,7 @@ import type {
 } from '../db/decision-journal.repository';
 import { GeminiOrchestrator } from '../gemini-orchestrator';
 import { AgentSwarmOrchestrator } from '../agents/swarm-orchestrator';
+import { AgentDaemonScheduler } from '../agents/daemon-scheduler';
 import { getTreasurySnapshot, setTreasurySnapshot } from './treasury-snapshot';
 import { killswitchState, triggerKillswitch } from './killswitch-state';
 import {
@@ -1665,44 +1666,152 @@ export function registerIpcHandlers(): void {
     return getClipboardWatcher().getStatus();
   });
 
-  // Custom Agent Studio Handlers
+  // Custom Agent Studio & Real Background Daemon Scheduler
+  const agentRepo = db.getCustomAgentRepo();
+  agentRepo.seedDefaultsIfEmpty();
+
+  const daemonScheduler = new AgentDaemonScheduler({
+    repo: agentRepo,
+    isKillswitchActive: () => killswitchState.isTriggered,
+    onEvent: (event) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) {
+          win.webContents.send('agents:run-event', event);
+        }
+      }
+    },
+    executor: async (req) => {
+      const orch = getOrchestrator();
+      const readOnlyGuard =
+        req.blockedSkills.length > 0
+          ? `\n[GUARDRAIL READ-ONLY ACTIVO]: Las herramientas de mutacion (${req.blockedSkills.join(', ')}) estan bloqueadas en esta ejecucion. Si se requiere accion, formula una propuesta clara para aprobacion humana (HITL).`
+          : '';
+      const composedPrompt =
+        `[AGENTE ACTIVO: ${req.agent.name} (${req.agent.id})]\n` +
+        `[SYSTEM PROMPT v${req.agent.promptVersion}]: ${req.agent.systemPrompt}\n` +
+        `[SKILLS AUTORIZADAS]: ${req.allowedSkills.join(', ') || 'ninguna'}${readOnlyGuard}\n\n` +
+        `Solicitud:\n${req.prompt}`;
+
+      const response = await orch.sendMessage({
+        message: composedPrompt,
+        agentId: req.agent.id,
+        contextScope: {
+          orderbook: req.agent.domain === 'P2P_DESK' || req.agent.domain === 'SECURITY',
+          treasury: true,
+          orders: req.agent.domain === 'P2P_DESK' || req.agent.domain === 'SECURITY',
+          finance360: req.agent.domain === 'FINANCE_360',
+        },
+      });
+
+      return {
+        reply: response.reply ?? '',
+        modelUsed: response.usage?.model ?? req.agent.modelName,
+        providerUsed: response.usage?.provider ?? req.agent.modelProvider,
+        toolsCalled: (response.toolTraces ?? []).map((t) => ({
+          name: t.name,
+          ok: t.ok,
+          latencyMs: t.latencyMs,
+        })),
+        tokensIn: response.usage?.inputTokens ?? 0,
+        tokensOut: response.usage?.outputTokens ?? 0,
+        costUsd: response.usage?.estimatedCostUsd ?? 0,
+      };
+    },
+  });
+  daemonScheduler.start();
+
   ipcMain.removeHandler('agents:list');
   ipcMain.handle(
     'agents:list',
-    async (_event: IpcMainInvokeEvent, filter?: { activeOnly?: boolean; mode?: 'on_demand' | 'ambient_daemon' }) => {
-      return db.getCustomAgentRepo().listAgents(filter);
+    async (
+      _event: IpcMainInvokeEvent,
+      filter?: { activeOnly?: boolean; mode?: 'on_demand' | 'ambient_daemon'; domain?: any },
+    ) => {
+      return agentRepo.listAgents(filter);
     },
   );
 
   ipcMain.removeHandler('agents:get');
   ipcMain.handle('agents:get', async (_event: IpcMainInvokeEvent, params: { id: string } | string) => {
     const id = typeof params === 'string' ? params : params.id;
-    return db.getCustomAgentRepo().getAgentById(id);
+    return agentRepo.getAgentById(id);
   });
 
   ipcMain.removeHandler('agents:create');
   ipcMain.handle('agents:create', async (_event: IpcMainInvokeEvent, dto: any) => {
-    return db.getCustomAgentRepo().createAgent(dto);
+    const created = agentRepo.createAgent(dto);
+    daemonScheduler.reconcile();
+    return created;
   });
 
   ipcMain.removeHandler('agents:update');
   ipcMain.handle('agents:update', async (_event: IpcMainInvokeEvent, params: { id: string; dto: any }) => {
-    return db.getCustomAgentRepo().updateAgent(params.id, params.dto);
+    const updated = agentRepo.updateAgent(params.id, params.dto);
+    daemonScheduler.reconcile();
+    return updated;
   });
 
   ipcMain.removeHandler('agents:delete');
   ipcMain.handle('agents:delete', async (_event: IpcMainInvokeEvent, params: { id: string } | string) => {
     const id = typeof params === 'string' ? params : params.id;
-    return db.getCustomAgentRepo().deleteAgent(id);
+    const deleted = agentRepo.deleteAgent(id);
+    daemonScheduler.reconcile();
+    return deleted;
   });
 
   ipcMain.removeHandler('agents:toggle');
   ipcMain.handle(
     'agents:toggle',
     async (_event: IpcMainInvokeEvent, params: { id: string; active?: boolean }) => {
-      return db.getCustomAgentRepo().toggleAgent(params.id, params.active);
+      const toggled = agentRepo.toggleAgent(params.id, params.active);
+      daemonScheduler.reconcile();
+      return toggled;
     },
   );
+
+  ipcMain.removeHandler('agents:run-sandbox');
+  ipcMain.handle(
+    'agents:run-sandbox',
+    async (
+      _event: IpcMainInvokeEvent,
+      params: {
+        agentId: string;
+        prompt: string;
+        overrideSystemPrompt?: string;
+        overrideSkills?: string[];
+        overrideModel?: string;
+      },
+    ) => {
+      return daemonScheduler.runSandbox(params.agentId, params.prompt, {
+        overrideSystemPrompt: params.overrideSystemPrompt,
+        overrideSkills: params.overrideSkills,
+        overrideModel: params.overrideModel,
+      });
+    },
+  );
+
+  ipcMain.removeHandler('agents:run-now');
+  ipcMain.handle(
+    'agents:run-now',
+    async (_event: IpcMainInvokeEvent, params: { agentId: string; promptOverride?: string }) => {
+      return daemonScheduler.runNow(params.agentId, params.promptOverride);
+    },
+  );
+
+  ipcMain.removeHandler('agents:list-runs');
+  ipcMain.handle('agents:list-runs', async (_event: IpcMainInvokeEvent, filter?: any) => {
+    return agentRepo.listRuns(filter);
+  });
+
+  ipcMain.removeHandler('agents:get-fleet-metrics');
+  ipcMain.handle('agents:get-fleet-metrics', async () => {
+    return agentRepo.getFleetMetrics();
+  });
+
+  ipcMain.removeHandler('agents:get-daemon-status');
+  ipcMain.handle('agents:get-daemon-status', async () => {
+    return daemonScheduler.getStatus();
+  });
 
   // ARM Multi-Workspace SQLite Mirror Handlers
   ipcMain.removeHandler('arm:list-leads');

@@ -344,6 +344,10 @@ CREATE TABLE IF NOT EXISTS custom_agents (
   is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
   execution_mode TEXT NOT NULL DEFAULT 'on_demand' CHECK (execution_mode IN ('on_demand', 'ambient_daemon')),
   schedule_interval_sec INTEGER,
+  domain TEXT NOT NULL DEFAULT 'P2P_DESK' CHECK (domain IN ('P2P_DESK', 'FINANCE_360', 'ARM_B2B', 'SECURITY')),
+  daily_budget_usd REAL NOT NULL DEFAULT 1.5,
+  max_steps INTEGER NOT NULL DEFAULT 6,
+  prompt_version INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -359,6 +363,29 @@ CREATE TABLE IF NOT EXISTS custom_agent_skills (
 );
 
 CREATE INDEX IF NOT EXISTS idx_custom_agent_skills_agent ON custom_agent_skills(agent_id);
+
+CREATE TABLE IF NOT EXISTS agent_runs (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL REFERENCES custom_agents(id) ON DELETE CASCADE,
+  trigger_type TEXT NOT NULL CHECK (trigger_type IN ('daemon_tick', 'manual_run', 'sandbox_test', 'copilot_mention')),
+  status TEXT NOT NULL CHECK (status IN ('running', 'success', 'error', 'blocked_killswitch', 'blocked_budget', 'timeout')),
+  prompt_input TEXT NOT NULL,
+  response_output TEXT,
+  tools_called_json TEXT NOT NULL DEFAULT '[]',
+  model_used TEXT NOT NULL,
+  provider_used TEXT NOT NULL DEFAULT 'gemini',
+  tokens_in INTEGER NOT NULL DEFAULT 0,
+  tokens_out INTEGER NOT NULL DEFAULT 0,
+  cost_usd REAL NOT NULL DEFAULT 0,
+  latency_ms INTEGER NOT NULL DEFAULT 0,
+  error_message TEXT,
+  started_at INTEGER NOT NULL,
+  finished_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_runs_agent_time ON agent_runs(agent_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_status_time ON agent_runs(status, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_started ON agent_runs(started_at DESC);
 
 -- ============================================================================
 -- ARM Multi-Workspace Local-First Mirror (SQLite Dual-Mode Sync)

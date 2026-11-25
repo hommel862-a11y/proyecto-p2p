@@ -105,15 +105,44 @@ export const DEFAULT_BUILTIN_AGENTS: RegisteredAgentDto[] = [
     isCustom: false,
   },
   {
-    id: 'ux-sentinel',
-    name: 'UX & Ergonomics Sentinel',
-    role: 'UX_SENTINEL',
-    avatar: '🎨',
+    id: 'ad-repricing-desk',
+    name: 'Mesa de Anuncios & Repricing P2P',
+    role: 'AD_REPRICING_DESK',
+    avatar: '⚡',
     description:
-      'Vigila la ergonomía táctil en vista 9:16 Android, áreas mínimas de 44px, fluidez a 60fps y cero desbordamientos.',
-    tools: ['search_google_live'],
+      'Monitoreo continuo de competitividad de anuncios Binance P2P, presión de libro y propuestas HITL de repricing o pausa.',
+    tools: [
+      'audit_ad_competitiveness',
+      'analyze_orderbook_pressure',
+      'evaluate_ad_repricing',
+      'recommend_competitive_pricing',
+      'publish_ad_price',
+      'toggle_ad_status',
+    ],
     systemPromptModifier:
-      'Centinela y arquitecto de diseño ergonómico móvil 9:16 y experiencia de usuario limpia y minimalista.',
+      'Operador de mesa de anuncios P2P. Protege spread >= 0.50% neto y exige aprobacion HITL antes de publicar cambios de precio o pausas.',
+    enabled: true,
+    isCustom: false,
+  },
+  {
+    id: 'treasury-macro-cfo',
+    name: 'Tesorero 360 & Centinela Macro BCV',
+    role: 'TREASURY_MACRO_CFO',
+    avatar: '🏦',
+    description:
+      'Cruce de liquidez Finanzas 360, capacidad/márgenes Cashea, ventanas de intervención BCV y rebalanceo de capital ocioso.',
+    tools: [
+      'f360_get_treasury_summary',
+      'f360_audit_overdue_and_runway',
+      'f360_analyze_cashea_capacity',
+      'f360_simulate_cashea_ally_margin',
+      'check_bcv_intervention_window',
+      'predict_bcv_macro_regime',
+      'optimize_treasury_idle_yield',
+      'rebalance_capital_allocation',
+    ],
+    systemPromptModifier:
+      'Director financiero 360 y centinela macro BCV. Protege la liquidez operativa a 14 dias y alerta antes de inyecciones cambiarias.',
     enabled: true,
     isCustom: false,
   },
@@ -236,21 +265,56 @@ export class AgentRegistry {
         const parsed = JSON.parse(raw) as RegisteredAgentDto[];
         if (Array.isArray(parsed)) {
           for (const item of parsed) {
-            if (item && item.id) {
+            if (item && item.id && item.id !== 'ux-sentinel') {
               this.agents.set(item.id, item);
             }
           }
         }
       }
+      this.syncFromCustomAgentTable();
     } catch (err) {
       console.warn('[AgentRegistry] Error al cargar agentes personalizados:', err);
+    }
+  }
+
+  /**
+   * Projects SQLite `custom_agents` (single source of truth) into the registry map
+   * so Copilot mentions and Swarm routing always see the live Agent Studio fleet.
+   */
+  private syncFromCustomAgentTable(): void {
+    if (!this.db || typeof this.db.getCustomAgentRepo !== 'function') return;
+    try {
+      const repo = this.db.getCustomAgentRepo();
+      const rows = repo.listAgents();
+      const avatarByDomain: Record<string, string> = {
+        P2P_DESK: '⚡',
+        FINANCE_360: '🏦',
+        SECURITY: '🛡️',
+        ARM_B2B: '🤝',
+      };
+      for (const row of rows) {
+        const existing = this.agents.get(row.id);
+        this.agents.set(row.id, {
+          id: row.id,
+          name: row.name,
+          role: existing?.role ?? row.id.toUpperCase().replace(/-/g, '_'),
+          avatar: existing?.avatar ?? avatarByDomain[row.domain] ?? '🤖',
+          description: row.description,
+          tools: row.skills,
+          systemPromptModifier: row.systemPrompt,
+          enabled: row.isActive,
+          isCustom: existing?.isCustom ?? true,
+        });
+      }
+    } catch (err) {
+      console.warn('[AgentRegistry] Error al sincronizar desde custom_agents:', err);
     }
   }
 
   private persistAgents(): void {
     if (!this.db) return;
     try {
-      const list = Array.from(this.agents.values());
+      const list = Array.from(this.agents.values()).filter((a) => a.id !== 'ux-sentinel');
       this.db.setConfigValue('copilot_registered_agents', JSON.stringify(list));
     } catch (err) {
       console.warn('[AgentRegistry] Error al guardar agentes:', err);
@@ -258,17 +322,28 @@ export class AgentRegistry {
   }
 
   listAgents(): RegisteredAgentDto[] {
-    return Array.from(this.agents.values());
+    this.syncFromCustomAgentTable();
+    return Array.from(this.agents.values()).filter((a) => a.id !== 'ux-sentinel');
   }
 
   getAgent(id: string): RegisteredAgentDto | undefined {
+    this.syncFromCustomAgentTable();
+    if (id === 'ux-sentinel') return undefined;
     return this.agents.get(id);
   }
 
   toggleAgent(id: string, enabled: boolean): boolean {
+    this.syncFromCustomAgentTable();
     const existing = this.agents.get(id);
     if (!existing) return false;
     existing.enabled = enabled;
+    if (this.db && typeof this.db.getCustomAgentRepo === 'function') {
+      try {
+        this.db.getCustomAgentRepo().toggleAgent(id, enabled);
+      } catch {
+        // Ignore if agent only exists in legacy builtin map
+      }
+    }
     this.persistAgents();
     return true;
   }

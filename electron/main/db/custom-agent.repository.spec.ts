@@ -19,11 +19,13 @@ describe('CustomAgentRepository', () => {
     db.close();
   });
 
-  it('seeds default swarm agents when database is empty', () => {
+  it('seeds default swarm agents including ad-repricing-desk and treasury-macro-cfo with valid models', () => {
     repo.seedDefaultsIfEmpty();
     const agents = repo.listAgents();
     expect(agents.length).toBe(DEFAULT_SWARM_AGENTS.length);
     expect(agents.map((a) => a.id)).toContain('arbitrage-strategist');
+    expect(agents.map((a) => a.id)).toContain('ad-repricing-desk');
+    expect(agents.map((a) => a.id)).toContain('treasury-macro-cfo');
     expect(agents.map((a) => a.id)).toContain('security-sentinel');
     expect(agents.map((a) => a.id)).toContain('risk-gatekeeper');
     expect(agents.map((a) => a.id)).toContain('dispute-auditor');
@@ -32,6 +34,10 @@ describe('CustomAgentRepository', () => {
     expect(agents.map((a) => a.id)).toContain('arm-quoter');
     expect(agents.map((a) => a.id)).toContain('arm-scheduler');
     expect(agents.map((a) => a.id)).toContain('arm-followup-daemon');
+    for (const agent of agents) {
+      expect(agent.modelName).not.toBe('gemini-3.7-flash');
+      expect(agent.dailyBudgetUsd).toBeGreaterThan(0);
+    }
   });
 
   it('does not duplicate seeds when called multiple times', () => {
@@ -140,5 +146,64 @@ describe('CustomAgentRepository', () => {
 
     const daemonOnly = repo.listAgents({ mode: 'ambient_daemon' });
     expect(daemonOnly.map((a) => a.id)).toEqual(['agent-2']);
+  });
+
+  it('increments promptVersion when systemPrompt changes and records forensic agent_runs + fleet metrics', () => {
+    const created = repo.createAgent({
+      id: 'desk-1',
+      name: 'Mesa Repricing',
+      systemPrompt: 'Prompt v1',
+      domain: 'P2P_DESK',
+      dailyBudgetUsd: 2.0,
+      executionMode: 'ambient_daemon',
+      scheduleIntervalSec: 30, // Should be clamped to 60s
+    });
+    expect(created.promptVersion).toBe(1);
+    expect(created.scheduleIntervalSec).toBe(60);
+
+    const updated = repo.updateAgent('desk-1', { systemPrompt: 'Prompt v2' });
+    expect(updated?.promptVersion).toBe(2);
+
+    const run1 = repo.createRun({
+      agentId: 'desk-1',
+      triggerType: 'daemon_tick',
+      promptInput: 'Check spread',
+      modelUsed: 'gemini-3.5-flash-lite',
+    });
+    repo.completeRun(run1.id, {
+      status: 'success',
+      responseOutput: 'Spread OK 0.82%',
+      toolsCalled: [{ name: 'audit_ad_competitiveness', ok: true, latencyMs: 120 }],
+      tokensIn: 500,
+      tokensOut: 120,
+      costUsd: 0.0025,
+      latencyMs: 320,
+    });
+
+    const run2 = repo.createRun({
+      agentId: 'desk-1',
+      triggerType: 'sandbox_test',
+      promptInput: 'Simulate depeg',
+      modelUsed: 'gemini-3.5-flash-lite',
+    });
+    repo.completeRun(run2.id, {
+      status: 'blocked_killswitch',
+      errorMessage: 'Killswitch active',
+      latencyMs: 0,
+    });
+
+    expect(repo.getAgentDailySpendUsd('desk-1')).toBeCloseTo(0.0025, 6);
+    const runs = repo.listRuns({ agentId: 'desk-1' });
+    expect(runs.length).toBe(2);
+    expect(runs[0].status).toBe('blocked_killswitch');
+    expect(runs[1].toolsCalled[0].name).toBe('audit_ad_competitiveness');
+
+    const metrics = repo.getFleetMetrics();
+    expect(metrics.totalAgents).toBe(1);
+    expect(metrics.activeDaemons).toBe(1);
+    expect(metrics.runs24h).toBe(2);
+    expect(metrics.success24h).toBe(1);
+    expect(metrics.blocked24h).toBe(1);
+    expect(metrics.totalCost24hUsd).toBeCloseTo(0.0025, 6);
   });
 });

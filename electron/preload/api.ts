@@ -208,6 +208,15 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
       update: (id, dto) => ipc('agents:update', { id, dto }) as Promise<any>,
       delete: (id) => ipc('agents:delete', id) as Promise<boolean>,
       toggle: (id, active) => ipc('agents:toggle', { id, active }) as Promise<any>,
+      runSandbox: (params) => ipc('agents:run-sandbox', params) as Promise<any>,
+      runNow: (params) => ipc('agents:run-now', params) as Promise<any>,
+      listRuns: (filter) => ipc('agents:list-runs', filter) as Promise<any>,
+      getFleetMetrics: () => ipc('agents:get-fleet-metrics') as Promise<any>,
+      getDaemonStatus: () => ipc('agents:get-daemon-status') as Promise<any>,
+      onRunEvent: (callback: (payload: any) => void) => {
+        if (!onEvent) return () => {};
+        return onEvent('agents:run-event', (payload) => callback(payload));
+      },
     },
     telegram: {
       downloadFile: (params: { token: string; filePath: string }) =>
@@ -351,6 +360,11 @@ export const ALLOWED_CHANNELS = [
   'agents:update',
   'agents:delete',
   'agents:toggle',
+  'agents:run-sandbox',
+  'agents:run-now',
+  'agents:list-runs',
+  'agents:get-fleet-metrics',
+  'agents:get-daemon-status',
   'p2p:telegram-download-file',
   'arm:list-leads',
   'arm:upsert-lead',
@@ -378,4 +392,5 @@ export const ALLOWED_LISTEN_CHANNELS = [
   'copilot:proactive-event-alert',
   'copilot:stream-event',
   'p2p:killswitch-triggered',
+  'agents:run-event',
 ] as const;

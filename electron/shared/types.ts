@@ -140,6 +140,16 @@ export interface BacktestRunResult {
   summary?: unknown;
 }
 
+export type AgentDomainDto = 'P2P_DESK' | 'FINANCE_360' | 'ARM_B2B' | 'SECURITY';
+export type AgentRunTriggerTypeDto = 'daemon_tick' | 'manual_run' | 'sandbox_test' | 'copilot_mention';
+export type AgentRunStatusDto =
+  | 'running'
+  | 'success'
+  | 'error'
+  | 'blocked_killswitch'
+  | 'blocked_budget'
+  | 'timeout';
+
 export interface CustomAgentDto {
   id: string;
   name: string;
@@ -151,6 +161,10 @@ export interface CustomAgentDto {
   isActive: boolean;
   executionMode: 'on_demand' | 'ambient_daemon';
   scheduleIntervalSec?: number;
+  domain?: AgentDomainDto;
+  dailyBudgetUsd?: number;
+  maxSteps?: number;
+  promptVersion?: number;
   skills: string[];
   createdAt: number;
   updatedAt: number;
@@ -167,6 +181,9 @@ export interface CreateCustomAgentDto {
   isActive?: boolean;
   executionMode?: 'on_demand' | 'ambient_daemon';
   scheduleIntervalSec?: number;
+  domain?: AgentDomainDto;
+  dailyBudgetUsd?: number;
+  maxSteps?: number;
   skills?: string[];
 }
 
@@ -180,7 +197,99 @@ export interface UpdateCustomAgentDto {
   isActive?: boolean;
   executionMode?: 'on_demand' | 'ambient_daemon';
   scheduleIntervalSec?: number;
+  domain?: AgentDomainDto;
+  dailyBudgetUsd?: number;
+  maxSteps?: number;
   skills?: string[];
+}
+
+export interface AgentRunToolEntryDto {
+  name: string;
+  ok: boolean;
+  latencyMs?: number;
+  blockedReason?: string;
+}
+
+export interface AgentRunDto {
+  id: string;
+  agentId: string;
+  agentName?: string;
+  triggerType: AgentRunTriggerTypeDto;
+  status: AgentRunStatusDto;
+  promptInput: string;
+  responseOutput: string | null;
+  toolsCalled: AgentRunToolEntryDto[];
+  modelUsed: string;
+  providerUsed: string;
+  tokensIn: number;
+  tokensOut: number;
+  costUsd: number;
+  latencyMs: number;
+  errorMessage: string | null;
+  startedAt: number;
+  finishedAt: number | null;
+}
+
+export interface AgentRunFilterDto {
+  agentId?: string;
+  status?: AgentRunStatusDto;
+  triggerType?: AgentRunTriggerTypeDto;
+  limit?: number;
+  offset?: number;
+}
+
+export interface PerAgentMetricSummaryDto {
+  agentId: string;
+  runs24h: number;
+  errors24h: number;
+  cost24hUsd: number;
+  dailyBudgetUsd: number;
+  lastRunAt: number | null;
+  lastRunStatus: AgentRunStatusDto | null;
+  avgLatencyMs: number;
+}
+
+export interface AgentFleetMetricsDto {
+  totalAgents: number;
+  activeAgents: number;
+  activeDaemons: number;
+  runs24h: number;
+  success24h: number;
+  errors24h: number;
+  blocked24h: number;
+  successRate24hPct: number;
+  totalCost24hUsd: number;
+  avgLatency24hMs: number;
+  perAgent: PerAgentMetricSummaryDto[];
+}
+
+export interface DaemonSlotStatusDto {
+  agentId: string;
+  agentName: string;
+  domain: string;
+  modelName: string;
+  intervalSec: number;
+  isRunningNow: boolean;
+  nextRunAt: number | null;
+  lastRunAt: number | null;
+  lastStatus: AgentRunStatusDto | null;
+  dailySpendUsd: number;
+  dailyBudgetUsd: number;
+}
+
+export interface DaemonSchedulerStatusDto {
+  started: boolean;
+  killswitchActive: boolean;
+  activeDaemonCount: number;
+  runningNowCount: number;
+  slots: DaemonSlotStatusDto[];
+}
+
+export interface AgentRunEventDto {
+  type: 'run_started' | 'run_completed' | 'daemon_reconciled';
+  run?: AgentRunDto;
+  status?: DaemonSchedulerStatusDto;
+  timestamp: number;
 }
 
 export interface P2PIpcChannels {
@@ -375,6 +484,32 @@ export interface P2PIpcChannels {
   'agents:toggle': {
     request: { id: string; active?: boolean };
     response: CustomAgentDto | null;
+  };
+  'agents:run-sandbox': {
+    request: {
+      agentId: string;
+      prompt: string;
+      overrideSystemPrompt?: string;
+      overrideSkills?: string[];
+      overrideModel?: string;
+    };
+    response: AgentRunDto;
+  };
+  'agents:run-now': {
+    request: { agentId: string; promptOverride?: string };
+    response: AgentRunDto;
+  };
+  'agents:list-runs': {
+    request: AgentRunFilterDto | undefined;
+    response: AgentRunDto[];
+  };
+  'agents:get-fleet-metrics': {
+    request: void;
+    response: AgentFleetMetricsDto;
+  };
+  'agents:get-daemon-status': {
+    request: void;
+    response: DaemonSchedulerStatusDto;
   };
   'arm:upsert-bank-rail': {
     request: ArmBankRailRecord;
@@ -1047,12 +1182,28 @@ export interface ElectronAPI {
     onPaymentDetected(callback: (payload: ClipboardPaymentPayload) => void): () => void;
   };
   agents: {
-    list(filter?: { activeOnly?: boolean; mode?: 'on_demand' | 'ambient_daemon' }): Promise<CustomAgentDto[]>;
+    list(filter?: {
+      activeOnly?: boolean;
+      mode?: 'on_demand' | 'ambient_daemon';
+      domain?: AgentDomainDto;
+    }): Promise<CustomAgentDto[]>;
     get(id: string): Promise<CustomAgentDto | null>;
     create(dto: CreateCustomAgentDto): Promise<CustomAgentDto>;
     update(id: string, dto: UpdateCustomAgentDto): Promise<CustomAgentDto | null>;
     delete(id: string): Promise<boolean>;
     toggle(id: string, active?: boolean): Promise<CustomAgentDto | null>;
+    runSandbox?(params: {
+      agentId: string;
+      prompt: string;
+      overrideSystemPrompt?: string;
+      overrideSkills?: string[];
+      overrideModel?: string;
+    }): Promise<AgentRunDto>;
+    runNow?(params: { agentId: string; promptOverride?: string }): Promise<AgentRunDto>;
+    listRuns?(filter?: AgentRunFilterDto): Promise<AgentRunDto[]>;
+    getFleetMetrics?(): Promise<AgentFleetMetricsDto>;
+    getDaemonStatus?(): Promise<DaemonSchedulerStatusDto>;
+    onRunEvent?(callback: (event: AgentRunEventDto) => void): () => void;
   };
   telegram?: {
     downloadFile(params: {

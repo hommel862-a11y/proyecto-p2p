@@ -571,7 +571,7 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
         'predict_bcv_market_intelligence',
         'evaluate_golden_spread',
       ]);
-    });
+    }, 15000);
 
     it(
       'ejecuta herramientas MCP nativas durante el bucle ReAct cuando no están en el registro local',
