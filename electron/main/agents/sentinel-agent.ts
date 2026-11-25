@@ -7,6 +7,7 @@
 import type { SentinelSignal, AgentHealthStatus } from './types';
 import { AGENT_MCP_DOMAINS, AGENT_ASSIGNED_SKILLS } from './types';
 import { executeFinancialSkill } from '../gemini-skills';
+import { resolveMarketFeed } from '../skills/market-state';
 import type { VpinBucket } from '../vendor/p2p-core/orderbook-microstructure';
 
 export class SentinelAgent {
@@ -84,8 +85,44 @@ export class SentinelAgent {
 
     const asset = params?.asset ?? 'USDT';
     const fiat = params?.fiat ?? 'VES';
-    const bestBid = params?.bestBid ?? 88.5; // Compra P2P
-    const bestAsk = params?.bestAsk ?? 89.8; // Venta P2P
+    const feed = resolveMarketFeed();
+    const hasCallerBook =
+      typeof params?.bestBid === 'number' &&
+      params.bestBid > 0 &&
+      typeof params?.bestAsk === 'number' &&
+      params.bestAsk > 0;
+    const hasLiveFeedBook =
+      feed.live &&
+      typeof feed.bestBuyPrice === 'number' &&
+      feed.bestBuyPrice > 0 &&
+      typeof feed.bestSellPrice === 'number' &&
+      feed.bestSellPrice > 0;
+
+    if (!hasCallerBook && !hasLiveFeedBook) {
+      const unavailableReason =
+        'Sin libro Binance P2P en vivo (NO_LIVE_FEED). Conecte el feed de mercado para calcular oportunidades reales.';
+      return {
+        timestamp: Date.now(),
+        source: `NO_LIVE_FEED (${feed.reason})`,
+        asset,
+        fiat,
+        grossSpreadPct: 0,
+        netSpreadPct: 0,
+        bestBid: 0,
+        bestAsk: 0,
+        bcvRate: params?.bcvRate ?? null,
+        parallelRate: params?.parallelRate ?? null,
+        rateGapPct: null,
+        isViable: false,
+        esSimulado: true,
+        unavailableReason,
+        notes: [unavailableReason],
+      };
+    }
+
+    const bestBid = hasCallerBook ? params!.bestBid! : feed.bestBuyPrice!;
+    const bestAsk = hasCallerBook ? params!.bestAsk! : feed.bestSellPrice!;
+    const isLiveSource = hasCallerBook || hasLiveFeedBook;
 
     // DECLARED ABSENCE — a missing rate is `null`, never a plausible constant.
     //
@@ -214,6 +251,7 @@ export class SentinelAgent {
       parallelRate,
       rateGapPct: rateGapPct === null ? null : Number(rateGapPct.toFixed(2)),
       isViable: netSpreadPct >= 0.5,
+      esSimulado: !isLiveSource,
       notes,
     };
   }

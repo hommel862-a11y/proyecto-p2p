@@ -69,6 +69,9 @@ export class ProactiveEventEngine {
     bcvRate: number,
     now = new Date(),
   ): ProactiveEventAlert | null {
+    if (!Number.isFinite(parallelRate) || !Number.isFinite(bcvRate) || parallelRate <= 0 || bcvRate <= 0) {
+      return null;
+    }
     const intel = getBcvMarketIntelligence(parallelRate, bcvRate, now);
     const gapPct = intel.gap.gapPct;
     const phase = intel.window.phase;
@@ -159,6 +162,9 @@ export class ProactiveEventEngine {
    * Evaluates global USDT parity vs USD ($1.000).
    */
   evaluateUsdtDepegEvent(spotUsdtPrice: number): ProactiveEventAlert | null {
+    if (!Number.isFinite(spotUsdtPrice) || spotUsdtPrice <= 0 || spotUsdtPrice === 1.0) {
+      return null;
+    }
     const depegResult = detectUsdtDepegParity(spotUsdtPrice, 0.2);
 
     if (depegResult.isDepegged) {
@@ -210,7 +216,7 @@ export class ProactiveEventEngine {
       whereAffected: 'Mesa de operaciones / Libros P2P',
       learned: alert.recommendedAction ?? 'Monitorear microestructura y resguardar capital.',
       confidenceScore: 0.95,
-      status: 'active',
+      status: 'needs_review',
     });
 
     // 2. Send IPC to Renderer

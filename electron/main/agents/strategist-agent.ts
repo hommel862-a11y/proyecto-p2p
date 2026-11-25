@@ -8,6 +8,7 @@ import type { StrategistProposal, SentinelSignal, AgentHealthStatus } from './ty
 import { AGENT_MCP_DOMAINS, AGENT_ASSIGNED_SKILLS } from './types';
 import type { StrategyPlanCard } from '../../shared/types';
 import { executeFinancialSkill } from '../gemini-skills';
+import { getMarketBook, resolveMarketFeed } from '../skills/market-state';
 import { MonteCarloSimulator } from './monte-carlo-simulator';
 
 export class StrategistAgent {
@@ -88,35 +89,40 @@ export class StrategistAgent {
         : signal.bestAsk;
     const slippageBps = simData?.slippageBps ?? 12;
 
-    // 3. Monte Carlo Microstructure Simulation (500 iterations)
-    const mcSimulator = new MonteCarloSimulator();
-    const mockBook = [
-      {
-        price: signal.bestAsk,
-        minVes: 500,
-        maxVes: requestedCapital * signal.bestAsk * 2.0,
-        merchantName: 'Merchant_Top',
-      },
-      {
-        price: signal.bestAsk * 1.0005,
-        minVes: 1000,
-        maxVes: requestedCapital * signal.bestAsk * 3.0,
-        merchantName: 'Merchant_2',
-      },
-      {
-        price: signal.bestAsk * 1.001,
-        minVes: 2000,
-        maxVes: requestedCapital * signal.bestAsk * 5.0,
-        merchantName: 'Merchant_3',
-      },
-    ];
-    const mcResult = mcSimulator.runSimulation(mockBook as any, {
-      iterations: 500,
-      cancellationProbabilityPct: 10,
-      priceDriftVolatilityBps: 15,
-      ticketAmountUsdt: requestedCapital,
-      side: 'BUY',
-    });
+    // 3. Monte Carlo Microstructure Simulation (only on real live orderbook offers; never fabricate mockBook)
+    const feed = resolveMarketFeed();
+    const liveBook = getMarketBook();
+    const isLiveFeed = signal.esSimulado === false || (signal.bestBid > 0 && signal.bestAsk > 0 && feed.live);
+    const realBookOffers = (liveBook?.sellOffers?.length ? liveBook.sellOffers : [])
+      .filter((o) => typeof o.price === 'number' && o.price > 0)
+      .slice(0, 10)
+      .map((o) => ({
+        price: o.price,
+        minVes: o.minVes ?? 0,
+        maxVes: o.maxVes ?? requestedCapital * o.price,
+        merchantName: o.merchantName || 'Binance_Offer',
+      }));
+
+    const mcResult =
+      realBookOffers.length > 0
+        ? new MonteCarloSimulator().runSimulation(realBookOffers as any, {
+            iterations: 500,
+            cancellationProbabilityPct: 10,
+            priceDriftVolatilityBps: 15,
+            ticketAmountUsdt: requestedCapital,
+            side: 'BUY',
+          })
+        : {
+            meanSlippagePct: 0,
+            p95SlippagePct: 0,
+            p99SlippagePct: 0,
+            fillRatePct: isLiveFeed ? 100 : 0,
+            var95Usdt: 0,
+            isSafeForExecution: isLiveFeed && signal.bestAsk > 0,
+            recommendation: isLiveFeed
+              ? 'Profundidad L2 no desglosada; validado contra mejor bid/ask en vivo.'
+              : 'SIN_PROFUNDIDAD_EN_VIVO: No se simula liquidez sin libro real.',
+          };
 
     const planId = `SWARM-${Date.now().toString(36).toUpperCase()}`;
     const plan: StrategyPlanCard = {
@@ -128,11 +134,10 @@ export class StrategistAgent {
       expectedProfitUsdt: Number(((requestedCapital * calculatedNetSpread) / 100).toFixed(2)),
       riskLevel: calculatedNetSpread >= 1.2 && mcResult.isSafeForExecution ? 'LOW' : 'MEDIUM',
       assignedOperatorName: 'Operador Principal',
-      // The rationale is operator-facing text, so a missing gap must read as a missing gap.
-      // `?? '22.9'` published a specific 22.9% gap for a swarm that never measured the BCV leg,
-      // sitting next to real Monte Carlo figures as if both came from the same evidence.
-      rationale: `Brecha BCV en ${typeof signal.rateGapPct === 'number' ? `${signal.rateGapPct.toFixed(1)}%` : 'N/D (tasa oficial BCV sin medir — se requiere MCP get_bcv_rates y get_parallel_rates)'} y liquidez profunda. Slippage P95 Monte Carlo: ${mcResult.p95SlippagePct}% (VaR 95%: $${mcResult.var95Usdt} USDT).`,
+      rationale: `Brecha BCV en ${typeof signal.rateGapPct === 'number' ? `${signal.rateGapPct.toFixed(1)}%` : 'N/D (tasa oficial BCV sin medir — se requiere MCP get_bcv_rates y get_parallel_rates)'}. ${realBookOffers.length > 0 ? `Slippage P95 Monte Carlo (${realBookOffers.length} ofertas reales): ${mcResult.p95SlippagePct}% (VaR 95%: $${mcResult.var95Usdt} USDT).` : mcResult.recommendation}`,
       status: 'PROPOSED',
+      esSimulado: !isLiveFeed,
+      isSimulated: !isLiveFeed,
     };
 
     const timing =

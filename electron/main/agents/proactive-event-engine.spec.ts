@@ -72,7 +72,7 @@ describe('ProactiveEventEngine (Event-Driven Proactive IA)', () => {
       expect(mockDb.saveEngramObservation).toHaveBeenCalledWith(
         expect.objectContaining({
           topicKey: 'risk/usdt-depeg',
-          status: 'active',
+          status: 'needs_review',
         }),
       );
     });

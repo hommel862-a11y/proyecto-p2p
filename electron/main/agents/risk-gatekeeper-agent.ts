@@ -87,6 +87,9 @@ export class RiskGatekeeperAgent {
     context?: {
       dailyVolumeProcessedUsdt?: number;
       dailyLimitUsdt?: number;
+      dailySpentVes?: number;
+      dailyLimitVes?: number;
+      effectiveRateVes?: number;
       counterpartyRiskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
       isBcvInterventionWindowActive?: boolean;
       treasurySnapshot?: TreasuryRiskContext | null;
@@ -106,12 +109,19 @@ export class RiskGatekeeperAgent {
     // Real treasury state announced by the renderer, or null when it never announced one.
     const treasury = context?.treasurySnapshot ?? null;
 
+    const hasVesLimit =
+      context?.dailyLimitVes !== undefined && context.dailyLimitVes > 0;
+    const effectiveDailySpentVes =
+      context?.dailySpentVes ?? treasury?.totalSpentTodayVes ?? 0;
+    const effectiveDailyLimitVes =
+      context?.dailyLimitVes ?? treasury?.totalDailyLimitVes ?? 0;
+
     // Record which figures Rule 2 actually ran on, so consumers never confuse a real limit
     // with a placeholder. Always present, even on the fallback path.
     const treasuryAudit: TreasuryAudit = {
       source: treasury ? 'RENDERER_SNAPSHOT' : 'FALLBACK_DEFAULTS',
-      dailyVolumeUsed: dailyVolume,
-      dailyLimitUsed: dailyLimit,
+      dailyVolumeUsed: hasVesLimit ? effectiveDailySpentVes : dailyVolume,
+      dailyLimitUsed: hasVesLimit ? effectiveDailyLimitVes : dailyLimit,
       overLimitCount: treasury?.overLimitCount ?? 0,
       nearLimitCount: treasury?.nearLimitCount ?? 0,
       disabledCount: treasury?.disabledCount ?? 0,
@@ -249,26 +259,73 @@ export class RiskGatekeeperAgent {
       }
     }
 
-    const projectedTotalVolume = dailyVolume + proposal.plan.capitalRequiredUsdt;
-    const dailyBankLimitExceeded = projectedTotalVolume > dailyLimit;
-    if (dailyBankLimitExceeded) {
-      return {
-        status: 'VETOED',
-        riskScore: 90,
-        vetoReason: `VETO POR RIESGO: La operación de ${proposal.plan.capitalRequiredUsdt} USDT excede el límite operativo diario de la cuenta bancaria (${dailyLimit} USDT proyectados). Riesgo inminente de bloqueo por compliance bancario.`,
-        warnings: ['Límite diario de transferencias alcanzado en la cuenta custodia.'],
-        auditedParameters: {
-          meetsGoldenRule: true,
-          counterpartyRiskLevel: counterpartyRisk,
-          bcvInterventionWindowRisk: isBcvActive ? 'ELEVATED' : 'NONE',
-          dailyBankLimitExceeded: true,
-          antiPitufeoViolation: false,
-          treasuryAudit,
-        },
-        recommendedAction:
-          'Rotar hacia cuenta bancaria secundaria o esperar reset a las 00:00 UTC.',
-        evaluatedAt: Date.now(),
-      };
+    if (hasVesLimit && effectiveDailyLimitVes > 0) {
+      const rateVes = context?.effectiveRateVes ?? 0;
+      if (!Number.isFinite(rateVes) || rateVes <= 0) {
+        return {
+          status: 'VETOED',
+          riskScore: 95,
+          vetoReason:
+            'VETO POR RIESGO (TASA DE CONVERSIÓN AUSENTE): Existe un tope diario en VES pero no hay tasa efectiva VES/USDT para validar el impacto real de la orden.',
+          warnings: ['No se puede convertir capitalRequiredUsdt a VES sin tasa efectiva.'],
+          auditedParameters: {
+            meetsGoldenRule: true,
+            counterpartyRiskLevel: counterpartyRisk,
+            bcvInterventionWindowRisk: isBcvActive ? 'ELEVATED' : 'NONE',
+            dailyBankLimitExceeded: true,
+            antiPitufeoViolation: false,
+            treasuryAudit,
+          },
+          recommendedAction:
+            'Conectar el feed de mercado en vivo para obtener la tasa VES/USDT antes de aprobar.',
+          evaluatedAt: Date.now(),
+        };
+      }
+
+      const orderRequiredVes = proposal.plan.capitalRequiredUsdt * rateVes;
+      const projectedTotalVes = effectiveDailySpentVes + orderRequiredVes;
+      if (projectedTotalVes > effectiveDailyLimitVes) {
+        const saturationPct = ((projectedTotalVes / effectiveDailyLimitVes) * 100).toFixed(1);
+        return {
+          status: 'VETOED',
+          riskScore: 92,
+          vetoReason: `VETO POR RIESGO (TOPE DIARIO VES): Actual ${Math.round(effectiveDailySpentVes)} VES + Orden ${Math.round(orderRequiredVes)} VES = ${Math.round(projectedTotalVes)} VES > Límite ${Math.round(effectiveDailyLimitVes)} VES (${saturationPct}% uso).`,
+          warnings: ['Exceso proyectado del límite diario bancario en VES.'],
+          auditedParameters: {
+            meetsGoldenRule: true,
+            counterpartyRiskLevel: counterpartyRisk,
+            bcvInterventionWindowRisk: isBcvActive ? 'ELEVATED' : 'NONE',
+            dailyBankLimitExceeded: true,
+            antiPitufeoViolation: false,
+            treasuryAudit,
+          },
+          recommendedAction:
+            'Reducir el ticket de la orden o rotar hacia una cuenta bancaria secundaria con cupo VES disponible.',
+          evaluatedAt: Date.now(),
+        };
+      }
+    } else {
+      const projectedTotalVolume = dailyVolume + proposal.plan.capitalRequiredUsdt;
+      const dailyBankLimitExceeded = projectedTotalVolume > dailyLimit;
+      if (dailyBankLimitExceeded) {
+        return {
+          status: 'VETOED',
+          riskScore: 90,
+          vetoReason: `VETO POR RIESGO: La operación de ${proposal.plan.capitalRequiredUsdt} USDT excede el límite operativo diario de la cuenta bancaria (${dailyLimit} USDT proyectados). Riesgo inminente de bloqueo por compliance bancario.`,
+          warnings: ['Límite diario de transferencias alcanzado en la cuenta custodia.'],
+          auditedParameters: {
+            meetsGoldenRule: true,
+            counterpartyRiskLevel: counterpartyRisk,
+            bcvInterventionWindowRisk: isBcvActive ? 'ELEVATED' : 'NONE',
+            dailyBankLimitExceeded: true,
+            antiPitufeoViolation: false,
+            treasuryAudit,
+          },
+          recommendedAction:
+            'Rotar hacia cuenta bancaria secundaria o esperar reset a las 00:00 UTC.',
+          evaluatedAt: Date.now(),
+        };
+      }
     }
 
     // Rule 2.1: Bank Network Health & Outage Protection (check_bank_operational_status)

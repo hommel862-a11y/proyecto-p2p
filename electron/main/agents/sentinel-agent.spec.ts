@@ -85,4 +85,13 @@ describe('SentinelAgent — declared absence instead of a fabricated rate', () =
     expect(notes).toContain('EXTREME_ADVERSE_SELECTION');
     expect(notes).toContain('70.0%');
   });
+
+  it('NO inventa 88.5/89.8 cuando no hay libro en vivo ni parámetros de orden', () => {
+    const signal = new SentinelAgent().scanMarket();
+    expect(signal.isViable).toBe(false);
+    expect(signal.esSimulado).toBe(true);
+    expect(signal.bestBid).toBe(0);
+    expect(signal.bestAsk).toBe(0);
+    expect(signal.unavailableReason).toContain('NO_LIVE_FEED');
+  });
 });

@@ -135,14 +135,21 @@ export class AgentSwarmOrchestrator {
         }
       : null;
 
+    const effectiveRateVes =
+      sentinelSignal.bestAsk > 0
+        ? sentinelSignal.bestAsk
+        : (params?.parallelRate ?? 0);
+
     const riskVerdict: RiskVerdict = this.riskGatekeeper.evaluateProposal(strategistProposal, {
-      // Real figures when the treasury is bridged, legacy placeholders otherwise.
-      // A zero aggregate limit means every account is unlimited/disabled, so the
-      // placeholder is the safer ceiling to audit against.
-      dailyVolumeProcessedUsdt: treasuryContext
-        ? treasuryContext.totalSpentTodayVes
-        : FALLBACK_DAILY_VOLUME_USDT,
-      dailyLimitUsdt: treasuryContext?.totalDailyLimitVes || FALLBACK_DAILY_LIMIT_USDT,
+      dailyVolumeProcessedUsdt: FALLBACK_DAILY_VOLUME_USDT,
+      dailyLimitUsdt: FALLBACK_DAILY_LIMIT_USDT,
+      ...(treasuryContext
+        ? {
+            dailySpentVes: treasuryContext.totalSpentTodayVes,
+            dailyLimitVes: treasuryContext.totalDailyLimitVes,
+            effectiveRateVes,
+          }
+        : {}),
       counterpartyRiskLevel: evaluatedRiskLevel,
       isBcvInterventionWindowActive: params?.isBcvInterventionWindowActive ?? false,
       treasurySnapshot: treasuryContext,
@@ -163,7 +170,7 @@ export class AgentSwarmOrchestrator {
         whereAffected: strategistProposal.plan.route,
         learned: `El oficial de riesgo bloqueó la operación (Score: ${riskVerdict.riskScore}/100). Preservación de capital ejecutada antes de arriesgar saldo bancario.`,
         confidenceScore: 0.98,
-        status: 'active',
+        status: 'needs_review',
       };
       this.db.saveEngramObservation(engramObs);
     } else {
@@ -179,7 +186,7 @@ export class AgentSwarmOrchestrator {
           ? `\n\n⚠️ **Advertencias del Gatekeeper**:\n${riskVerdict.warnings.map((w) => `• ${w}`).join('\n')}`
           : '\n\n✓ **Auditoría de Riesgo**: Todos los parámetros de seguridad aprobados.';
 
-      executionSummary = `Mirá, el Enjambre Multi-Agente completó la auditoría institucional.\n\n* **Estratega (Gentleman AI)**: ${strategistProposal.rationale}\n* **Retorno Neto Proyectado**: ${strategistProposal.mathematicalValidation.netSpreadPct.toFixed(2)}% (${strategistProposal.plan.expectedProfitUsdt} USDT)\n* **Timing**: ${strategistProposal.recommendedTiming}${warningText}\n\nFijate en los parámetros y dale **EJECUTAR** cuando estés listo para despacharlo.`;
+      executionSummary = `El Enjambre Multi-Agente completó la auditoría institucional.\n\n* **Estratega**: ${strategistProposal.rationale}\n* **Retorno Neto Proyectado**: ${strategistProposal.mathematicalValidation.netSpreadPct.toFixed(2)}% (${strategistProposal.plan.expectedProfitUsdt} USDT)\n* **Timing**: ${strategistProposal.recommendedTiming}${warningText}\n\nRevisa los parámetros y aprueba la orden en el inspector cuando estés listo para despacharla.`;
 
       engramObs = {
         topicKey: `swarm/plan-approved/${Date.now().toString(36)}`,
@@ -188,9 +195,9 @@ export class AgentSwarmOrchestrator {
         what: `Swarm aprobó plan: ${strategistProposal.plan.title} (Spread neto: ${strategistProposal.mathematicalValidation.netSpreadPct}%)`,
         why: `Auditoría del Risk Gatekeeper exitosa con Score ${riskVerdict.riskScore}/100`,
         whereAffected: strategistProposal.plan.route,
-        learned: `Ruta validada con slippage de ${strategistProposal.mathematicalValidation.slippageBps} bps. Regla de oro superada con holgura.`,
+        learned: `Ruta validada con slippage de ${strategistProposal.mathematicalValidation.slippageBps} bps. Regla de oro superada.`,
         confidenceScore: 0.95,
-        status: 'active',
+        status: 'needs_review',
       };
       this.db.saveEngramObservation(engramObs);
     }

@@ -101,6 +101,8 @@ export interface SentinelSignal {
   /** BCV/parallel gap in percent. `null` unless both rates above are real numbers. */
   rateGapPct?: number | null;
   isViable: boolean;
+  esSimulado?: boolean;
+  unavailableReason?: string;
   notes: string[];
 }
 
