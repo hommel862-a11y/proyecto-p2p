@@ -123,6 +123,9 @@ export class InboundGatewayService implements OnDestroy {
   private readonly armEventSubject = new Subject<ArmOutboxSseEvent>();
   readonly armEvent$: Observable<ArmOutboxSseEvent> = this.armEventSubject.asObservable();
 
+  private readonly connectedSubject = new Subject<void>();
+  readonly connected$: Observable<void> = this.connectedSubject.asObservable();
+
   constructor() {
     if (typeof window !== 'undefined') {
       try {
@@ -297,6 +300,7 @@ export class InboundGatewayService implements OnDestroy {
         this.status.set('CONNECTED');
         this.reconnectAttempts = 0;
         this.lastError.set(null);
+        this.connectedSubject.next();
       };
 
       this.eventSource.addEventListener('new_receipt', (event: MessageEvent) => {
@@ -684,6 +688,23 @@ export class InboundGatewayService implements OnDestroy {
         ok: false,
         error: err instanceof Error ? err.message : 'Error de conexión',
       };
+    }
+  }
+
+  async fetchOutboxHistory(sinceId = 0, targetUrl?: string): Promise<ArmOutboxSseEvent[]> {
+    const url = (targetUrl || this.baseUrl).trim().replace(/\/+$/, '');
+    try {
+      const headers = this.buildHeaders();
+      const res = await fetch(`${url}/api/arm/outbox?sinceId=${encodeURIComponent(String(sinceId))}`, {
+        method: 'GET',
+        ...(Object.keys(headers).length > 0 ? { headers } : {}),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return [];
+      const data = (await res.json()) as { events?: ArmOutboxSseEvent[] };
+      return Array.isArray(data.events) ? data.events : [];
+    } catch {
+      return [];
     }
   }
 

@@ -186,6 +186,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
 
   private gatewaySubscription: Subscription | null = null;
   private armEventSubscription: Subscription | null = null;
+  private connectedSubscription: Subscription | null = null;
   private unregisterScopedPalette: (() => void) | null = null;
 
   constructor() {
@@ -209,14 +210,21 @@ export class ComplianceCockpitComponent implements OnDestroy {
         this.handleIncomingArmOutboxEvent(evt);
       });
     }
+    if (this.inboundGateway.connected$) {
+      this.connectedSubscription = this.inboundGateway.connected$.subscribe(() => {
+        void this.hydrateWhatsAppHistoryFromGateway();
+      });
+    }
     if (typeof window !== 'undefined' && this.inboundGateway.status() === 'CONNECTED') {
       void this.inboundGateway.fetchStorageHealth?.();
+      void this.hydrateWhatsAppHistoryFromGateway();
     }
   }
 
   ngOnDestroy(): void {
     this.gatewaySubscription?.unsubscribe();
     this.armEventSubscription?.unsubscribe();
+    this.connectedSubscription?.unsubscribe();
     this.unregisterScopedPalette?.();
     this.unregisterScopedPalette = null;
   }
@@ -584,7 +592,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
     const scope = this.activeScope();
     const term = this.chatSearchTerm().toLowerCase().trim();
     return this.conversations().filter((c) => {
-      if (c.scope !== scope) return false;
+      if (c.scope !== scope && c.channel !== 'WHATSAPP') return false;
       if (!term) return true;
       return (
         c.contactName.toLowerCase().includes(term) ||
@@ -4608,9 +4616,24 @@ export class ComplianceCockpitComponent implements OnDestroy {
     }
   }
 
+  private historyHydrated = false;
+
+  private async hydrateWhatsAppHistoryFromGateway(): Promise<void> {
+    if (this.historyHydrated || typeof this.inboundGateway.fetchOutboxHistory !== 'function') {
+      return;
+    }
+    this.historyHydrated = true;
+    const events = await this.inboundGateway.fetchOutboxHistory(0);
+    for (const evt of events) {
+      if (evt.eventType === 'message_received') {
+        this.ingestLiveWhatsAppMessageEvent(evt, true);
+      }
+    }
+  }
+
   private handleIncomingArmOutboxEvent(evt: ArmOutboxSseEvent): void {
-    if (evt.eventType === 'message_received' && evt.payload['direction'] === 'INBOUND') {
-      this.ingestLiveWhatsAppInboundEvent(evt);
+    if (evt.eventType === 'message_received') {
+      this.ingestLiveWhatsAppMessageEvent(evt, false);
     }
     if (evt.eventType === 'approval_requested' && evt.payload['approval']) {
       const approval = evt.payload['approval'] as ArmApprovalQueueItem;
@@ -4637,13 +4660,19 @@ export class ComplianceCockpitComponent implements OnDestroy {
     }
   }
 
-  private ingestLiveWhatsAppInboundEvent(evt: ArmOutboxSseEvent): void {
-    const senderPhone = String(evt.payload['senderPhone'] || evt.aggregateId || '').trim();
+  private ingestLiveWhatsAppMessageEvent(evt: ArmOutboxSseEvent, silentHistory = false): void {
+    const direction = evt.payload['direction'] === 'OUTBOUND' ? 'OUTBOUND' : 'INBOUND';
+    const rawPhone = String(
+      (direction === 'OUTBOUND' ? evt.payload['recipientPhone'] : evt.payload['senderPhone']) ||
+        evt.payload['senderPhone'] ||
+        evt.aggregateId ||
+        '',
+    ).trim();
     const text = String(evt.payload['text'] || '').trim();
-    if (!senderPhone || !text) return;
+    if (!rawPhone || !text) return;
 
-    const senderName = String(evt.payload['senderName'] || senderPhone).trim();
-    const digits = senderPhone.replace(/\D/g, '') || senderPhone;
+    const senderName = String(evt.payload['senderName'] || rawPhone).trim();
+    const digits = rawPhone.replace(/\D/g, '') || rawPhone;
     const timestamp = Number(evt.payload['timestamp'] || evt.timestamp || Date.now());
     const msgId = `sse-wa-${evt.id}`;
     const targetScope: WorkspaceScope =
@@ -4654,30 +4683,41 @@ export class ComplianceCockpitComponent implements OnDestroy {
     const existingConv = existingConvs.find(
       (c) => (c.recipientPhoneOrIgId || '').replace(/\D/g, '') === digits,
     );
-    const inboundMsg: OmnichannelMessage = {
+    const chatMsg: OmnichannelMessage = {
       id: msgId,
       conversationId: existingConv ? existingConv.id : `conv-wa-${digits}`,
       channel: 'WHATSAPP',
-      direction: 'INBOUND',
-      senderHandle: senderPhone,
+      direction,
+      senderHandle: direction === 'OUTBOUND' ? 'WhatsApp Business' : rawPhone,
       text,
       timestamp,
     };
 
     if (existingConv) {
-      const alreadyHas = existingConv.messages.some((m) => m.id === msgId);
+      const alreadyHas = existingConv.messages.some(
+        (m) =>
+          m.id === msgId ||
+          (m.direction === direction &&
+            m.text === text &&
+            Math.abs(m.timestamp - timestamp) < 15_000),
+      );
       if (!alreadyHas) {
         const updated = existingConvs.map((c) =>
           c.id === existingConv.id
             ? {
                 ...c,
                 contactName:
-                  c.contactName === c.recipientPhoneOrIgId && senderName !== senderPhone
+                  direction === 'INBOUND' &&
+                  c.contactName === c.recipientPhoneOrIgId &&
+                  senderName !== rawPhone
                     ? senderName
                     : c.contactName,
-                lastInboundTimestamp: Math.max(c.lastInboundTimestamp ?? 0, timestamp),
-                unreadCount: (c.unreadCount || 0) + 1,
-                messages: [...c.messages, inboundMsg],
+                lastInboundTimestamp:
+                  direction === 'INBOUND'
+                    ? Math.max(c.lastInboundTimestamp ?? 0, timestamp)
+                    : c.lastInboundTimestamp,
+                unreadCount: direction === 'INBOUND' && !silentHistory ? (c.unreadCount || 0) + 1 : c.unreadCount,
+                messages: [...c.messages, chatMsg],
               }
             : c,
         );
@@ -4689,13 +4729,13 @@ export class ComplianceCockpitComponent implements OnDestroy {
         id: `conv-wa-${digits}`,
         scope: targetScope,
         contactId: null,
-        contactName: senderName,
+        contactName: direction === 'INBOUND' ? senderName : rawPhone,
         channel: 'WHATSAPP',
-        recipientPhoneOrIgId: senderPhone,
+        recipientPhoneOrIgId: rawPhone,
         lastInboundTimestamp: timestamp,
-        unreadCount: 1,
+        unreadCount: direction === 'INBOUND' && !silentHistory ? 1 : 0,
         linkedDealId: null,
-        messages: [inboundMsg],
+        messages: [chatMsg],
       };
       this.conversations.set([newConv, ...existingConvs]);
       this.saveConversations();
@@ -4712,10 +4752,11 @@ export class ComplianceCockpitComponent implements OnDestroy {
       hour: '2-digit',
       minute: '2-digit',
     })}`;
+    const cardSender: 'LEAD' | 'AGENT' = direction === 'OUTBOUND' ? 'AGENT' : 'LEAD';
 
     if (existingCard) {
       const lastExisting = existingCard.messages[existingCard.messages.length - 1];
-      const alreadyHas = lastExisting?.sender === 'LEAD' && lastExisting?.text === text;
+      const alreadyHas = lastExisting?.sender === cardSender && lastExisting?.text === text;
       if (!alreadyHas) {
         const updatedCards = existingCards.map((c) =>
           c.id === leadId
@@ -4726,7 +4767,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
                 messages: [
                   ...c.messages,
                   {
-                    sender: 'LEAD' as const,
+                    sender: cardSender,
                     text,
                     mediaBadge,
                   },
@@ -4747,8 +4788,8 @@ export class ComplianceCockpitComponent implements OnDestroy {
       const newCard: ArmKanbanCardVm = {
         id: leadId,
         workspaceId: evt.workspaceId,
-        leadName: senderName,
-        companyName: senderPhone,
+        leadName: direction === 'INBOUND' ? senderName : rawPhone,
+        companyName: rawPhone,
         stageSlug: firstStage,
         qualificationScore: 35,
         painPointSummary: text.slice(0, 120),
@@ -4760,7 +4801,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
         freeWindowLabel: 'WhatsApp QR En Vivo',
         messages: [
           {
-            sender: 'LEAD',
+            sender: cardSender,
             text,
             mediaBadge,
           },
@@ -4774,7 +4815,9 @@ export class ComplianceCockpitComponent implements OnDestroy {
       this.persistArmState();
     }
 
-    this.toast.info(`${senderName}: ${text.slice(0, 70)}`, 'WhatsApp Entrante');
+    if (direction === 'INBOUND' && !silentHistory) {
+      this.toast.info(`${senderName}: ${text.slice(0, 70)}`, 'WhatsApp Entrante');
+    }
   }
 }
 

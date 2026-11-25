@@ -1092,6 +1092,30 @@ describe('ComplianceCockpitComponent', () => {
             text: '¡Hola! Tasa actual 84.50 Bs/USDT.',
           }),
         );
+
+        // WhatsApp conversations remain visible across silos (e.g. ARM_B2B / FINANCE_360)
+        waComponent.setScope('FINANCE_360');
+        expect(waComponent.filteredConversations().some((c) => c.id === conv!.id)).toBe(true);
+
+        // Phone-sent OUTBOUND reply (fromMe) appends to the same thread without duplicating
+        localArmEvent$.next({
+          id: 902,
+          workspaceId: 'P2P_DESK',
+          eventType: 'message_received',
+          aggregateId: '+584141234567',
+          payload: {
+            direction: 'OUTBOUND',
+            channel: 'WHATSAPP',
+            transport: 'WHATSAPP_QR',
+            senderPhone: '+584141234567',
+            recipientPhone: '+584141234567',
+            text: 'Respondido desde mi celular',
+            timestamp: Date.now() + 20_000,
+          },
+          timestamp: Date.now() + 20_000,
+        });
+        const updatedConv = waComponent.conversations().find((c) => c.id === conv!.id);
+        expect(updatedConv?.messages.some((m) => m.direction === 'OUTBOUND' && m.text === 'Respondido desde mi celular')).toBe(true);
       } finally {
         waComponent.ngOnDestroy();
       }

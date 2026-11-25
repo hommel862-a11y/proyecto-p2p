@@ -28,7 +28,7 @@ import {
   fetchAndAnalyzeMetaMediaWithGemini,
 } from './meta-outbound-client.js';
 import { PgArmStore, isArmWorkspaceId, type OutboxListenerHandle } from './pg-store.js';
-import { WhatsAppQrBridge } from './whatsapp-qr-bridge.js';
+import { WhatsAppQrBridge, type WhatsAppQrMessageEvent } from './whatsapp-qr-bridge.js';
 import {
   normalizeBankReference,
   runArmSandboxSimulationTurn,
@@ -1607,12 +1607,16 @@ export class InboundGatewayServer {
     this.broadcastSseEvent('arm_event', evt, evt.id);
   }
 
-  private async handleWhatsAppQrInbound(msg: InboundNormalizedMessage): Promise<void> {
-    if (this.dedupCache.checkAndRecord(msg.eventId)) {
+  private async handleWhatsAppQrInbound(msg: WhatsAppQrMessageEvent): Promise<void> {
+    const dedupKey = `${msg.direction}:${msg.eventId}`;
+    if (this.dedupCache.checkAndRecord(dedupKey)) {
       return;
     }
 
-    const receipt = processInboundMessageToReceipt(msg, this.config.targetScope, this.knownDeals);
+    const receipt =
+      msg.direction === 'INBOUND'
+        ? processInboundMessageToReceipt(msg, this.config.targetScope, this.knownDeals)
+        : null;
     if (receipt) {
       this.pendingEvents.push(receipt);
       this.broadcastSseEvent('new_receipt', receipt);
@@ -1621,10 +1625,11 @@ export class InboundGatewayServer {
     const defaultWorkspace: ArmWorkspaceId =
       this.config.targetScope === 'FINANCE_360' ? 'FINANCE_360' : 'P2P_DESK';
     await this.persistOutboxEvent(defaultWorkspace, 'message_received', msg.sender.id, {
-      direction: 'INBOUND',
+      direction: msg.direction,
       channel: 'WHATSAPP',
       transport: 'WHATSAPP_QR',
       senderPhone: msg.sender.id,
+      ...(msg.direction === 'OUTBOUND' ? { recipientPhone: msg.sender.id } : {}),
       senderName: msg.sender.name || msg.sender.id,
       text: msg.text,
       mediaType: msg.mediaType || 'text',

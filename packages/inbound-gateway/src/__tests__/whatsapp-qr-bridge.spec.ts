@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import {
   normalizePhoneToJid,
   formatJidToPhone,
+  resolveWhatsAppPeerPhone,
   extractBaileysTextContent,
 } from '../whatsapp-qr-bridge.js';
 import { InboundGatewayServer } from '../server.js';
@@ -22,6 +23,18 @@ describe('WhatsApp QR Bridge Helpers & Gateway Routes', () => {
     expect(normalizePhoneToJid('123')).toBeNull();
     expect(formatJidToPhone('584247723783:12@s.whatsapp.net')).toBe('+584247723783');
     expect(formatJidToPhone(null)).toBeNull();
+    expect(
+      resolveWhatsAppPeerPhone({
+        remoteJid: '1492837465@lid',
+        remoteJidAlt: '584141234567@s.whatsapp.net',
+      }),
+    ).toBe('+584141234567');
+    expect(
+      resolveWhatsAppPeerPhone({
+        remoteJid: '1492837465@lid',
+        senderPn: '573123701401@s.whatsapp.net',
+      }),
+    ).toBe('+573123701401');
   });
 
   it('extracts text and attachment fallbacks from Baileys message envelopes', () => {

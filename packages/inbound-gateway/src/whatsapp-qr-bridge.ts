@@ -24,9 +24,13 @@ export interface WhatsAppQrSendResult {
   error?: string;
 }
 
+export interface WhatsAppQrMessageEvent extends InboundNormalizedMessage {
+  direction: 'INBOUND' | 'OUTBOUND';
+}
+
 export interface WhatsAppQrBridgeOptions {
   authDir: string;
-  onInboundMessage?: (msg: InboundNormalizedMessage) => void | Promise<void>;
+  onInboundMessage?: (msg: WhatsAppQrMessageEvent) => void | Promise<void>;
   onStateChange?: (state: WhatsAppQrBridgeState) => void;
 }
 
@@ -53,6 +57,34 @@ export function formatJidToPhone(jid: string | undefined | null): string | null 
   const digits = userPart.replace(/\D/g, '');
   if (!digits) return null;
   return `+${digits}`;
+}
+
+/**
+ * Resolve the real E.164 phone number from a Baileys `WAMessageKey`, preferring
+ * `remoteJidAlt` / `senderPn` when WhatsApp delivers a `@lid` privacy JID.
+ */
+export function resolveWhatsAppPeerPhone(
+  key:
+    | {
+        remoteJid?: string;
+        remoteJidAlt?: string;
+        senderPn?: string;
+        participantAlt?: string;
+      }
+    | undefined
+    | null,
+): string | null {
+  if (!key) return null;
+  const remoteJid = key.remoteJid || '';
+  if (remoteJid.endsWith('@lid')) {
+    return (
+      formatJidToPhone(key.remoteJidAlt) ||
+      formatJidToPhone(key.senderPn) ||
+      formatJidToPhone(key.participantAlt) ||
+      formatJidToPhone(remoteJid)
+    );
+  }
+  return formatJidToPhone(remoteJid) || formatJidToPhone(key.remoteJidAlt);
 }
 
 /**
@@ -126,13 +158,14 @@ interface BaileysSocketLike {
 
 export class WhatsAppQrBridge {
   private readonly authDir: string;
-  private readonly onInboundMessage?: (msg: InboundNormalizedMessage) => void | Promise<void>;
+  private readonly onInboundMessage?: (msg: WhatsAppQrMessageEvent) => void | Promise<void>;
   private readonly onStateChange?: (state: WhatsAppQrBridgeState) => void;
 
   private sock: BaileysSocketLike | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private reconnectAttempts = 0;
   private stopping = false;
+  private readonly sentByGatewayIds: Set<string> = new Set();
   private state: WhatsAppQrBridgeState = {
     status: 'DISCONNECTED',
     qrDataUrl: null,
@@ -299,26 +332,42 @@ export class WhatsAppQrBridge {
       });
 
       sock.ev.on('messages.upsert', async (event: { messages?: Array<Record<string, unknown>>; type?: string }) => {
-        if (event.type !== 'notify' || !Array.isArray(event.messages)) return;
+        if ((event.type !== 'notify' && event.type !== 'append') || !Array.isArray(event.messages)) return;
+        const recentCutoffMs = Date.now() - 24 * 60 * 60 * 1000;
         for (const raw of event.messages) {
-          const key = raw['key'] as { remoteJid?: string; fromMe?: boolean; id?: string } | undefined;
+          const key = raw['key'] as
+            | {
+                remoteJid?: string;
+                remoteJidAlt?: string;
+                senderPn?: string;
+                participantAlt?: string;
+                fromMe?: boolean;
+                id?: string;
+              }
+            | undefined;
           const remoteJid = key?.remoteJid || '';
-          if (!remoteJid || key?.fromMe) continue;
+          if (!remoteJid) continue;
           if (remoteJid === 'status@broadcast' || remoteJid.endsWith('@g.us')) continue;
+          if (key?.id && this.sentByGatewayIds.has(key.id)) continue;
+
+          const tsSec = Number(raw['messageTimestamp'] || 0);
+          const timestamp = tsSec > 0 ? tsSec * 1000 : Date.now();
+          if (event.type === 'append' && timestamp < recentCutoffMs) continue;
 
           const extracted = extractBaileysTextContent(
             raw['message'] as Record<string, unknown> | undefined,
           );
           if (!extracted) continue;
 
-          const phone = formatJidToPhone(remoteJid) || remoteJid;
-          const pushName = typeof raw['pushName'] === 'string' ? raw['pushName'].trim() : undefined;
-          const tsSec = Number(raw['messageTimestamp'] || 0);
-          const timestamp = tsSec > 0 ? tsSec * 1000 : Date.now();
+          const phone = resolveWhatsAppPeerPhone(key) || remoteJid;
+          const direction: 'INBOUND' | 'OUTBOUND' = key?.fromMe ? 'OUTBOUND' : 'INBOUND';
+          const pushName =
+            !key?.fromMe && typeof raw['pushName'] === 'string' ? raw['pushName'].trim() : undefined;
 
-          const normalized: InboundNormalizedMessage = {
+          const normalized: WhatsAppQrMessageEvent = {
             eventId: key?.id || `waqr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             channel: 'WHATSAPP',
+            direction,
             sender: {
               id: phone,
               name: pushName,
@@ -365,9 +414,17 @@ export class WhatsAppQrBridge {
     }
     try {
       const sent = await this.sock.sendMessage(jid, { text });
+      const msgId = sent?.key?.id || `waqr-out-${Date.now()}`;
+      if (sent?.key?.id) {
+        this.sentByGatewayIds.add(sent.key.id);
+        if (this.sentByGatewayIds.size > 200) {
+          const oldest = this.sentByGatewayIds.values().next().value;
+          if (oldest) this.sentByGatewayIds.delete(oldest);
+        }
+      }
       return {
         ok: true,
-        messageId: sent?.key?.id || `waqr-out-${Date.now()}`,
+        messageId: msgId,
       };
     } catch (err: unknown) {
       return {
