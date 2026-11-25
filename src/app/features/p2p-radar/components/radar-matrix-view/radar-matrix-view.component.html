@@ -45,7 +45,7 @@
               <td class="radar-mono rank-cell">#{{ idx + 1 }}</td>
               <td>
                 <div class="route-cell">
-                  <strong class="radar-mono">{{ bankName(route.sourceBank) }} ➔ {{ bankName(route.targetBank) }}</strong>
+                  <strong class="radar-mono">{{ bankName(route.sourceBank) }} → {{ bankName(route.targetBank) }}</strong>
                   <span class="radar-status-pill" [class.tone-cyan]="route.isInterbank" [class.tone-emerald]="!route.isInterbank">
                     {{ route.isInterbank ? 'Interbanco' : 'Monobanco' }}
                   </span>

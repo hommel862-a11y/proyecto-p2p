@@ -129,6 +129,7 @@
   border: 1px solid var(--radar-hairline);
   background: var(--radar-surface);
   color: var(--radar-muted);
+  box-shadow: none;
   font-size: 10.5px;
   font-weight: 600;
   cursor: pointer;
@@ -136,6 +137,7 @@
   &:hover {
     color: var(--radar-text);
     border-color: var(--radar-accent-2);
+    box-shadow: none;
   }
 }
 
@@ -153,6 +155,7 @@
   border: 1px solid var(--radar-hairline);
   background: var(--radar-surface);
   color: var(--radar-text);
+  box-shadow: none;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   font-weight: 700;
@@ -160,6 +163,7 @@
 
   &:hover {
     border-color: var(--radar-accent-2);
+    box-shadow: none;
   }
 }
 
@@ -214,11 +218,16 @@
   gap: 6px;
   border: 0;
   background: transparent;
+  box-shadow: none;
   padding: 0;
   color: var(--radar-accent-2);
   font-size: 13.5px;
   font-weight: 800;
   cursor: pointer;
+
+  &:hover {
+    box-shadow: none;
+  }
 
   span {
     font-size: 10.5px;

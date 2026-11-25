@@ -120,7 +120,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-// Button & Capsule Primitives
+// Button & Capsule Primitives (explicit box-shadow resets defeat global button halos)
 .radar-cta-primary {
   display: inline-flex;
   align-items: center;
@@ -129,9 +129,10 @@
   min-height: 36px;
   padding: 0 16px;
   border-radius: 999px;
-  border: 1px solid transparent;
+  border: 1px solid color-mix(in srgb, var(--radar-accent-2) 65%, var(--radar-text));
   background: var(--radar-accent-2);
   color: var(--radar-bg-0);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--radar-accent-2) 28%, transparent);
   font-weight: 700;
   font-size: 12.5px;
   cursor: pointer;
@@ -140,10 +141,12 @@
 
   &:hover:not(:disabled) {
     filter: brightness(1.08);
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--radar-accent-2) 36%, transparent);
   }
 
   &:active:not(:disabled) {
     transform: scale(0.98);
+    box-shadow: none;
   }
 
   &:focus-visible {
@@ -154,6 +157,7 @@
   &:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+    box-shadow: none;
   }
 }
 
@@ -166,35 +170,47 @@
   padding: 0 12px;
   border-radius: 999px;
   border: 1px solid var(--radar-border-strong);
-  background: color-mix(in srgb, var(--radar-surface-2) 78%, transparent);
+  background: var(--radar-surface-2);
   color: var(--radar-text);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--radar-text) 6%, transparent);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
 
-  &:hover:not(:disabled) {
+  &:hover:not(:disabled):not(.is-active):not(.is-emerald-active):not(.is-gold-active) {
     background: var(--radar-row-hover);
     border-color: var(--radar-accent-2);
+    box-shadow: none;
+    transform: none;
   }
 
-  &.is-active {
+  &.is-active,
+  &.is-active:hover:not(:disabled) {
     background: var(--radar-pill-active-bg);
     color: var(--radar-pill-active-fg);
     border-color: transparent;
+    box-shadow: 0 2px 10px color-mix(in srgb, var(--radar-bg-0) 24%, transparent);
+    transform: none;
   }
 
-  &.is-emerald-active {
-    background: color-mix(in srgb, var(--radar-accent) 18%, transparent);
+  &.is-emerald-active,
+  &.is-emerald-active:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--radar-accent) 18%, var(--radar-surface-2));
     color: var(--radar-accent);
     border-color: color-mix(in srgb, var(--radar-accent) 44%, transparent);
+    box-shadow: none;
+    transform: none;
   }
 
-  &.is-gold-active {
-    background: color-mix(in srgb, var(--radar-gold) 18%, transparent);
+  &.is-gold-active,
+  &.is-gold-active:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--radar-gold) 18%, var(--radar-surface-2));
     color: var(--radar-gold);
     border-color: color-mix(in srgb, var(--radar-gold) 44%, transparent);
+    box-shadow: none;
+    transform: none;
   }
 
   &:focus-visible {
@@ -212,9 +228,9 @@
   display: inline-flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 3px;
-  padding: 3px;
-  border-radius: 999px;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
   background: var(--radar-surface-2);
   border: 1px solid var(--radar-hairline);
   max-width: 100%;
@@ -229,23 +245,29 @@
   min-height: 30px;
   padding: 0 11px;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: 10px;
   background: transparent;
   color: var(--radar-muted);
+  box-shadow: none;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
 
-  &:hover:not(.is-active) {
+  &:hover:not(:disabled):not(.is-active) {
     color: var(--radar-text);
     background: var(--radar-row-hover);
+    box-shadow: none;
+    transform: none;
   }
 
-  &.is-active {
+  &.is-active,
+  &.is-active:hover:not(:disabled) {
     background: var(--radar-pill-active-bg);
     color: var(--radar-pill-active-fg);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--radar-bg-0) 20%, transparent);
+    transform: none;
   }
 
   &:focus-visible {
@@ -265,6 +287,7 @@
   border: 1px solid var(--radar-hairline);
   background: transparent;
   color: var(--radar-muted);
+  box-shadow: none;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -275,6 +298,7 @@
     background: var(--radar-row-hover);
     color: var(--radar-text);
     border-color: var(--radar-border-strong);
+    box-shadow: none;
   }
 
   &:focus-visible {
@@ -349,7 +373,7 @@
 // Accessibility Fallbacks
 @media (prefers-reduced-transparency: reduce) {
   .radar-liquid-glass {
-    background: var(--radar-surface-2) !important;
+    background: color-mix(in srgb, var(--radar-bg-1) 92%, var(--radar-accent-2) 8%) !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }

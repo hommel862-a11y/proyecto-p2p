@@ -121,6 +121,7 @@
 .kpi-action-link {
   border: 0;
   background: transparent;
+  box-shadow: none;
   padding: 2px 6px;
   border-radius: 6px;
   color: var(--radar-accent-2);
@@ -131,6 +132,7 @@
 
   &:hover {
     background: var(--radar-row-hover);
+    box-shadow: none;
     text-decoration: underline;
   }
 

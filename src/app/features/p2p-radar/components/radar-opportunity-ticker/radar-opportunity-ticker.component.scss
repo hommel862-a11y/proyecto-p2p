@@ -20,6 +20,11 @@
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+  background: color-mix(in srgb, var(--radar-bg-1) 94%, var(--radar-accent-2) 6%);
+  box-shadow:
+    var(--radar-shadow),
+    0 -6px 24px color-mix(in srgb, var(--radar-bg-0) 42%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--radar-text) 12%, transparent);
 }
 
 .ticker-leading,
@@ -58,7 +63,8 @@
 
 @media (max-width: 768px) {
   :host {
-    bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+    position: static;
+    margin-top: 4px;
   }
 
   .ticker-bar {

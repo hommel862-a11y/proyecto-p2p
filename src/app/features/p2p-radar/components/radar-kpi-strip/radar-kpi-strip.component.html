@@ -22,7 +22,7 @@
           {{ best.metrics.netSpreadPct >= 0 ? '+' : '' }}{{ best.metrics.netSpreadPct | number:'1.2-2' }}%
         </strong>
         <span class="kpi-sub radar-mono">
-          {{ bankName(best.sourceBank) }} ➔ {{ bankName(best.targetBank) }} · +${{ best.metrics.netProfitUsdt | number:'1.2-2' }} USDT
+          {{ bankName(best.sourceBank) }} → {{ bankName(best.targetBank) }} · +${{ best.metrics.netProfitUsdt | number:'1.2-2' }} USDT
         </span>
       </div>
       <div class="kpi-foot">
@@ -94,7 +94,7 @@
           +{{ summary().hybridDeltaPct | number:'1.2-2' }}% ahorro
         </strong>
         <span class="kpi-sub radar-mono">
-          {{ bankName(hRoute.sourceBank) }} ➔ {{ bankName(hRoute.targetBank) }} · Neto {{ (hRoute.optimalHybridNetSpreadPct ?? hRoute.metrics.netSpreadPct) | number:'1.2-2' }}%
+          {{ bankName(hRoute.sourceBank) }} → {{ bankName(hRoute.targetBank) }} · Neto {{ (hRoute.optimalHybridNetSpreadPct ?? hRoute.metrics.netSpreadPct) | number:'1.2-2' }}%
         </span>
       } @else {
         <strong class="kpi-value radar-mono">0.25% total</strong>

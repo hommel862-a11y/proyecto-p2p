@@ -173,7 +173,7 @@
           (click)="copyTargetRate.emit({ rate: view().metrics.targetSellPrice, label: 'Target Venta' })"
         >
           {{ view().metrics.targetSellPrice | number:'1.2-2' }}
-          <span>{{ copiedTarget() === 'Target Venta' ? '✓' : 'Copiar' }}</span>
+          <span>{{ copiedTarget() === 'Target Venta' ? 'Copiado' : 'Copiar' }}</span>
         </button>
       </div>
     </div>

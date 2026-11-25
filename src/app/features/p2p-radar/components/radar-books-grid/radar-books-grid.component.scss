@@ -222,6 +222,7 @@
   border: 1px solid var(--radar-hairline);
   background: var(--radar-surface-2);
   color: var(--radar-text);
+  box-shadow: none;
   text-align: left;
   cursor: pointer;
   box-sizing: border-box;
@@ -230,6 +231,7 @@
   &:hover {
     border-color: var(--radar-accent-2);
     background: var(--radar-row-hover);
+    box-shadow: none;
   }
 
   &:focus-visible {
