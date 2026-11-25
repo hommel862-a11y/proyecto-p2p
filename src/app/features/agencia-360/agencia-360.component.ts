@@ -311,6 +311,34 @@ export class Agencia360Component {
         this.selectedBrandId.set(mapped[0].id);
         this.persistBrands(mapped);
       }
+
+      const serverConnections = await this.api.listConnections(this.selectedBrandId() || undefined);
+      if (serverConnections && serverConnections.length > 0) {
+        const mappedConns: Ag360ApiConnectionSummary[] = serverConnections.map((c) => ({
+          scopeId: c.scope_id,
+          provider: c.provider,
+          configured: c.configured,
+          lastTestStatus:
+            c.last_test_status === 'CONNECTED'
+              ? 'CONECTADO (SQLITE)'
+              : c.last_test_status || 'CIFRADO EN SQLITE',
+          metadata: c.metadata || {},
+        }));
+        this.connections.set(mappedConns);
+        this.persistConnections(mappedConns);
+
+        for (const conn of mappedConns) {
+          const wa = conn.metadata['whatsapp_phone'];
+          const page = conn.metadata['page_id'];
+          if (wa && !this.ctwaWhatsappPhone()) {
+            this.ctwaWhatsappPhone.set(wa);
+            this.connWhatsappPhone.set(wa);
+          }
+          if (page && !this.connMetaPage()) {
+            this.connMetaPage.set(page);
+          }
+        }
+      }
     }
   }
 

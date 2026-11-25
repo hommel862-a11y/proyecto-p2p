@@ -49,6 +49,16 @@ export interface Ag360ConnectionTestResult {
   detail: string;
 }
 
+export interface Ag360PersistedConnectionDto {
+  scope_id: string;
+  provider: string;
+  configured: boolean;
+  metadata: Record<string, string>;
+  last_test_status: string;
+  last_tested_at?: string | null;
+  updated_at_vet?: string;
+}
+
 export interface Ag360GeneratedHookDto {
   variant: 'HOOK_A' | 'HOOK_B' | 'HOOK_C';
   script_3s: string;
@@ -131,6 +141,18 @@ export class Agencia360ApiService {
       return res.ok;
     } catch {
       return false;
+    }
+  }
+
+  async listConnections(scopeId?: string): Promise<Ag360PersistedConnectionDto[] | null> {
+    try {
+      const qs = scopeId ? `?scope_id=${encodeURIComponent(scopeId)}` : '';
+      const res = await fetch(`${this.baseUrl}/connections${qs}`, { method: 'GET' });
+      if (!res.ok) return null;
+      const body = (await res.json()) as { connections: Ag360PersistedConnectionDto[] };
+      return body.connections;
+    } catch {
+      return null;
     }
   }
 
