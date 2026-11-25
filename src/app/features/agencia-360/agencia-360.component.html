@@ -358,10 +358,20 @@
           <textarea
             class="ag360-input"
             rows="3"
-            placeholder="Escribí el prompt cinematográfico 9:16 para Gemini Omni 1.2 Flash o Google Flow..."
+            placeholder="Guion de voz / escena 9:16 para renderizar tu Reel real (FFmpeg + Gemini 3.8 TTS o Google Flow)..."
             [ngModel]="videoPromptInput()"
             (ngModelChange)="videoPromptInput.set($event)"
           ></textarea>
+
+          <div class="upload-bar">
+            <button
+              type="button"
+              class="ag360-btn-primary"
+              (click)="renderLiveReelNow()"
+            >
+              Renderizar Reel 9:16 Real (.mp4 + Voz IA)
+            </button>
+          </div>
 
           @if (uploadedMedia().length > 0) {
             <div class="media-chips">

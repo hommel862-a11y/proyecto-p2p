@@ -339,6 +339,41 @@ export class Agencia360Component {
           }
         }
       }
+
+      const activeId = this.selectedBrandId();
+      if (activeId) {
+        const serverAssets = await this.api.listMediaAssets(activeId);
+        if (serverAssets && serverAssets.length > 0) {
+          const mappedMedia: Ag360UploadedMedia[] = serverAssets.map((a) => ({
+            id: a.asset_id,
+            brandId: a.brand_id,
+            category: a.category === 'renders' ? 'videos' : a.category,
+            filename: a.filename,
+            previewUrl: `http://127.0.0.1:8090${a.relative_url}`,
+            mimeType:
+              a.category === 'videos' || a.category === 'renders'
+                ? 'video/mp4'
+                : a.category === 'voices'
+                  ? 'audio/wav'
+                  : 'image/png',
+            sizeBytes: a.size_bytes,
+          }));
+          this.uploadedMedia.set(mappedMedia);
+
+          const voiceItem = mappedMedia.find((m) => m.category === 'voices');
+          if (voiceItem && !this.recordedVoiceName()) {
+            this.recordedVoiceName.set(voiceItem.filename);
+          }
+
+          if (!this.activePreviewMedia()) {
+            const preferred =
+              mappedMedia.find((m) => m.category === 'videos') ??
+              mappedMedia.find((m) => m.category === 'flyers') ??
+              mappedMedia[0];
+            this.activePreviewMedia.set(preferred);
+          }
+        }
+      }
     }
   }
 
@@ -803,6 +838,42 @@ export class Agencia360Component {
     this.uploadedMedia.update((list) => [imported, ...list]);
     this.activePreviewMedia.set(imported);
     this.statusMessage.set(`Video de Google Flow "${res.filename}" importado y listo en el reproductor 9:16.`);
+  }
+
+  async renderLiveReelNow(): Promise<void> {
+    const brand = this.activeBrand();
+    if (!brand || !this.backendOnline()) {
+      this.statusMessage.set('Creá una marca y verificá FastAPI (:8090) antes de renderizar el Reel 9:16.');
+      return;
+    }
+    const script =
+      this.videoPromptInput().trim() ||
+      this.selectedHook()?.script3s ||
+      `Pedí ahora en ${brand.displayName} tocando el botón de WhatsApp.`;
+
+    this.statusMessage.set('Renderizando Reel 9:16 H.264 + locución neural Gemini 3.8 TTS...');
+    const res = await this.api.renderLocalReel({
+      brand_id: brand.id,
+      brand_slug: brand.slug,
+      voice_script: script,
+      duration_sec: 7.0,
+    });
+    if (!res) {
+      this.statusMessage.set('Subí primero una foto de producto o generá un flyer base antes de renderizar el Reel.');
+      return;
+    }
+    const reelMedia: Ag360UploadedMedia = {
+      id: res.asset_id,
+      brandId: brand.id,
+      category: 'videos',
+      filename: res.filename,
+      previewUrl: `http://127.0.0.1:8090${res.relative_url}`,
+      mimeType: 'video/mp4',
+      sizeBytes: 0,
+    };
+    this.uploadedMedia.update((list) => [reelMedia, ...list]);
+    this.activePreviewMedia.set(reelMedia);
+    this.statusMessage.set(`Reel 9:16 .mp4 renderizado (${res.engine}) y activo en el Player 9:16.`);
   }
 
   stageCtwaCampaignForHitl(): void {

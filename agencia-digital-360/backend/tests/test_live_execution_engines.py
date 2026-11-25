@@ -126,3 +126,72 @@ class TestLiveExecutionEngines:
         assert len(body["steps"]) == 6
         assert body["steps"][0]["id"] == "step_1_backend_online"
         assert body["steps"][0]["completed"] is True
+
+    def test_flyer_composites_base_photo_and_ffmpeg_renders_playable_916_reel(self, tmp_path, monkeypatch):
+        import shutil
+        from PIL import Image
+        import app.main as main_mod
+        from app.core.database import AgenciaSqliteStore
+        from app.services.media_vault import MediaVaultService
+
+        isolated_store = AgenciaSqliteStore(
+            db_path=tmp_path / "isolated.db",
+            credential_vault=main_mod.credential_vault,
+        )
+        isolated_vault = MediaVaultService(
+            storage_root=tmp_path / "storage",
+            inbox_root=tmp_path / "inbox",
+        )
+        monkeypatch.setattr(main_mod, "sqlite_store", isolated_store)
+        monkeypatch.setattr(main_mod, "media_vault_service", isolated_vault)
+
+        # 1. Create a bright crimson test product photo and upload it
+        photo_buf_path = tmp_path / "producto.png"
+        Image.new("RGB", (600, 1000), color=(210, 45, 35)).save(photo_buf_path, format="PNG")
+
+        client = TestClient(main_mod.app)
+        with photo_buf_path.open("rb") as fh:
+            up_res = client.post(
+                "/api/v1/media/upload",
+                data={"brand_id": "brd_iso", "brand_slug": "iso-brand", "category": "photos"},
+                files={"file": ("producto.png", fh, "image/png")},
+            )
+        assert up_res.status_code == 200
+
+        # 2. Generate live flyer -> center pixel should reflect composited crimson photo, not plain (9, 13, 22)
+        fly_res = client.post(
+            "/api/v1/flyers/generate-live",
+            json={
+                "brand_id": "brd_iso",
+                "brand_slug": "iso-brand",
+                "headline": "PASTELITOS ANDINOS",
+                "price_badge": "COMBO $10 USD",
+                "cta_text": "PIDE POR WHATSAPP",
+                "nano_banana_prompt": "Pastelitos andinos",
+                "aspect_ratio": "9:16",
+            },
+        )
+        assert fly_res.status_code == 200
+        flyer_asset = isolated_store.list_media_assets("brd_iso")[0]
+        with Image.open(flyer_asset["local_path"]) as out_img:
+            center_r, _, _ = out_img.getpixel((540, 960))
+            assert center_r > 120
+
+        # 3. Render real 9:16 H.264 MP4 reel via /api/v1/video/render-local-reel when ffmpeg is installed
+        if shutil.which("ffmpeg"):
+            reel_res = client.post(
+                "/api/v1/video/render-local-reel",
+                json={
+                    "brand_id": "brd_iso",
+                    "brand_slug": "iso-brand",
+                    "voice_script": "Pide hoy en Gochos Venezuela.",
+                    "duration_sec": 3.0,
+                },
+            )
+            assert reel_res.status_code == 200
+            rbody = reel_res.json()
+            assert rbody["category"] == "videos"
+            assert rbody["relative_url"].endswith(".mp4")
+            stream = client.get(rbody["relative_url"])
+            assert stream.status_code == 200
+            assert b"ftyp" in stream.content[:64]

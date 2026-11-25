@@ -21,8 +21,11 @@ from app.services.flyer_pipeline import FlyerPipelineService
 from app.services.media_vault import MediaVaultService
 from app.services.genai_engines import (
     GENAI_2026_MODELS,
+    generate_gemini_brief_json,
     inspect_local_runtime_capabilities,
     probe_provider_connection,
+    render_ffmpeg_916_reel,
+    synthesize_gemini_tts_wav,
 )
 from app.agents.creative_director import CreativeDirectorAgent
 from app.agents.compliance_auditor import ComplianceAuditorAgent, ComplianceError
@@ -219,6 +222,13 @@ class FlowImportPayload(BaseModel):
     brand_id: str
     brand_slug: str
     filename: str
+
+
+class LocalReelRenderPayload(BaseModel):
+    brand_id: str
+    brand_slug: str
+    voice_script: str
+    duration_sec: float = Field(default=7.0, ge=2.0, le=30.0)
 
 
 class TelegramWebhookPayload(BaseModel):
@@ -573,6 +583,13 @@ def import_google_flow_export_to_vault(payload: FlowImportPayload) -> dict:
 @app.post("/api/v1/flyers/generate-live")
 def generate_live_servable_flyer(payload: FlyerGeneratePayload) -> dict:
     try:
+        brand_assets = sqlite_store.list_media_assets(payload.brand_id)
+        base_photo_path: Optional[Path] = None
+        for asset in brand_assets:
+            if asset["category"] == "photos" and Path(asset["local_path"]).exists():
+                base_photo_path = Path(asset["local_path"])
+                break
+
         res = flyer_pipeline_service.generate_commercial_flyer(
             brand_id=payload.brand_id,
             brand_slug=payload.brand_slug,
@@ -581,6 +598,7 @@ def generate_live_servable_flyer(payload: FlyerGeneratePayload) -> dict:
             cta_text=payload.cta_text,
             nano_banana_prompt=payload.nano_banana_prompt,
             aspect_ratio=payload.aspect_ratio,
+            base_image_path=base_photo_path,
         )
         png_bytes = Path(res["local_png_path"]).read_bytes()
         saved = media_vault_service.save_uploaded_asset(
@@ -598,6 +616,76 @@ def generate_live_servable_flyer(payload: FlyerGeneratePayload) -> dict:
             "relative_url": recorded["relative_url"],
         }
     except (SecurityViolationError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/video/render-local-reel")
+def render_live_916_reel(payload: LocalReelRenderPayload) -> dict:
+    try:
+        brand_assets = sqlite_store.list_media_assets(payload.brand_id)
+        visual_path: Optional[Path] = None
+        for preferred_cat in ("flyers", "photos"):
+            match = next(
+                (a for a in brand_assets if a["category"] == preferred_cat and Path(a["local_path"]).exists()),
+                None,
+            )
+            if match:
+                visual_path = Path(match["local_path"])
+                break
+        if not visual_path:
+            raise HTTPException(status_code=400, detail="Upload a product photo or generate a flyer first.")
+
+        voice_asset = next(
+            (a for a in brand_assets if a["category"] == "voices" and Path(a["local_path"]).exists()),
+            None,
+        )
+        wav_path: Optional[Path] = Path(voice_asset["local_path"]) if voice_asset else None
+        voice_asset_id: Optional[str] = voice_asset["asset_id"] if voice_asset else None
+
+        if wav_path is None and payload.voice_script.strip():
+            try:
+                gem_key, _ = sqlite_store.get_decrypted_connection("GLOBAL", "GEMINI_API")
+                wav_bytes = synthesize_gemini_tts_wav(gem_key, payload.voice_script)
+                if wav_bytes:
+                    saved_voice = media_vault_service.save_uploaded_asset(
+                        brand_id=payload.brand_id,
+                        brand_slug=payload.brand_slug,
+                        category="voices",
+                        original_filename="locucion_gemini38_tts.wav",
+                        content_bytes=wav_bytes,
+                    )
+                    rec_voice = sqlite_store.record_media_asset(**saved_voice)
+                    wav_path = Path(rec_voice["local_path"])
+                    voice_asset_id = rec_voice["asset_id"]
+            except KeyError:
+                pass
+
+        temp_mp4 = settings_instance.storage_dir / "renders_tmp" / f"reel_{payload.brand_slug}.mp4"
+        with video_concurrency_lock.acquire(f"reel_{payload.brand_slug}"):
+            render_info = render_ffmpeg_916_reel(
+                image_path=visual_path,
+                output_mp4_path=temp_mp4,
+                wav_path=wav_path,
+                duration_sec=payload.duration_sec,
+            )
+            mp4_bytes = Path(render_info["local_mp4_path"]).read_bytes()
+
+        saved_vid = media_vault_service.save_uploaded_asset(
+            brand_id=payload.brand_id,
+            brand_slug=payload.brand_slug,
+            category="videos",
+            original_filename=f"reel_916_{payload.brand_slug}.mp4",
+            content_bytes=mp4_bytes,
+        )
+        rec_vid = sqlite_store.record_media_asset(**saved_vid)
+        return {
+            **rec_vid,
+            "voice_asset_id": voice_asset_id,
+            "duration_sec": payload.duration_sec,
+            "resolution": "1080x1920",
+            "engine": "ffmpeg_h264_plus_gemini_3_8_tts" if wav_path else "ffmpeg_h264_916",
+        }
+    except (SecurityViolationError, VideoWorkerBusyError, RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
@@ -664,6 +752,23 @@ def generate_ai_creative_brief(payload: BriefGeneratePayload) -> dict:
             target_audience_ve=payload.target_audience_ve,
             custom_audio_path=payload.custom_audio_path,
         )
+        try:
+            gem_key, _ = sqlite_store.get_decrypted_connection("GLOBAL", "GEMINI_API")
+            live_json = generate_gemini_brief_json(
+                api_key=gem_key,
+                brand_name=brand.display_name,
+                offer=payload.product_or_offer,
+                audience=payload.target_audience_ve,
+            )
+            if live_json:
+                brief.hooks[0].script_3s = str(live_json["hook_a"])
+                brief.hooks[1].script_3s = str(live_json["hook_b"])
+                brief.hooks[2].script_3s = str(live_json["hook_c"])
+                brief.direct_response_copy = str(live_json["direct_response_copy"])
+                brief.ai_models_used["multimodal_strategy"] = str(live_json.get("model_used", "gemini-3.5-flash-lite"))
+        except KeyError:
+            pass
+
         audit = compliance_auditor_agent.audit_creative(
             brand_id=payload.brand_id,
             industry_vertical=brand.industry_vertical,

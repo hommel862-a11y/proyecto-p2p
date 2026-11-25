@@ -116,7 +116,33 @@ describe('Agencia360Component (Zero-Seed Real Production Overhaul)', () => {
       persistence_mode: 'SQLITE_LOCAL_E_DRIVE',
       genai_models_2026: {},
     });
-    vi.spyOn(api, 'listBrands').mockResolvedValue([]);
+    vi.spyOn(api, 'listBrands').mockResolvedValue([
+      {
+        brand_id: 'brd_gochos_ve',
+        slug: 'gochos-venezuela',
+        display_name: 'Gochos Venezuela',
+        industry_vertical: 'RETAIL_COMMERCE',
+        card_label: 'Tarjeta Pauta Directa',
+        card_last4: '',
+        vault_balance_usd: 0,
+        spend_cap_usd: 100,
+        accumulated_spend_usd: 0,
+        reserved_spend_usd: 0,
+        attributed_revenue_usd: 0,
+        closed_won_count: 0,
+      },
+    ]);
+    vi.spyOn(api, 'listMediaAssets').mockResolvedValue([
+      {
+        asset_id: 'med_reel_01',
+        brand_id: 'brd_gochos_ve',
+        brand_slug: 'gochos-venezuela',
+        category: 'videos',
+        filename: 'reel_916_gochos.mp4',
+        relative_url: '/api/v1/media/files/gochos-venezuela/videos/reel_916_gochos.mp4',
+        size_bytes: 184320,
+      },
+    ]);
     vi.spyOn(api, 'listConnections').mockResolvedValue([
       {
         scope_id: 'GLOBAL',
@@ -141,6 +167,9 @@ describe('Agencia360Component (Zero-Seed Real Production Overhaul)', () => {
 
     expect(comp.connections().some((c) => c.provider === 'GEMINI_API')).toBe(true);
     expect(comp.liveRoadmapSteps()[2].completed).toBe(true);
+    expect(comp.liveRoadmapSteps()[3].completed).toBe(true);
+    expect(comp.liveRoadmapSteps()[4].completed).toBe(true);
+    expect(comp.activePreviewMedia()?.filename).toBe('reel_916_gochos.mp4');
     expect(comp.ctwaWhatsappPhone()).toBe('+58 424-7723783');
   });
 });

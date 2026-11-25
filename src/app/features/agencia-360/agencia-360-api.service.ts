@@ -59,6 +59,16 @@ export interface Ag360PersistedConnectionDto {
   updated_at_vet?: string;
 }
 
+export interface Ag360PersistedMediaAssetDto {
+  asset_id: string;
+  brand_id: string;
+  brand_slug: string;
+  category: 'photos' | 'videos' | 'voices' | 'flyers' | 'renders';
+  filename: string;
+  relative_url: string;
+  size_bytes: number;
+}
+
 export interface Ag360GeneratedHookDto {
   variant: 'HOOK_A' | 'HOOK_B' | 'HOOK_C';
   script_3s: string;
@@ -332,6 +342,43 @@ export class Agencia360ApiService {
       });
       if (!res.ok) return null;
       return (await res.json()) as { asset_id: string; relative_url: string; filename: string };
+    } catch {
+      return null;
+    }
+  }
+
+  async listMediaAssets(brandId: string): Promise<Ag360PersistedMediaAssetDto[] | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/media/list/${encodeURIComponent(brandId)}`, {
+        method: 'GET',
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as { assets: Ag360PersistedMediaAssetDto[] };
+      return body.assets;
+    } catch {
+      return null;
+    }
+  }
+
+  async renderLocalReel(payload: {
+    brand_id: string;
+    brand_slug: string;
+    voice_script: string;
+    duration_sec?: number;
+  }): Promise<{ asset_id: string; relative_url: string; filename: string; engine: string } | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/video/render-local-reel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as {
+        asset_id: string;
+        relative_url: string;
+        filename: string;
+        engine: string;
+      };
     } catch {
       return null;
     }
