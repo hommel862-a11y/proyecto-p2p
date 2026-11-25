@@ -3,6 +3,7 @@ import { Injector } from '@angular/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { P2PRadarService } from './p2p-radar.service';
 import { ToastService } from './toast.service';
+import { StorageService } from './storage';
 
 describe('P2PRadarService', () => {
   let service: P2PRadarService;
@@ -419,5 +420,225 @@ describe('P2PRadarService', () => {
     expect(service.bestRoute()?.metrics.grossSpreadPct).toBeGreaterThan(2);
 
     vi.unstubAllGlobals();
+  });
+
+  it('supports MakerMerchantLevel (STANDARD 0.25%..GOLD 0.125%), parses taker restrictions & preserves 0 payTimeLimit', async () => {
+    service.setMerchantLevel('STANDARD');
+    expect(service.merchantLevel()).toBe('STANDARD');
+    expect(service.userTier()).toBe('UNVERIFIED');
+
+    const mockApiResponse = {
+      data: [
+        {
+          adv: {
+            advNo: 'OPEN-1',
+            price: '98.50',
+            surplusAmount: '500.00',
+            minSingleTransAmount: '20000',
+            maxSingleTransAmount: '100000',
+            payTimeLimit: 15,
+            classify: 'mass',
+            buyerKycLimit: 0,
+            buyerRegDaysLimit: 0,
+            buyerBtcPositionLimit: 0,
+            takerAdditionalKycRequired: false,
+            tradeMethods: [{ payType: 'Banesco', identifier: 'Banesco' }],
+          },
+          advertiser: {
+            userNo: 'USR-OPEN',
+            nickName: 'LibreTrader',
+            monthOrderCount: 120,
+            monthFinishRate: 0.97,
+            userType: 'user',
+            userGrade: 1,
+            proMerchant: false,
+          },
+        },
+        {
+          adv: {
+            advNo: 'LOCK-0-PAYTIME',
+            price: '98.00',
+            surplusAmount: '800.00',
+            minSingleTransAmount: '20000',
+            maxSingleTransAmount: '200000',
+            payTimeLimit: 0,
+            buyerRegDaysLimit: 90,
+            buyerBtcPositionLimit: 0.05,
+            takerAdditionalKycRequired: true,
+            tradeMethods: [{ payType: 'Banesco' }],
+          },
+          advertiser: {
+            userNo: 'USR-LOCK',
+            nickName: 'OroLocked',
+            monthOrderCount: 250,
+            monthFinishRate: 0.99,
+            userType: 'merchant',
+            proMerchant: true,
+          },
+        },
+      ],
+    };
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => mockApiResponse,
+      }),
+    );
+
+    service.activePaymentMethods.set(['Banesco']);
+    const books = await service.scanRadar('USDT', 'VES');
+    const buyBook = books.get('Banesco_BUY');
+
+    expect(buyBook?.makerFeePct).toBe(0.25);
+    expect(buyBook?.cleanOffers[0].advNo).toBe('OPEN-1');
+    expect(buyBook?.cleanOffers[0].takerEligibility).toBe('OPEN');
+    // Missing/0 payTimeLimit must no longer be coerced to 15 to slip past Clean Mode
+    const rejectedZeroPayTime = buyBook?.rejectedOffers.find((o) => o.advNo === 'LOCK-0-PAYTIME');
+    expect(rejectedZeroPayTime?.payTimeLimit).toBe(0);
+    expect(rejectedZeroPayTime?.takerEligibility).toBe('RESTRICTED');
+    expect(rejectedZeroPayTime?.verdict.reasons).toContain('PAY_TIME_EXCEEDED');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('uses USD fiat for BanescoPanama/Zinli, surfaces HTTP 429 on desktop bridge, and cleans ringBuffers/vwapHistories on prune', async () => {
+    const requestedFiats: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        if (typeof url === 'string' && url.includes('127.0.0.1:51857')) {
+          return { ok: false, status: 429 };
+        }
+        if (typeof url === 'string' && url.includes('p2p.binance.com')) {
+          const body = JSON.parse(String(init?.body ?? '{}')) as { fiat?: string };
+          if (body.fiat) requestedFiats.push(body.fiat);
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  adv: {
+                    advNo: 'Z-1',
+                    price: '1.01',
+                    surplusAmount: '500',
+                    minSingleTransAmount: '10',
+                    maxSingleTransAmount: '500',
+                    payTimeLimit: 15,
+                  },
+                  advertiser: {
+                    userNo: 'UZ-1',
+                    nickName: 'ZinliTrader',
+                    monthOrderCount: 80,
+                    monthFinishRate: 0.98,
+                    userType: 'user',
+                  },
+                },
+              ],
+            }),
+          };
+        }
+        throw new Error('offline');
+      }),
+    );
+
+    service.activePaymentMethods.set(['Zinli']);
+    const books = await service.scanRadar('USDT', 'VES');
+    expect(requestedFiats).toEqual(['USD', 'USD']);
+    expect(books.get('Zinli_BUY')?.cleanCount).toBe(1);
+
+    // Pruning deselected bank must purge ringBuffers & vwapHistories too
+    service.togglePaymentMethod('Zinli');
+    expect(service.getTrendForBook('Zinli', 'BUY')).toBeUndefined();
+    const internalBuffers = (service as unknown as { ringBuffers: Map<string, unknown> }).ringBuffers;
+    expect(internalBuffers.has('Zinli_BUY')).toBe(false);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('resolves matching CRM bankAccountId when dispatching route, rejects malformed stored cycles, and surfaces 429 from desktop bridge', async () => {
+    const store = new Map<string, unknown>();
+    store.set('p2p.crm.banks', [
+      {
+        id: 'CRM-BNK-BDV',
+        scope: 'P2P_DESK',
+        bankName: 'Banco de Venezuela',
+        holderDetails: 'Mesa Principal',
+        currency: 'VES',
+        currentBalanceFiat: 50000,
+        dailyLimitFiat: 500000,
+        todayUsedFiat: 0,
+        feePct: 0,
+        burstLimitCount: 5,
+        recentTransfersTimestamps: [],
+        status: 'ACTIVE',
+      },
+    ]);
+    store.set('p2p.radar.completed-cycles', [
+      { invalid: true },
+      {
+        cycleId: 'CYC-VALID',
+        timestampMs: 1000,
+        dateKey: '2026-11-25',
+        sourceBank: 'Banesco',
+        targetBank: 'Mercantil',
+        isInterbank: true,
+        executionMode: 'DOBLE_MAKER',
+        capitalUsdt: 1000,
+        buyPrice: 98,
+        sellPrice: 100,
+        netSpreadPct: 1.5,
+        netProfitUsdt: 15,
+        netProfitFiat: 1500,
+      },
+    ]);
+
+    const storageMock = {
+      get: vi.fn((k: string) => store.get(k) ?? null),
+      set: vi.fn((k: string, v: unknown) => {
+        store.set(k, v);
+      }),
+    };
+    const injectorWithStorage = Injector.create({
+      providers: [
+        { provide: ToastService, useValue: toastMock },
+        { provide: StorageService, useValue: storageMock },
+        P2PRadarService,
+      ],
+    });
+    const svc = injectorWithStorage.get(P2PRadarService);
+
+    expect(svc.completedCycles().map((c) => c.cycleId)).toEqual(['CYC-VALID']);
+
+    const deal = svc.dispatchRouteToCrmPipeline({
+      sourceBank: 'SpecificBank',
+      targetBank: 'Mercantil',
+      buyPrice: 98,
+      sellPrice: 100,
+      capitalUsdt: 500,
+      netProfitUsdt: 10,
+    });
+    expect(deal.bankAccountId).toBe('CRM-BNK-BDV');
+    expect(svc.crmDealDispatchTick()).toBeGreaterThan(0);
+
+    // 2. Verify desktop bridge 429 is NOT swallowed as generic CORS error
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        if (typeof url === 'string' && url.includes('127.0.0.1:51857')) {
+          return { ok: false, status: 429 };
+        }
+        throw new Error('CORS blocked');
+      }),
+    );
+    svc.activePaymentMethods.set(['Banesco']);
+    await svc.scanRadar('USDT', 'VES');
+    expect(svc.error()).toContain('HTTP 429');
+
+    vi.unstubAllGlobals();
+    svc.ngOnDestroy();
   });
 });

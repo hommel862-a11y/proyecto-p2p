@@ -1,10 +1,15 @@
 import { Injectable, OnDestroy, inject, signal, computed } from '@angular/core';
+import { Subject } from 'rxjs';
 import { ToastService } from './toast.service';
 import { NativeHttpService } from './native-http.service';
+import { AccountsService } from './accounts.service';
 import { StorageService } from './storage';
 import {
   CircuitBreaker,
   type P2PUserTier,
+  type MakerMerchantLevel,
+  type BankCode,
+  type CrmBankAccount,
   type RadarOrderSide,
   type CleanModeConfig,
   type CleanRadarOffer,
@@ -26,6 +31,8 @@ import {
   safeHydrateCrmCollection,
   DEFAULT_CLEAN_MODE_CONFIG,
   RADAR_VOLUME_BRACKETS,
+  RADAR_MERCHANT_LEVEL_FEE_PCT,
+  resolveUserTierFromMerchantLevel,
   buildCleanRadarBook,
   SnapshotRingBuffer,
   calculateCleanVWAP,
@@ -51,6 +58,28 @@ export const RADAR_BANK_LABELS: Record<string, string> = {
   BanescoPanama: 'Banesco Panamá',
   Zinli: 'Zinli',
 };
+
+export const RADAR_BANK_FIAT: Record<string, string> = {
+  BanescoPanama: 'USD',
+  Zinli: 'USD',
+};
+
+export const RADAR_METHOD_TO_BANK_CODE: Partial<Record<string, BankCode>> = {
+  Banesco: 'BANESCO',
+  Mercantil: 'MERCANTIL',
+  SpecificBank: 'BDV',
+  PagoMovil: 'OTRO',
+  BBVA: 'PROVINCIAL',
+  BNC: 'BNC',
+  Bancaribe: 'BANCARIBE',
+  Banplus: 'BANPLUS',
+  BanescoPanama: 'OTRO',
+  Zinli: 'OTRO',
+};
+
+export function resolveRadarFiat(payType: string, defaultFiat = 'VES'): string {
+  return RADAR_BANK_FIAT[payType] ?? defaultFiat;
+}
 
 export type BankPresetId = 'TOP_VES' | 'ALL_VES' | 'EXPANDED' | 'CLEAR';
 export type AutoRefreshIntervalSec = 0 | 10 | 15 | 30;
@@ -92,17 +121,21 @@ export class P2PRadarService implements OnDestroy {
 
   private readonly toast = inject(ToastService);
   private readonly nativeHttp = inject(NativeHttpService, { optional: true });
+  private readonly accountsService = inject(AccountsService, { optional: true });
   private readonly storage = inject(StorageService, { optional: true });
 
   readonly circuitBreaker = new CircuitBreaker({
     failureThreshold: 4,
     cooldownPeriodMs: 30_000,
-    maxRetries: 1,
+    maxRetries: 1, // 1 attempt per execution (429 retry handled inside fetchWebWithFallback)
     baseDelayMs: 400,
   });
 
   private inFlightScan: Promise<Map<string, RadarCleanBook>> | null = null;
   private scanAbortController: AbortController | null = null;
+  private readonly crmDealDispatchedSubject = new Subject<PipelineDeal>();
+  readonly crmDealDispatched$ = this.crmDealDispatchedSubject.asObservable();
+  readonly crmDealDispatchTick = signal<number>(0);
 
   // ─── Phase 5: Browser Extension HUD & Accounting Isolation ─────────
   private readonly hudBroadcaster = new RadarHudBroadcaster();
@@ -125,7 +158,10 @@ export class P2PRadarService implements OnDestroy {
   readonly bufferSampleCount = computed(() => Math.min(12, this.scanCycleCount()));
 
   // ─── Reactive State ────────────────────────────────────────────────
+  readonly merchantLevel = signal<MakerMerchantLevel>('STANDARD');
   readonly userTier = signal<P2PUserTier>('UNVERIFIED');
+  readonly excludeMerchantCompetitors = signal<boolean>(false);
+  readonly requireOpenTakerOffers = signal<boolean>(false);
   readonly cleanConfig = signal<CleanModeConfig>({ ...DEFAULT_CLEAN_MODE_CONFIG });
   readonly selectedBracket = signal<VolumeBracketConfig>(RADAR_VOLUME_BRACKETS[0]);
   readonly activePaymentMethods = signal<string[]>([
@@ -134,6 +170,9 @@ export class P2PRadarService implements OnDestroy {
     'SpecificBank',
     'PagoMovil',
   ]);
+  readonly currentMakerFeePct = computed<number>(
+    () => RADAR_MERCHANT_LEVEL_FEE_PCT[this.merchantLevel()],
+  );
 
   // Phase 3 Tactical Arbitrage State
   readonly executionMode = signal<ExecutionMode>('DOBLE_MAKER');
@@ -222,9 +261,35 @@ export class P2PRadarService implements OnDestroy {
   });
 
   // ─── Mutators ──────────────────────────────────────────────────────
+  setMerchantLevel(level: MakerMerchantLevel): void {
+    this.merchantLevel.set(level);
+    this.userTier.set(resolveUserTierFromMerchantLevel(level));
+    this.recomputeBooks();
+    if (this.radarBooks().size > 0) {
+      void this.scanRadar('USDT', 'VES', { forceAbort: true });
+    }
+  }
+
   setUserTier(tier: P2PUserTier): void {
     this.userTier.set(tier);
-    // Re-evaluate existing books if present
+    if (tier === 'UNVERIFIED') {
+      this.merchantLevel.set('STANDARD');
+    } else if (this.merchantLevel() === 'STANDARD') {
+      this.merchantLevel.set('BRONZE');
+    }
+    this.recomputeBooks();
+    if (this.radarBooks().size > 0) {
+      void this.scanRadar('USDT', 'VES', { forceAbort: true });
+    }
+  }
+
+  setExcludeMerchantCompetitors(exclude: boolean): void {
+    this.excludeMerchantCompetitors.set(exclude);
+    this.recomputeBooks();
+  }
+
+  setRequireOpenTakerOffers(requireOpen: boolean): void {
+    this.requireOpenTakerOffers.set(requireOpen);
     this.recomputeBooks();
   }
 
@@ -269,6 +334,9 @@ export class P2PRadarService implements OnDestroy {
         minTransAmountVes: found.minAmountVes,
       }));
       this.recomputeBooks();
+      if (this.radarBooks().size > 0) {
+        void this.scanRadar('USDT', 'VES', { forceAbort: true });
+      }
     }
   }
 
@@ -276,6 +344,8 @@ export class P2PRadarService implements OnDestroy {
     this.stopAutoRefresh();
     this.scanAbortController?.abort();
     this.scanAbortController = null;
+    this.hudBroadcaster.close();
+    this.crmDealDispatchedSubject.complete();
   }
 
   togglePaymentMethod(methodKey: string): void {
@@ -342,7 +412,15 @@ export class P2PRadarService implements OnDestroy {
    * Scans multiple payment methods concurrently for both BUY and SELL.
    * Feeds the raw data into the Clean Mode mathematical engine.
    */
-  async scanRadar(asset = 'USDT', fiat = 'VES'): Promise<Map<string, RadarCleanBook>> {
+  async scanRadar(
+    asset = 'USDT',
+    fiat = 'VES',
+    options: { forceAbort?: boolean } = {},
+  ): Promise<Map<string, RadarCleanBook>> {
+    if (options.forceAbort && this.inFlightScan) {
+      this.scanAbortController?.abort();
+      this.inFlightScan = null;
+    }
     if (this.inFlightScan) {
       return this.inFlightScan;
     }
@@ -377,7 +455,7 @@ export class P2PRadarService implements OnDestroy {
         tasks.push({ payType: m, side: 'SELL' });
       }
 
-      // Prune deselected banks so stale books do not pollute liquidity or arbitrage matrix
+      // Prune deselected banks + orphaned ring buffers/VWAP histories
       const nextBooks = new Map<string, RadarCleanBook>();
       const nextBotReports = new Map<string, BotDetectionResult[]>();
       const nextMarketTrends = new Map<string, MarketTrendResult>();
@@ -388,14 +466,21 @@ export class P2PRadarService implements OnDestroy {
           if (bots) nextBotReports.set(key, bots);
           const trend = this.marketTrends().get(key);
           if (trend) nextMarketTrends.set(key, trend);
+        } else {
+          this.ringBuffers.delete(key);
+          this.vwapHistories.delete(key);
         }
       }
 
       const tier = this.userTier();
+      const level = this.merchantLevel();
       const config = this.cleanConfig();
+      const excludeMerchants = this.excludeMerchantCompetitors();
+      const requireOpenTaker = this.requireOpenTakerOffers();
       const transAmount = this.selectedBracket().minAmountVes;
       let fulfilledCount = 0;
       const failedMethods: string[] = [];
+      let firstFailureReason = '';
 
       try {
         for (let i = 0; i < tasks.length; i += 4) {
@@ -405,19 +490,21 @@ export class P2PRadarService implements OnDestroy {
 
           const batch = tasks.slice(i, i + 4);
           const batchSettled = await Promise.allSettled(
-            batch.map((target) =>
-              this.circuitBreaker.execute(() =>
+            batch.map((target) => {
+              const targetFiat = resolveRadarFiat(target.payType, fiat);
+              const targetTransAmount = targetFiat === 'USD' ? 0 : transAmount;
+              return this.circuitBreaker.execute(() =>
                 this.fetchBookTarget(
                   asset,
-                  fiat,
+                  targetFiat,
                   target.side,
                   target.payType,
-                  transAmount,
+                  targetTransAmount,
                   tier,
                   controller.signal,
                 ),
-              ),
-            ),
+              );
+            }),
           );
 
           for (let j = 0; j < batch.length; j++) {
@@ -427,17 +514,34 @@ export class P2PRadarService implements OnDestroy {
 
             if (settled.status !== 'fulfilled') {
               failedMethods.push(`${target.payType} (${target.side})`);
+              if (!firstFailureReason) {
+                firstFailureReason =
+                  settled.reason instanceof Error
+                    ? settled.reason.message
+                    : String(settled.reason ?? 'Error desconocido');
+              }
               continue;
             }
 
             fulfilledCount++;
             const rawOffers = settled.value;
+            const targetFiat = resolveRadarFiat(target.payType, fiat);
+            const targetConfig: CleanModeConfig =
+              targetFiat === 'USD'
+                ? { ...config, minTransAmountVes: Math.min(config.minTransAmountVes, 20) }
+                : config;
+
             const cleanBook = buildCleanRadarBook(
               rawOffers,
               target.side,
               target.payType,
               tier,
-              config,
+              targetConfig,
+              {
+                merchantLevel: level,
+                excludeMerchantCompetitors: excludeMerchants,
+                requireOpenTakerEligibility: requireOpenTaker,
+              },
             );
             nextBooks.set(key, cleanBook);
 
@@ -487,11 +591,17 @@ export class P2PRadarService implements OnDestroy {
         }
 
         if (fulfilledCount === 0 && failedMethods.length > 0) {
-          throw new Error(`Todos los sub-libros fallaron (${failedMethods.slice(0, 3).join(', ')})`);
+          const reasonSuffix = firstFailureReason ? ` — ${firstFailureReason}` : '';
+          throw new Error(
+            `Todos los sub-libros fallaron (${failedMethods.slice(0, 3).join(', ')})${reasonSuffix}`,
+          );
         }
 
         if (failedMethods.length > 0) {
-          this.error.set(`Escaneo parcial: fallaron ${failedMethods.length} consultas (${failedMethods[0]}).`);
+          const reasonSuffix = firstFailureReason ? `: ${firstFailureReason}` : '';
+          this.error.set(
+            `Escaneo parcial: fallaron ${failedMethods.length} consultas (${failedMethods[0]})${reasonSuffix}`,
+          );
         } else {
           this.error.set(null);
         }
@@ -672,7 +782,9 @@ export class P2PRadarService implements OnDestroy {
     try {
       const bridgeRes = await postJson('http://127.0.0.1:51857/api/binance/p2p');
       if (bridgeRes.ok) return bridgeRes.body;
-    } catch {
+      if (bridgeRes.status === 429) throw new Error('Binance P2P error: HTTP 429 (Rate limit)');
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('HTTP 429')) throw err;
       // Bridge offline
     }
 
@@ -696,7 +808,14 @@ export class P2PRadarService implements OnDestroy {
           minSingleTransAmount?: string | number;
           maxSingleTransAmount?: string | number;
           payTimeLimit?: number;
-          tradeMethods?: { payType?: string }[];
+          classify?: string;
+          isSafePayment?: boolean;
+          advConfirmTime?: number | null;
+          buyerKycLimit?: number | null;
+          buyerRegDaysLimit?: number | null;
+          buyerBtcPositionLimit?: number | null;
+          takerAdditionalKycRequired?: boolean;
+          tradeMethods?: { payType?: string; identifier?: string }[];
         };
         advertiser?: {
           userNo?: string;
@@ -704,6 +823,8 @@ export class P2PRadarService implements OnDestroy {
           monthOrderCount?: number;
           monthFinishRate?: number;
           userType?: string;
+          userGrade?: number | null;
+          proMerchant?: boolean;
         };
       };
 
@@ -726,7 +847,9 @@ export class P2PRadarService implements OnDestroy {
           : Number(adv.maxSingleTransAmount);
 
       const payMethods = Array.isArray(adv.tradeMethods)
-        ? adv.tradeMethods.map((m) => m.payType).filter((t): t is string => !!t)
+        ? adv.tradeMethods
+            .map((m) => m.payType ?? m.identifier)
+            .filter((t): t is string => Boolean(t && t.length > 0))
         : [];
 
       const rawFinishRate = Number(advUser?.monthFinishRate ?? 0);
@@ -735,7 +858,13 @@ export class P2PRadarService implements OnDestroy {
         : 0;
       const rawPayTime = Number(adv.payTimeLimit);
       const payTimeLimit =
-        Number.isFinite(rawPayTime) && rawPayTime > 0 ? rawPayTime : 15;
+        Number.isFinite(rawPayTime) && rawPayTime > 0 ? rawPayTime : 0;
+
+      const parseOptNum = (v: unknown): number | null => {
+        if (v === null || v === undefined) return null;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      };
 
       parsed.push({
         advNo: String(adv.advNo),
@@ -750,6 +879,16 @@ export class P2PRadarService implements OnDestroy {
         payTimeLimit,
         isMerchant: advUser?.userType === 'merchant',
         payMethods,
+        userType: advUser?.userType,
+        userGrade: parseOptNum(advUser?.userGrade),
+        isProMerchant: advUser?.proMerchant === true,
+        advClassify: typeof adv.classify === 'string' ? adv.classify : undefined,
+        isSafePayment: adv.isSafePayment === true,
+        advConfirmTime: parseOptNum(adv.advConfirmTime),
+        buyerKycLimit: parseOptNum(adv.buyerKycLimit),
+        buyerRegDaysLimit: parseOptNum(adv.buyerRegDaysLimit),
+        buyerBtcPositionLimit: parseOptNum(adv.buyerBtcPositionLimit),
+        takerAdditionalKycRequired: adv.takerAdditionalKycRequired === true,
       });
     }
 
@@ -776,6 +915,8 @@ export class P2PRadarService implements OnDestroy {
         if (trend) nextMarketTrends.set(key, trend);
       } else {
         changed = true;
+        this.ringBuffers.delete(key);
+        this.vwapHistories.delete(key);
       }
     }
 
@@ -797,13 +938,25 @@ export class P2PRadarService implements OnDestroy {
     const nextBotReports = new Map<string, BotDetectionResult[]>();
     const nextMarketTrends = new Map<string, MarketTrendResult>();
     const tier = this.userTier();
+    const level = this.merchantLevel();
     const config = this.cleanConfig();
+    const excludeMerchants = this.excludeMerchantCompetitors();
+    const requireOpenTaker = this.requireOpenTakerOffers();
 
     for (const [key, book] of current.entries()) {
       if (!activeSet.has(book.payMethod)) continue;
-      // Re-run with updated tier and clean config
+      // Re-run with updated tier, merchantLevel and clean config
       const allOffers = [...book.cleanOffers, ...book.rejectedOffers];
-      const recomputed = buildCleanRadarBook(allOffers, book.side, book.payMethod, tier, config);
+      const targetFiat = resolveRadarFiat(book.payMethod, 'VES');
+      const targetConfig: CleanModeConfig =
+        targetFiat === 'USD'
+          ? { ...config, minTransAmountVes: Math.min(config.minTransAmountVes, 20) }
+          : config;
+      const recomputed = buildCleanRadarBook(allOffers, book.side, book.payMethod, tier, targetConfig, {
+        merchantLevel: level,
+        excludeMerchantCompetitors: excludeMerchants,
+        requireOpenTakerEligibility: requireOpenTaker,
+      });
       nextBooks.set(key, recomputed);
 
       const ringBuffer = this.ringBuffers.get(key);
@@ -847,6 +1000,7 @@ export class P2PRadarService implements OnDestroy {
       capitalUsdt: this.operatingCapitalUsdt(),
       mode: this.executionMode(),
       userTier: this.userTier(),
+      merchantLevel: this.merchantLevel(),
       targetNetMarginPct: this.targetNetMarginPct(),
       interbankFrictionPct: this.interbankFrictionPct(),
     });
@@ -867,6 +1021,7 @@ export class P2PRadarService implements OnDestroy {
       capitalUsdt: overrides?.capitalUsdt ?? this.operatingCapitalUsdt(),
       mode: overrides?.mode ?? this.executionMode(),
       userTier: overrides?.userTier ?? this.userTier(),
+      merchantLevel: overrides?.merchantLevel ?? (overrides?.userTier ? undefined : this.merchantLevel()),
       customMakerFeeBuyPct: overrides?.customMakerFeeBuyPct,
       customMakerFeeSellPct: overrides?.customMakerFeeSellPct,
       fiatFrictionPct: overrides?.fiatFrictionPct ?? 0,
@@ -884,9 +1039,11 @@ export class P2PRadarService implements OnDestroy {
       botReports: this.botReports(),
       marketTrends: this.marketTrends(),
       userTier: this.userTier(),
+      merchantLevel: this.merchantLevel(),
       executionMode: this.executionMode(),
       operatingCapitalUsdt: this.operatingCapitalUsdt(),
       targetNetMarginPct: this.targetNetMarginPct(),
+      fiatFrictionPct: this.interbankFrictionPct(),
       activeBanks: this.activePaymentMethods(),
     });
 
@@ -944,6 +1101,7 @@ export class P2PRadarService implements OnDestroy {
     const dealId = `RADAR-${now.toString(36).toUpperCase()}`;
     const sourceBankLabel = RADAR_BANK_LABELS[params.sourceBank] || params.sourceBank;
     const targetBankLabel = RADAR_BANK_LABELS[params.targetBank] || params.targetBank;
+    const resolvedAccount = this.resolveCrmBankAccount(params.sourceBank, sourceBankLabel);
 
     const newDeal: PipelineDeal = {
       id: dealId,
@@ -951,10 +1109,10 @@ export class P2PRadarService implements OnDestroy {
       title: `Arbitraje Radar: ${sourceBankLabel} ➔ ${targetBankLabel}`,
       contactId: 'RADAR_DESK',
       contactName: `Mesa P2P (${sourceBankLabel} ➔ ${targetBankLabel})`,
-      bankAccountId: `BANK_${params.sourceBank.toUpperCase()}`,
-      bankName: sourceBankLabel,
+      bankAccountId: resolvedAccount.id,
+      bankName: resolvedAccount.name,
       stage: 'STAGE_2_TRANSIT',
-      fiatCurrency: 'VES',
+      fiatCurrency: resolveRadarFiat(params.sourceBank, 'VES') as 'VES' | 'USD',
       cryptoAmountUsdt: params.capitalUsdt,
       appliedRate: params.sellPrice,
       replacementRate: params.buyPrice,
@@ -989,6 +1147,8 @@ export class P2PRadarService implements OnDestroy {
         existingDeals = safeHydrateCrmCollection<PipelineDeal>(parsed);
         localStorage.setItem(CRM_STORAGE_KEYS.DEALS, JSON.stringify([newDeal, ...existingDeals]));
       }
+      this.crmDealDispatchTick.update((t) => t + 1);
+      this.crmDealDispatchedSubject.next(newDeal);
       this.toast.success(`Trato ${dealId} enviado al Kanban del CRM (En Tránsito).`);
     } catch (err) {
       console.debug('[P2PRadarService] Error dispatching deal to CRM:', err);
@@ -1007,17 +1167,86 @@ export class P2PRadarService implements OnDestroy {
     this.toast.info('Registro de ciclos completados actualizado.');
   }
 
+  private resolveCrmBankAccount(
+    payMethod: string,
+    fallbackLabel: string,
+  ): { id: string; name: string } {
+    const bankCode = RADAR_METHOD_TO_BANK_CODE[payMethod];
+    const normLabel = fallbackLabel.toLowerCase();
+
+    let crmBanksRaw: unknown = null;
+    if (this.storage) {
+      crmBanksRaw = this.storage.get(CRM_STORAGE_KEYS.BANKS);
+    } else if (typeof localStorage !== 'undefined' && typeof localStorage?.getItem === 'function') {
+      try {
+        const rawStr = localStorage.getItem(CRM_STORAGE_KEYS.BANKS);
+        crmBanksRaw = rawStr ? JSON.parse(rawStr) : null;
+      } catch {
+        crmBanksRaw = null;
+      }
+    }
+
+    if (crmBanksRaw) {
+      const crmBanks = safeHydrateCrmCollection<CrmBankAccount>(crmBanksRaw);
+      const matchedCrm = crmBanks.find(
+        (b) =>
+          b.bankName.toLowerCase().includes(normLabel) ||
+          (payMethod === 'PagoMovil' && /pago\s*m[oó]vil/i.test(b.bankName)) ||
+          (bankCode && bankCode !== 'OTRO' && b.bankName.toUpperCase().includes(bankCode)),
+      );
+      if (matchedCrm) {
+        return { id: matchedCrm.id, name: matchedCrm.bankName };
+      }
+    }
+
+    const accounts = this.accountsService?.accounts?.() ?? [];
+    const matchedAcct = accounts.find(
+      (a) =>
+        a.status !== 'DISABLED' &&
+        ((bankCode && bankCode !== 'OTRO' && a.bankCode === bankCode) ||
+          (payMethod === 'PagoMovil' && a.rail === 'PAGO_MOVIL') ||
+          a.bankName.toLowerCase().includes(normLabel)),
+    );
+    if (matchedAcct) {
+      return { id: matchedAcct.id, name: matchedAcct.bankName };
+    }
+
+    return {
+      id: `BANK_${(bankCode ?? payMethod).toUpperCase()}`,
+      name: fallbackLabel,
+    };
+  }
+
+  private isValidCycleRecord(item: unknown): item is RadarCompletedCycleRecord {
+    if (!item || typeof item !== 'object') return false;
+    const r = item as Partial<RadarCompletedCycleRecord>;
+    return (
+      typeof r.cycleId === 'string' &&
+      r.cycleId.length > 0 &&
+      typeof r.dateKey === 'string' &&
+      typeof r.sourceBank === 'string' &&
+      typeof r.targetBank === 'string' &&
+      typeof r.netProfitUsdt === 'number' &&
+      Number.isFinite(r.netProfitUsdt)
+    );
+  }
+
   private loadStoredCycles(): RadarCompletedCycleRecord[] {
     try {
       if (this.storage) {
-        const stored = this.storage.get<RadarCompletedCycleRecord[]>(
-          P2PRadarService.STORAGE_KEY_CYCLES,
-        );
-        if (Array.isArray(stored)) return stored;
+        const stored = this.storage.get<unknown>(P2PRadarService.STORAGE_KEY_CYCLES);
+        if (Array.isArray(stored)) {
+          return stored.filter((r) => this.isValidCycleRecord(r));
+        }
       }
       if (typeof localStorage !== 'undefined' && typeof localStorage?.getItem === 'function') {
         const raw = localStorage.getItem(P2PRadarService.STORAGE_KEY_CYCLES);
-        if (raw) return JSON.parse(raw);
+        if (raw) {
+          const parsed = JSON.parse(raw) as unknown;
+          if (Array.isArray(parsed)) {
+            return parsed.filter((r) => this.isValidCycleRecord(r));
+          }
+        }
       }
     } catch (err) {
       console.debug('[P2PRadarService] Error loading stored cycles:', err);

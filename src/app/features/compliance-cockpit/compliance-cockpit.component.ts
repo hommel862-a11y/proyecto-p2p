@@ -15,6 +15,7 @@ import { StorageService } from '../../core/storage';
 import { ToastService } from '../../core/toast.service';
 import { Finance360Service } from '../../core/finance-360.service';
 import { InboundGatewayService } from '../../core/services/inbound-gateway.service';
+import { P2PRadarService } from '../../core/p2p-radar.service';
 import { HotkeysService } from '../../core/hotkeys.service';
 import { todayVetIso } from '../../core/models/finance-360.models';
 import { CrmCommandHeaderComponent } from './components/crm-command-header/crm-command-header.component';
@@ -182,15 +183,24 @@ export class ComplianceCockpitComponent implements OnDestroy {
   private readonly router = inject(Router);
   private readonly finance360 = inject(Finance360Service);
   readonly inboundGateway = inject(InboundGatewayService);
+  private readonly radarService = inject(P2PRadarService, { optional: true });
   private readonly hotkeys = inject(HotkeysService, { optional: true });
 
   private gatewaySubscription: Subscription | null = null;
   private armEventSubscription: Subscription | null = null;
   private connectedSubscription: Subscription | null = null;
+  private radarDealSubscription: Subscription | null = null;
   private unregisterScopedPalette: (() => void) | null = null;
 
   constructor() {
     this.hydrateArmPersistenceState();
+    if (this.radarService?.crmDealDispatched$) {
+      this.radarDealSubscription = this.radarService.crmDealDispatched$.subscribe(() => {
+        this.deals.set(
+          safeHydrateCrmCollection<PipelineDeal>(this.storage.get(CRM_STORAGE_KEYS.DEALS)),
+        );
+      });
+    }
     this.unregisterScopedPalette =
       this.hotkeys?.registerScopedPalette(
         () => this.showArmCommandPalette.update((v) => !v),
@@ -225,6 +235,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
     this.gatewaySubscription?.unsubscribe();
     this.armEventSubscription?.unsubscribe();
     this.connectedSubscription?.unsubscribe();
+    this.radarDealSubscription?.unsubscribe();
     this.unregisterScopedPalette?.();
     this.unregisterScopedPalette = null;
   }

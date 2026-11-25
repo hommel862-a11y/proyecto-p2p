@@ -8,6 +8,8 @@ export interface BinanceSearchParams {
   tradeType: 'BUY' | 'SELL';
   payTypes?: string[];
   rows?: number;
+  transAmount?: number;
+  publisherType?: 'merchant' | null;
 }
 
 export interface BinanceC2cOrdersFetchRequest {

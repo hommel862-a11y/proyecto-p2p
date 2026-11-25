@@ -593,8 +593,12 @@ export class BinanceP2pService implements OnDestroy {
         signal,
       });
       if (bridgeResp.ok) return await bridgeResp.json();
+      if (bridgeResp.status === 429) {
+        throw new Error('Binance P2P error: HTTP 429 (Rate limit)');
+      }
     } catch (err) {
       if (signal?.aborted) throw err;
+      if (err instanceof Error && err.message.includes('HTTP 429')) throw err;
     }
 
     if (signal?.aborted) {

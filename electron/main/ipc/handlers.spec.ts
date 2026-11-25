@@ -377,4 +377,43 @@ describe('fetchBinanceP2pShared — caché seguro, aislamiento por payTypes y or
 
     expect(net.fetch).not.toHaveBeenCalled();
   });
+
+  it('envía publisherType y transAmount en body y aísla caché por ambos parámetros', async () => {
+    vi.mocked(net.fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        code: '000000',
+        data: [{ adv: { advNo: '1', price: '95.00', maxSingleTransAmount: '150000' } }],
+      }),
+    } as unknown as Response);
+
+    await fetchBinanceP2pShared({
+      asset: 'USDT',
+      fiat: 'VES',
+      tradeType: 'BUY',
+      payTypes: ['Banesco'],
+      rows: 20,
+      publisherType: 'merchant',
+      transAmount: 20000,
+    } as Parameters<typeof fetchBinanceP2pShared>[0]);
+
+    await fetchBinanceP2pShared({
+      asset: 'USDT',
+      fiat: 'VES',
+      tradeType: 'BUY',
+      payTypes: ['Banesco'],
+      rows: 20,
+      publisherType: null,
+      transAmount: 150000,
+    } as Parameters<typeof fetchBinanceP2pShared>[0]);
+
+    expect(net.fetch).toHaveBeenCalledTimes(2);
+    const firstBody = JSON.parse(String(vi.mocked(net.fetch).mock.calls[0][1]?.body ?? '{}'));
+    const secondBody = JSON.parse(String(vi.mocked(net.fetch).mock.calls[1][1]?.body ?? '{}'));
+    expect(firstBody.publisherType).toBe('merchant');
+    expect(firstBody.transAmount).toBe(20000);
+    expect(secondBody.publisherType).toBeUndefined();
+    expect(secondBody.transAmount).toBe(150000);
+  });
 });

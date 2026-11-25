@@ -30,8 +30,14 @@ const MIN_QUALIFIED_FINISH_RATE_PCT = 90;
 const MIN_QUALIFIED_ORDER_COUNT = 10;
 const MAX_MEDIAN_DEVIATION_RATIO = 0.3;
 
-/** Commission Binance P2P charges, already deducted from the gross spread in `runScanCycle`. */
+/** Default round-trip/single-leg fallback commission in %, overridden when `merchantLevel` is set. */
 const BINANCE_P2P_COMMISSION_PCT = 0.35;
+const ALPHA_MAKER_FEE_PCT: Record<'STANDARD' | 'BRONZE' | 'SILVER' | 'GOLD', number> = {
+  STANDARD: 0.25,
+  BRONZE: 0.2,
+  SILVER: 0.175,
+  GOLD: 0.125,
+};
 
 /** Ticket the watcher proposes per detected spread. */
 const ALPHA_TICKET_USDT = 1000;
@@ -57,6 +63,7 @@ export interface AlphaWatcherConfig {
   fiat: string;
   payTypes: string[];
   enabled: boolean;
+  merchantLevel?: 'STANDARD' | 'BRONZE' | 'SILVER' | 'GOLD';
 }
 
 export class AlphaWatcher {
@@ -208,9 +215,12 @@ export class AlphaWatcher {
         return; // Spread is negative or zero (no maker/taker gap)
       }
 
-      // Calculate gross and net spread deducting standard 0.35% commission
+      // Calculate gross and net spread deducting canonical Maker fee (or 0.35% default fallback)
+      const commissionPct = this.config.merchantLevel
+        ? ALPHA_MAKER_FEE_PCT[this.config.merchantLevel]
+        : BINANCE_P2P_COMMISSION_PCT;
       const grossSpreadPct = ((bestSell - bestBuy) / bestBuy) * 100;
-      const netSpreadPct = Number((grossSpreadPct - BINANCE_P2P_COMMISSION_PCT).toFixed(2));
+      const netSpreadPct = Number((grossSpreadPct - commissionPct).toFixed(2));
       const liveMidRateVes = (bestBuy + bestSell) / 2;
 
       if (netSpreadPct >= this.config.minNetSpreadPct) {

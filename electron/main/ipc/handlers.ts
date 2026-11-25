@@ -211,7 +211,12 @@ export async function fetchBinanceP2pShared(
     (p): p is string => typeof p === 'string' && p.trim().length > 0,
   );
   const rows = params.rows ?? 10;
-  const cacheKey = `${asset}:${fiat}:${tradeType}:${payTypes.join(',')}:${rows}`;
+  const publisherType = params.publisherType === 'merchant' ? 'merchant' : null;
+  const transAmount =
+    typeof params.transAmount === 'number' && Number.isFinite(params.transAmount) && params.transAmount > 0
+      ? Math.round(params.transAmount)
+      : undefined;
+  const cacheKey = `${asset}:${fiat}:${tradeType}:${normalizedPayTypes.join(',')}:${rows}:${publisherType ?? 'all'}:${transAmount ?? 'any'}`;
 
   const cached = binanceIpcCache.get(cacheKey);
   const now = Date.now();
@@ -276,12 +281,14 @@ export async function fetchBinanceP2pShared(
             tradeType,
             page: 1,
             rows,
-            payTypes,
+            payTypes: normalizedPayTypes,
             countries: [],
             proMerchantAds: false,
             shieldMerchantAds: false,
             filterType: 'all',
             periods: [],
+            ...(publisherType ? { publisherType } : {}),
+            ...(transAmount !== undefined ? { transAmount } : {}),
           }),
         }),
         requestSignal,
@@ -307,8 +314,8 @@ export async function fetchBinanceP2pShared(
 
       binanceIpcCache.set(cacheKey, { data, timestamp: Date.now() });
 
-      // Only full-market snapshots (payTypes.length === 0) seed global market state & history
-      if (normalizedPayTypes.length === 0 && asset === 'USDT' && fiat === 'VES') {
+      // Only full-market snapshots (payTypes.length === 0, unfiltered) seed global market state & history
+      if (normalizedPayTypes.length === 0 && asset === 'USDT' && fiat === 'VES' && !publisherType && transAmount === undefined) {
         try {
           const offers = parseBinanceP2pItems(data);
           if (offers.length > 0) {
@@ -600,8 +607,16 @@ export function registerIpcHandlers(): void {
   ipcMain.removeHandler('p2p:fetch-binance');
   ipcMain.handle(
     'p2p:fetch-binance',
-    async (_event: IpcMainInvokeEvent, params: BinanceSearchParams): Promise<unknown> => {
-      return fetchBinanceP2pShared(params);
+    async (event: IpcMainInvokeEvent, params: BinanceSearchParams): Promise<unknown> => {
+      const controller = new AbortController();
+      const sender = event?.sender as { once?: (ev: string, fn: () => void) => void; removeListener?: (ev: string, fn: () => void) => void } | undefined;
+      const onDestroyed = () => controller.abort();
+      sender?.once?.('destroyed', onDestroyed);
+      try {
+        return await fetchBinanceP2pShared(params, { signal: controller.signal });
+      } finally {
+        sender?.removeListener?.('destroyed', onDestroyed);
+      }
     },
   );
 
