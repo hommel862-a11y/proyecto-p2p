@@ -11,6 +11,7 @@ import {
   type P2PUserTier,
   type RadarCleanBook,
 } from './p2p-radar-clean-mode';
+import { MAKER_FEE_RATES, type MakerMerchantLevel } from './market-scanner';
 
 export type ExecutionMode =
   | 'DOBLE_MAKER'
@@ -23,6 +24,7 @@ export interface ArbitrageCycleParams {
   readonly capitalUsdt: number;
   readonly mode: ExecutionMode;
   readonly userTier: P2PUserTier;
+  readonly merchantLevel?: MakerMerchantLevel;
   readonly customMakerFeeBuyPct?: number;
   readonly customMakerFeeSellPct?: number;
   readonly fiatFrictionPct?: number;
@@ -57,12 +59,19 @@ export interface ArbitrageRoute {
   rank: number;
   /** Liquidity coverage % of requested operating capital available in clean books (min of buy/sell leg). */
   readonly liquidityCoveragePct?: number;
+  /** Most profitable execution mode (e.g. TAKER_COMPRA_MAKER_VENTA saves 50% fee for STANDARD operators). */
+  readonly recommendedMode?: ExecutionMode;
+  readonly optimalHybridNetSpreadPct?: number;
+  readonly optimalHybridNetProfitUsdt?: number;
+  readonly sourceMerchantWallPct?: number;
+  readonly targetMerchantWallPct?: number;
 }
 
 export interface MatrixScanOptions {
   readonly capitalUsdt: number;
   readonly mode: ExecutionMode;
   readonly userTier: P2PUserTier;
+  readonly merchantLevel?: MakerMerchantLevel;
   readonly targetNetMarginPct?: number;
   readonly interbankFrictionPct?: number;
   readonly monobankFrictionPct?: number;
@@ -90,11 +99,18 @@ export const DEFAULT_MAKER_FEES_PCT: Record<P2PUserTier, number> = {
 };
 
 /**
- * Resolves Maker fee percentage based on user tier and optional override.
+ * Resolves Maker fee ratio based on custom override, canonical MakerMerchantLevel, or legacy tier.
  */
-export function resolveMakerFeeRatio(tier: P2PUserTier, customFeePct?: number): number {
+export function resolveMakerFeeRatio(
+  tier: P2PUserTier,
+  customFeePct?: number,
+  merchantLevel?: MakerMerchantLevel,
+): number {
   if (typeof customFeePct === 'number' && Number.isFinite(customFeePct) && customFeePct >= 0) {
     return Math.round((customFeePct / 100) * 1_000_000) / 1_000_000;
+  }
+  if (merchantLevel && merchantLevel in MAKER_FEE_RATES) {
+    return Math.round(MAKER_FEE_RATES[merchantLevel] * 1_000_000) / 1_000_000;
   }
   return Math.round((DEFAULT_MAKER_FEES_PCT[tier] / 100) * 1_000_000) / 1_000_000;
 }
@@ -118,6 +134,7 @@ export function calculateArbitrageCycle(params: ArbitrageCycleParams): Arbitrage
     capitalUsdt,
     mode,
     userTier,
+    merchantLevel,
     customMakerFeeBuyPct,
     customMakerFeeSellPct,
     fiatFrictionPct = 0,
@@ -156,16 +173,16 @@ export function calculateArbitrageCycle(params: ArbitrageCycleParams): Arbitrage
 
   switch (mode) {
     case 'DOBLE_MAKER':
-      feeRatioBuy = resolveMakerFeeRatio(userTier, customMakerFeeBuyPct);
-      feeRatioSell = resolveMakerFeeRatio(userTier, customMakerFeeSellPct);
+      feeRatioBuy = resolveMakerFeeRatio(userTier, customMakerFeeBuyPct, merchantLevel);
+      feeRatioSell = resolveMakerFeeRatio(userTier, customMakerFeeSellPct, merchantLevel);
       break;
     case 'MAKER_COMPRA_TAKER_VENTA':
-      feeRatioBuy = resolveMakerFeeRatio(userTier, customMakerFeeBuyPct);
+      feeRatioBuy = resolveMakerFeeRatio(userTier, customMakerFeeBuyPct, merchantLevel);
       feeRatioSell = 0; // Taker pays 0%
       break;
     case 'TAKER_COMPRA_MAKER_VENTA':
       feeRatioBuy = 0; // Taker pays 0%
-      feeRatioSell = resolveMakerFeeRatio(userTier, customMakerFeeSellPct);
+      feeRatioSell = resolveMakerFeeRatio(userTier, customMakerFeeSellPct, merchantLevel);
       break;
   }
 
@@ -244,6 +261,7 @@ export function scanArbitrageMatrix(
     capitalUsdt,
     mode,
     userTier,
+    merchantLevel,
     targetNetMarginPct = 0.35,
     interbankFrictionPct = 0.3, // e.g. 0.3% Pago Movil or interbank transaction fee
     monobankFrictionPct = 0.0,
@@ -258,8 +276,8 @@ export function scanArbitrageMatrix(
   }
   const bankList = Array.from(bankSet);
 
-  const sellLegs = new Map<string, { price: number; coveragePct: number }>();
-  const buyLegs = new Map<string, { price: number; coveragePct: number }>();
+  const sellLegs = new Map<string, { price: number; coveragePct: number; merchantWallPct?: number }>();
+  const buyLegs = new Map<string, { price: number; coveragePct: number; merchantWallPct?: number }>();
 
   for (const bank of bankList) {
     const sellBook = radarBooks.get(`${bank}_SELL`);
@@ -270,6 +288,7 @@ export function scanArbitrageMatrix(
         sellLegs.set(bank, {
           price,
           coveragePct: capQuote.executablePrice != null ? capQuote.coveragePct : 100,
+          merchantWallPct: sellBook.merchantWallPct,
         });
       }
     }
@@ -282,6 +301,7 @@ export function scanArbitrageMatrix(
         buyLegs.set(bank, {
           price,
           coveragePct: capQuote.executablePrice != null ? capQuote.coveragePct : 100,
+          merchantWallPct: buyBook.merchantWallPct,
         });
       }
     }
@@ -294,17 +314,46 @@ export function scanArbitrageMatrix(
       const isInterbank = sourceBank !== targetBank;
       const fiatFrictionPct = isInterbank ? interbankFrictionPct : monobankFrictionPct;
 
-      const metrics = calculateArbitrageCycle({
+      const baseParams = {
         buyPrice: buyLeg.price,
         sellPrice: sellLeg.price,
         capitalUsdt,
-        mode,
         userTier,
+        merchantLevel,
         customMakerFeeBuyPct,
         customMakerFeeSellPct,
         fiatFrictionPct,
         targetNetMarginPct,
+      };
+
+      const metrics = calculateArbitrageCycle({
+        ...baseParams,
+        mode,
       });
+
+      const takerBuyMakerSell = calculateArbitrageCycle({
+        ...baseParams,
+        mode: 'TAKER_COMPRA_MAKER_VENTA',
+      });
+      const makerBuyTakerSell = calculateArbitrageCycle({
+        ...baseParams,
+        mode: 'MAKER_COMPRA_TAKER_VENTA',
+      });
+      const doubleMaker =
+        mode === 'DOBLE_MAKER'
+          ? metrics
+          : calculateArbitrageCycle({ ...baseParams, mode: 'DOBLE_MAKER' });
+
+      let recommendedMode: ExecutionMode = 'DOBLE_MAKER';
+      let bestCandidate = doubleMaker;
+      if (takerBuyMakerSell.netSpreadPct > bestCandidate.netSpreadPct) {
+        recommendedMode = 'TAKER_COMPRA_MAKER_VENTA';
+        bestCandidate = takerBuyMakerSell;
+      }
+      if (makerBuyTakerSell.netSpreadPct > bestCandidate.netSpreadPct) {
+        recommendedMode = 'MAKER_COMPRA_TAKER_VENTA';
+        bestCandidate = makerBuyTakerSell;
+      }
 
       routes.push({
         routeId: `${sourceBank}_TO_${targetBank}`,
@@ -317,6 +366,11 @@ export function scanArbitrageMatrix(
         metrics,
         rank: 0,
         liquidityCoveragePct: Math.min(sellLeg.coveragePct, buyLeg.coveragePct),
+        recommendedMode,
+        optimalHybridNetSpreadPct: bestCandidate.netSpreadPct,
+        optimalHybridNetProfitUsdt: bestCandidate.netProfitUsdt,
+        sourceMerchantWallPct: sellLeg.merchantWallPct,
+        targetMerchantWallPct: buyLeg.merchantWallPct,
       });
     }
   }

@@ -186,5 +186,122 @@ describe('p2p-radar-clean-mode', () => {
       expect(quote.executablePrice).toBe(100.8);
       expect(quote.coveragePct).toBe(100);
     });
+
+    it('rejects unfillable ghost traps (surplusAmount * price < minSingleTransAmount), inverted bounds, and 0 payTimeLimit', () => {
+      // surplusAmount=25 passes >=20 USDT, maxSingleTransAmount=30000 passes >=20000,
+      // yet 25 * 100 = 2500 Bs < minSingleTransAmount 5000 Bs (unfillable ghost ad!)
+      const fiatTrap = auditOfferCleanMode(
+        {
+          ...MOCK_BASE_OFFER,
+          price: 100,
+          surplusAmount: 25,
+          minSingleTransAmount: 5000,
+          maxSingleTransAmount: 30000,
+        },
+        DEFAULT_CLEAN_MODE_CONFIG,
+      );
+      expect(fiatTrap.passed).toBe(false);
+      expect(fiatTrap.reasons).toContain('LIQUIDITY_TRAP');
+
+      const invertedBounds = auditOfferCleanMode(
+        {
+          ...MOCK_BASE_OFFER,
+          minSingleTransAmount: 60000,
+          maxSingleTransAmount: 40000,
+        },
+        DEFAULT_CLEAN_MODE_CONFIG,
+      );
+      expect(invertedBounds.passed).toBe(false);
+      expect(invertedBounds.reasons).toContain('LIQUIDITY_TRAP');
+
+      const zeroPayTime = auditOfferCleanMode(
+        {
+          ...MOCK_BASE_OFFER,
+          payTimeLimit: 0,
+        },
+        DEFAULT_CLEAN_MODE_CONFIG,
+      );
+      expect(zeroPayTime.passed).toBe(false);
+      expect(zeroPayTime.reasons).toContain('PAY_TIME_EXCEEDED');
+    });
+
+    it('flags consecutive multi-bot outlier chains and respects maxOutlierSurplusUsdt cap', () => {
+      const multiBotBook: RawP2POfferInput[] = [
+        { ...MOCK_BASE_OFFER, advNo: 'BOT-1', price: 105.0, surplusAmount: 40 },
+        { ...MOCK_BASE_OFFER, advNo: 'BOT-2', price: 104.5, surplusAmount: 40 },
+        { ...MOCK_BASE_OFFER, advNo: 'REAL-1', price: 98.6, surplusAmount: 800 },
+        { ...MOCK_BASE_OFFER, advNo: 'REAL-2', price: 98.5, surplusAmount: 900 },
+        { ...MOCK_BASE_OFFER, advNo: 'REAL-3', price: 98.4, surplusAmount: 750 },
+      ];
+      const outliers = detectPriceOutliers(multiBotBook, 'BUY', 0.8, 120);
+      expect(outliers.has('BOT-1')).toBe(true);
+      expect(outliers.has('BOT-2')).toBe(true);
+      expect(outliers.has('REAL-1')).toBe(false);
+
+      // Legitimate deep top-1 offer (> maxOutlierSurplusUsdt) must not be flagged
+      const deepCleanBook = buildCleanRadarBook(
+        [
+          { ...MOCK_BASE_OFFER, advNo: 'WHALE-1', price: 102.0, surplusAmount: 2500 },
+          { ...MOCK_BASE_OFFER, advNo: 'NORM-1', price: 98.5, surplusAmount: 300 },
+          { ...MOCK_BASE_OFFER, advNo: 'NORM-2', price: 98.4, surplusAmount: 300 },
+        ],
+        'BUY',
+        'Banesco',
+        'UNVERIFIED',
+        { ...DEFAULT_CLEAN_MODE_CONFIG, maxOutlierSurplusUsdt: 150 },
+      );
+      expect(deepCleanBook.cleanOffers.some((o) => o.advNo === 'WHALE-1')).toBe(true);
+    });
+
+    it('supports MakerMerchantLevel (STANDARD 0.25%..GOLD 0.125%), merchantWallPct, and taker eligibility badges', () => {
+      const mixedBook: RawP2POfferInput[] = [
+        {
+          ...MOCK_BASE_OFFER,
+          advNo: 'MERCH-GOLD',
+          price: 98.0,
+          isMerchant: true,
+          isProMerchant: true,
+          buyerRegDaysLimit: 90,
+          buyerBtcPositionLimit: 0.05,
+        },
+        {
+          ...MOCK_BASE_OFFER,
+          advNo: 'FREE-OPEN-1',
+          price: 98.4,
+          isMerchant: false,
+          userType: 'user',
+          buyerRegDaysLimit: 0,
+          buyerBtcPositionLimit: 0,
+          takerAdditionalKycRequired: false,
+        },
+      ];
+
+      const stdBook = buildCleanRadarBook(
+        mixedBook,
+        'BUY',
+        'SpecificBank',
+        'UNVERIFIED',
+        DEFAULT_CLEAN_MODE_CONFIG,
+        { merchantLevel: 'STANDARD' },
+      );
+
+      expect(stdBook.merchantLevel).toBe('STANDARD');
+      expect(stdBook.makerFeePct).toBe(0.25);
+      expect(stdBook.merchantWallPct).toBe(50);
+      expect(stdBook.openTakerCount).toBe(1);
+      expect(stdBook.freeAdvertiserCount).toBe(1);
+
+      const goldBook = buildCleanRadarBook(
+        mixedBook,
+        'BUY',
+        'SpecificBank',
+        'VERIFIED',
+        DEFAULT_CLEAN_MODE_CONFIG,
+        { merchantLevel: 'GOLD', excludeMerchantCompetitors: true, requireOpenTakerEligibility: true },
+      );
+      expect(goldBook.makerFeePct).toBe(0.125);
+      expect(goldBook.cleanOffers.map((o) => o.advNo)).toEqual(['FREE-OPEN-1']);
+      expect(goldBook.cleanOffers[0].takerEligibility).toBe('OPEN');
+    });
   });
 });

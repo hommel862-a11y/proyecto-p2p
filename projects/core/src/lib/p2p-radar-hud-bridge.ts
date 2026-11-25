@@ -7,9 +7,9 @@
  */
 
 import type { P2PUserTier, RadarCleanBook } from './p2p-radar-clean-mode';
+import type { MakerMerchantLevel } from './market-scanner';
 import {
   calculateArbitrageCycle,
-  resolveMakerFeeRatio,
   type ExecutionMode,
   type MatrixScanResult,
   type ArbitrageRoute,
@@ -57,6 +57,7 @@ export interface RadarHudPayload {
   readonly version: string;
   readonly timestampMs: number;
   readonly userTier: P2PUserTier;
+  readonly merchantLevel?: MakerMerchantLevel;
   readonly executionMode: ExecutionMode;
   readonly operatingCapitalUsdt: number;
   readonly targetNetMarginPct: number;
@@ -76,9 +77,11 @@ export function buildRadarHudPayload(params: {
   botReports: Map<string, BotDetectionResult[]>;
   marketTrends: Map<string, MarketTrendResult>;
   userTier: P2PUserTier;
+  merchantLevel?: MakerMerchantLevel;
   executionMode: ExecutionMode;
   operatingCapitalUsdt: number;
   targetNetMarginPct: number;
+  fiatFrictionPct?: number;
   activeBanks: readonly string[];
 }): RadarHudPayload {
   const {
@@ -87,9 +90,11 @@ export function buildRadarHudPayload(params: {
     botReports,
     marketTrends,
     userTier,
+    merchantLevel,
     executionMode,
     operatingCapitalUsdt,
     targetNetMarginPct,
+    fiatFrictionPct = 0,
     activeBanks,
   } = params;
 
@@ -106,9 +111,8 @@ export function buildRadarHudPayload(params: {
 
   const bestRoute = topRoutes.length > 0 ? topRoutes[0] : null;
 
-  // Map bank target rates (accounts for Maker fees & execution mode via spread-engine math)
+  // Map bank target rates (accounts for Maker fees, fiat friction & execution mode via spread-engine math)
   const bankTargetRates: Record<string, RadarHudTargetRate> = {};
-  const makerFeeBuyPct = resolveMakerFeeRatio(userTier) * 100;
   for (const bank of activeBanks) {
     const buyBook = radarBooks.get(`${bank}_BUY`);
     const sellBook = radarBooks.get(`${bank}_SELL`);
@@ -126,6 +130,8 @@ export function buildRadarHudPayload(params: {
         capitalUsdt: operatingCapitalUsdt > 0 ? operatingCapitalUsdt : 100,
         mode: executionMode,
         userTier,
+        merchantLevel,
+        fiatFrictionPct,
         targetNetMarginPct,
       });
       targetMakerSellPrice = Math.round(cycleForSell.targetSellPrice * 100) / 100;
@@ -139,11 +145,11 @@ export function buildRadarHudPayload(params: {
         capitalUsdt: operatingCapitalUsdt > 0 ? operatingCapitalUsdt : 100,
         mode: executionMode,
         userTier,
+        merchantLevel,
+        fiatFrictionPct,
         targetNetMarginPct,
       });
       targetMakerBuyPrice = Math.round(cycleForBuy.targetBuyPrice * 100) / 100;
-    } else if (effectiveBuy > 0 && makerFeeBuyPct < 0) {
-      targetMakerBuyPrice = 0;
     }
 
     bankTargetRates[bank] = {
@@ -181,6 +187,7 @@ export function buildRadarHudPayload(params: {
     version: RADAR_HUD_VERSION,
     timestampMs: Date.now(),
     userTier,
+    merchantLevel,
     executionMode,
     operatingCapitalUsdt,
     targetNetMarginPct,

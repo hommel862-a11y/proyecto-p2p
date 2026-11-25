@@ -19,6 +19,13 @@ describe('p2p-radar-spread-engine', () => {
     it('honors custom fee override when provided', () => {
       expect(resolveMakerFeeRatio('VERIFIED', 0.15)).toBe(0.0015);
     });
+
+    it('resolves canonical MAKER_FEE_RATES when merchantLevel is passed', () => {
+      expect(resolveMakerFeeRatio('UNVERIFIED', undefined, 'STANDARD')).toBe(0.0025);
+      expect(resolveMakerFeeRatio('VERIFIED', undefined, 'BRONZE')).toBe(0.002);
+      expect(resolveMakerFeeRatio('VERIFIED', undefined, 'SILVER')).toBe(0.00175);
+      expect(resolveMakerFeeRatio('VERIFIED', undefined, 'GOLD')).toBe(0.00125);
+    });
   });
 
   describe('calculateArbitrageCycle', () => {
@@ -301,6 +308,26 @@ describe('p2p-radar-spread-engine', () => {
         userTier: 'VERIFIED',
       });
       expect(nanMetrics.isViable).toBe(false);
+    });
+
+    it('evaluates optimal asymmetric TAKER+MAKER strategy for STANDARD users without Bronze/Silver/Gold badges', () => {
+      const books = new Map<string, RadarCleanBook>();
+      books.set('SpecificBank_BUY', makeCleanBook('SpecificBank', 'BUY', 98.0));
+      books.set('Mercantil_SELL', makeCleanBook('Mercantil', 'SELL', 100.0));
+
+      const res = scanArbitrageMatrix(books, {
+        capitalUsdt: 1000,
+        mode: 'DOBLE_MAKER',
+        userTier: 'UNVERIFIED',
+        merchantLevel: 'STANDARD',
+        interbankFrictionPct: 0.1,
+      });
+
+      // DOBLE_MAKER pays 0.25% + 0.25% = ~0.50%, whereas hybrid mode (0% Taker + 0.25% Maker) cuts fee in half
+      expect(res.bestRoute?.metrics.netSpreadPct).toBeLessThan(
+        res.bestRoute?.optimalHybridNetSpreadPct ?? 0,
+      );
+      expect(res.bestRoute?.recommendedMode).toBe('TAKER_COMPRA_MAKER_VENTA');
     });
   });
 });

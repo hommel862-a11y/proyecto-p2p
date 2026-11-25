@@ -6,7 +6,21 @@
  * Zero UI/Angular dependencies. Compatible with Vitest, Node.js and Electron.
  */
 
+import { MAKER_FEE_RATES, type MakerMerchantLevel } from './market-scanner';
+
 export type P2PUserTier = 'VERIFIED' | 'UNVERIFIED';
+export type TakerEligibilityStatus = 'OPEN' | 'RESTRICTED';
+
+export const RADAR_MERCHANT_LEVEL_FEE_PCT: Record<MakerMerchantLevel, number> = {
+  STANDARD: Math.round(MAKER_FEE_RATES.STANDARD * 100000) / 1000,
+  BRONZE: Math.round(MAKER_FEE_RATES.BRONZE * 100000) / 1000,
+  SILVER: Math.round(MAKER_FEE_RATES.SILVER * 100000) / 1000,
+  GOLD: Math.round(MAKER_FEE_RATES.GOLD * 100000) / 1000,
+};
+
+export function resolveUserTierFromMerchantLevel(level: MakerMerchantLevel): P2PUserTier {
+  return level === 'STANDARD' ? 'UNVERIFIED' : 'VERIFIED';
+}
 
 export type RadarOrderSide = 'BUY' | 'SELL';
 
@@ -44,6 +58,12 @@ export interface CleanModeConfig {
   readonly minTransAmountVes: number;
   /** Outlier deviation threshold in percentage against depth baseline (e.g. 0.8%) */
   readonly outlierDeviationPct: number;
+  /** Optional max USDT surplus for an offer to qualify as a thin decoy outlier */
+  readonly maxOutlierSurplusUsdt?: number;
+  /** Optional: hide Verified/Pro Merchant ads to focus on non-merchant niche books */
+  readonly excludeMerchantCompetitors?: boolean;
+  /** Optional: hide offers with extra counterparty locks (KYC+, reg days, BTC balance) */
+  readonly requireOpenTakerEligibility?: boolean;
 }
 
 export const DEFAULT_CLEAN_MODE_CONFIG: CleanModeConfig = {
@@ -61,7 +81,9 @@ export type FilterRejectionReason =
   | 'LOW_FINISH_RATE'
   | 'LOW_ORDER_COUNT'
   | 'LIQUIDITY_TRAP'
-  | 'MANIPULACION_DETECTADA';
+  | 'MANIPULACION_DETECTADA'
+  | 'TAKER_RESTRICTED'
+  | 'MERCHANT_COMPETITOR_FILTERED';
 
 export interface CleanFilterVerdict {
   readonly passed: boolean;
@@ -81,18 +103,38 @@ export interface RawP2POfferInput {
   readonly payTimeLimit: number;
   readonly isMerchant: boolean;
   readonly payMethods?: readonly string[];
+  readonly userType?: string;
+  readonly userGrade?: number | null;
+  readonly isProMerchant?: boolean;
+  readonly advClassify?: string;
+  readonly isSafePayment?: boolean;
+  readonly advConfirmTime?: number | null;
+  readonly buyerKycLimit?: number | null;
+  readonly buyerRegDaysLimit?: number | null;
+  readonly buyerBtcPositionLimit?: number | null;
+  readonly takerAdditionalKycRequired?: boolean;
 }
 
 export interface CleanRadarOffer extends RawP2POfferInput {
   readonly verdict: CleanFilterVerdict;
   readonly isOutlier: boolean;
   readonly isClean: boolean;
+  readonly takerEligibility?: TakerEligibilityStatus;
+  readonly takerRestrictionReasons?: readonly string[];
+  readonly isVerifiedCompetitor?: boolean;
+}
+
+export interface BuildCleanRadarBookOptions {
+  readonly merchantLevel?: MakerMerchantLevel;
+  readonly excludeMerchantCompetitors?: boolean;
+  readonly requireOpenTakerEligibility?: boolean;
 }
 
 export interface RadarCleanBook {
   readonly side: RadarOrderSide;
   readonly payMethod: string;
   readonly userTier: P2PUserTier;
+  readonly merchantLevel?: MakerMerchantLevel;
   readonly rawCount: number;
   readonly cleanCount: number;
   readonly rejectedCount: number;
@@ -102,6 +144,42 @@ export interface RadarCleanBook {
   readonly makerFeePct: number;
   readonly takerFeePct: number;
   readonly isHybridEligible: boolean;
+  readonly merchantWallPct?: number;
+  readonly openTakerCount?: number;
+  readonly freeAdvertiserCount?: number;
+}
+
+export function evaluateOfferEligibility(offer: RawP2POfferInput): {
+  takerEligibility: TakerEligibilityStatus;
+  takerRestrictionReasons: readonly string[];
+  isVerifiedCompetitor: boolean;
+} {
+  const restrictionReasons: string[] = [];
+  if (typeof offer.buyerKycLimit === 'number' && offer.buyerKycLimit > 0) {
+    restrictionReasons.push(`KYC_${offer.buyerKycLimit}`);
+  }
+  if (typeof offer.buyerRegDaysLimit === 'number' && offer.buyerRegDaysLimit > 0) {
+    restrictionReasons.push(`REG_${offer.buyerRegDaysLimit}D`);
+  }
+  if (typeof offer.buyerBtcPositionLimit === 'number' && offer.buyerBtcPositionLimit > 0) {
+    restrictionReasons.push(`BTC_${offer.buyerBtcPositionLimit}`);
+  }
+  if (offer.takerAdditionalKycRequired === true) {
+    restrictionReasons.push('EXTRA_KYC');
+  }
+
+  const classifyNorm = typeof offer.advClassify === 'string' ? offer.advClassify.trim().toLowerCase() : '';
+  const isVerifiedCompetitor =
+    offer.isMerchant === true ||
+    offer.userType === 'merchant' ||
+    offer.isProMerchant === true ||
+    (classifyNorm.length > 0 && classifyNorm !== 'mass');
+
+  return {
+    takerEligibility: restrictionReasons.length === 0 ? 'OPEN' : 'RESTRICTED',
+    takerRestrictionReasons: restrictionReasons,
+    isVerifiedCompetitor,
+  };
 }
 
 /**
@@ -118,8 +196,8 @@ export function auditOfferCleanMode(
 
   const reasons: FilterRejectionReason[] = [];
 
-  // Rule 1: Pay time window check (reject NaN / non-finite)
-  if (!Number.isFinite(offer.payTimeLimit) || offer.payTimeLimit < 0 || offer.payTimeLimit > config.maxPayTimeMinutes) {
+  // Rule 1: Pay time window check (reject NaN / non-finite / <= 0)
+  if (!Number.isFinite(offer.payTimeLimit) || offer.payTimeLimit <= 0 || offer.payTimeLimit > config.maxPayTimeMinutes) {
     reasons.push('PAY_TIME_EXCEEDED');
   }
 
@@ -131,16 +209,35 @@ export function auditOfferCleanMode(
     reasons.push('LOW_ORDER_COUNT');
   }
 
-  // Rule 3: Price & Liquidity trap check (valid finite price, available USDT, and single trans cap)
+  // Rule 3: Price & Liquidity trap check (valid finite price, available USDT, cap & unfillable ghost check)
+  const fiatSurplus = offer.surplusAmount * offer.price;
+  const unfillableGhostAd =
+    Number.isFinite(offer.minSingleTransAmount) &&
+    offer.minSingleTransAmount > 0 &&
+    fiatSurplus < offer.minSingleTransAmount;
+  const invertedBounds =
+    Number.isFinite(offer.minSingleTransAmount) &&
+    Number.isFinite(offer.maxSingleTransAmount) &&
+    offer.minSingleTransAmount > offer.maxSingleTransAmount;
   if (
     !Number.isFinite(offer.price) ||
     offer.price <= 0 ||
     !Number.isFinite(offer.surplusAmount) ||
     !Number.isFinite(offer.maxSingleTransAmount) ||
     offer.surplusAmount < config.minSurplusUsdt ||
-    offer.maxSingleTransAmount < config.minTransAmountVes
+    offer.maxSingleTransAmount < config.minTransAmountVes ||
+    unfillableGhostAd ||
+    invertedBounds
   ) {
     reasons.push('LIQUIDITY_TRAP');
+  }
+
+  const eligibility = evaluateOfferEligibility(offer);
+  if (config.requireOpenTakerEligibility && eligibility.takerEligibility === 'RESTRICTED') {
+    reasons.push('TAKER_RESTRICTED');
+  }
+  if (config.excludeMerchantCompetitors && eligibility.isVerifiedCompetitor) {
+    reasons.push('MERCHANT_COMPETITOR_FILTERED');
   }
 
   return {
@@ -150,10 +247,8 @@ export function auditOfferCleanMode(
 }
 
 /**
- * Detects price outliers and manipulative decoy advertisements at the top of book in O(n) single pass.
- *
- * If offer #1 deviates significantly from the average of #2 and #3, it is isolated as MANIPULACION_DETECTADA
- * so it does not skew the execution rate.
+ * Detects price outliers and manipulative decoy advertisements at the top of book.
+ * Supports single-decoy books (len >= 3) and multi-bot consecutive chains (len >= 5).
  */
 export function detectPriceOutliers(
   candidateOffers: readonly RawP2POfferInput[],
@@ -171,43 +266,46 @@ export function detectPriceOutliers(
     return outlierAdvNos;
   }
 
-  // Single-pass O(n) top-3 selection (avoids full O(n log n) sort allocation)
-  const isBetter =
-    side === 'BUY'
-      ? (a: RawP2POfferInput, b: RawP2POfferInput) => a.price > b.price
-      : (a: RawP2POfferInput, b: RawP2POfferInput) => a.price < b.price;
+  const valid = candidateOffers.filter((o) => Number.isFinite(o.price) && o.price > 0);
+  if (valid.length < 3) return outlierAdvNos;
 
-  let top1: RawP2POfferInput | null = null;
-  let top2: RawP2POfferInput | null = null;
-  let top3: RawP2POfferInput | null = null;
+  const sorted = [...valid].sort((a, b) => (side === 'BUY' ? b.price - a.price : a.price - b.price));
 
-  for (const offer of candidateOffers) {
-    if (!Number.isFinite(offer.price) || offer.price <= 0) continue;
-    if (!top1 || isBetter(offer, top1)) {
-      top3 = top2;
-      top2 = top1;
-      top1 = offer;
-    } else if (!top2 || isBetter(offer, top2)) {
-      top3 = top2;
-      top2 = offer;
-    } else if (!top3 || isBetter(offer, top3)) {
-      top3 = offer;
-    }
+  let avgBaseline = 0;
+  let maxTopCandidates = 1;
+
+  if (sorted.length >= 5) {
+    // Use median of deeper core [2..min(len, 6)] so 1-2 top decoy bots cannot poison baseline
+    const corePrices = sorted
+      .slice(2, Math.min(sorted.length, 6))
+      .map((o) => o.price)
+      .sort((a, b) => a - b);
+    const mid = Math.floor(corePrices.length / 2);
+    avgBaseline =
+      corePrices.length % 2 === 1
+        ? corePrices[mid]
+        : (corePrices[mid - 1] + corePrices[mid]) / 2;
+    maxTopCandidates = Math.min(3, sorted.length - 3);
+  } else {
+    avgBaseline = (sorted[1].price + sorted[2].price) / 2.0;
+    maxTopCandidates = 1;
   }
 
-  if (!top1 || !top2 || !top3) return outlierAdvNos;
+  if (!Number.isFinite(avgBaseline) || avgBaseline <= 0) return outlierAdvNos;
 
-  const avgBaseline = (top2.price + top3.price) / 2.0;
-  if (avgBaseline <= 0) return outlierAdvNos;
+  for (let i = 0; i < maxTopCandidates; i++) {
+    const candidate = sorted[i];
+    const deviationPct = (Math.abs(candidate.price - avgBaseline) / avgBaseline) * 100.0;
+    const isThinEnough =
+      typeof maxOutlierSurplusUsdt === 'number' && Number.isFinite(maxOutlierSurplusUsdt)
+        ? candidate.surplusAmount <= maxOutlierSurplusUsdt
+        : true;
 
-  const deviationPct = (Math.abs(top1.price - avgBaseline) / avgBaseline) * 100.0;
-  const isThinEnough =
-    typeof maxOutlierSurplusUsdt === 'number' && Number.isFinite(maxOutlierSurplusUsdt)
-      ? top1.surplusAmount <= maxOutlierSurplusUsdt
-      : true;
-
-  if (deviationPct >= deviationThresholdPct && isThinEnough) {
-    outlierAdvNos.add(top1.advNo);
+    if (deviationPct >= deviationThresholdPct && isThinEnough) {
+      outlierAdvNos.add(candidate.advNo);
+    } else {
+      break;
+    }
   }
 
   return outlierAdvNos;
@@ -271,9 +369,18 @@ export function buildCleanRadarBook(
   payMethod: string,
   userTier: P2PUserTier,
   config: CleanModeConfig = DEFAULT_CLEAN_MODE_CONFIG,
+  options?: BuildCleanRadarBookOptions,
 ): RadarCleanBook {
+  const effectiveConfig: CleanModeConfig = {
+    ...config,
+    excludeMerchantCompetitors:
+      options?.excludeMerchantCompetitors ?? config.excludeMerchantCompetitors,
+    requireOpenTakerEligibility:
+      options?.requireOpenTakerEligibility ?? config.requireOpenTakerEligibility,
+  };
+
   // Step 1: Audit base Clean Mode rules first so trap ads do not skew the #2/#3 outlier baseline
-  const baseVerdicts = rawOffers.map((raw) => auditOfferCleanMode(raw, config));
+  const baseVerdicts = rawOffers.map((raw) => auditOfferCleanMode(raw, effectiveConfig));
   const cleanEligibleOffers: RawP2POfferInput[] = [];
   for (let i = 0; i < rawOffers.length; i++) {
     if (baseVerdicts[i].passed) {
@@ -282,8 +389,13 @@ export function buildCleanRadarBook(
   }
 
   const outlierCandidatePool = cleanEligibleOffers.length >= 3 ? cleanEligibleOffers : rawOffers;
-  const outlierSet = config.enabled
-    ? detectPriceOutliers(outlierCandidatePool, side, config.outlierDeviationPct)
+  const outlierSet = effectiveConfig.enabled
+    ? detectPriceOutliers(
+        outlierCandidatePool,
+        side,
+        effectiveConfig.outlierDeviationPct,
+        effectiveConfig.maxOutlierSurplusUsdt,
+      )
     : new Set<string>();
 
   const cleanOffers: CleanRadarOffer[] = [];
@@ -293,6 +405,7 @@ export function buildCleanRadarBook(
     const raw = rawOffers[i];
     const baseVerdict = baseVerdicts[i];
     const isOutlier = outlierSet.has(raw.advNo);
+    const eligibility = evaluateOfferEligibility(raw);
 
     const reasons = [...baseVerdict.reasons];
     if (isOutlier) {
@@ -309,6 +422,9 @@ export function buildCleanRadarBook(
       },
       isOutlier,
       isClean,
+      takerEligibility: eligibility.takerEligibility,
+      takerRestrictionReasons: eligibility.takerRestrictionReasons,
+      isVerifiedCompetitor: eligibility.isVerifiedCompetitor,
     };
 
     if (isClean) {
@@ -323,18 +439,40 @@ export function buildCleanRadarBook(
 
   const effectiveTopPrice = cleanOffers.length > 0 ? cleanOffers[0].price : null;
 
-  // Tier fee economics
-  // Verified merchants typically enjoy 0.10% maker fees in Binance P2P.
-  // Unverified/Standard makers face 0.20% (or 0.35% depending on VIP).
-  // Taker fee is always 0.00% on Binance P2P.
-  const makerFeePct = userTier === 'VERIFIED' ? 0.10 : 0.20;
+  // Competitive market wall metrics (Top-10 raw window excluding outright traps)
+  const marketWindow = rawOffers.slice(0, 10);
+  let merchantCount = 0;
+  let freeCount = 0;
+  let openCount = 0;
+  for (const offer of marketWindow) {
+    const el = evaluateOfferEligibility(offer);
+    if (el.isVerifiedCompetitor) {
+      merchantCount++;
+    } else {
+      freeCount++;
+    }
+    if (el.takerEligibility === 'OPEN') {
+      openCount++;
+    }
+  }
+  const merchantWallPct =
+    marketWindow.length > 0 ? Math.round((merchantCount / marketWindow.length) * 100) : 0;
+
+  // Canonical MakerMerchantLevel fee parity (when provided), preserving legacy 5-arg tier behavior
+  const merchantLevel = options?.merchantLevel;
+  const makerFeePct = merchantLevel
+    ? RADAR_MERCHANT_LEVEL_FEE_PCT[merchantLevel]
+    : userTier === 'VERIFIED'
+      ? 0.10
+      : 0.20;
   const takerFeePct = 0.0;
-  const isHybridEligible = userTier === 'UNVERIFIED';
+  const isHybridEligible = merchantLevel ? merchantLevel === 'STANDARD' : userTier === 'UNVERIFIED';
 
   return {
     side,
     payMethod,
     userTier,
+    merchantLevel,
     rawCount: rawOffers.length,
     cleanCount: cleanOffers.length,
     rejectedCount: rejectedOffers.length,
@@ -344,5 +482,8 @@ export function buildCleanRadarBook(
     makerFeePct,
     takerFeePct,
     isHybridEligible,
+    merchantWallPct,
+    openTakerCount: openCount,
+    freeAdvertiserCount: freeCount,
   };
 }

@@ -281,5 +281,70 @@ describe('p2p-radar-hud-bridge', () => {
       expect(payload.detectedBots[0].bank).toBe('PAGO_MOVIL');
       expect(payload.detectedBots[0].side).toBe('SELL');
     });
+
+    it('forwards fiatFrictionPct and merchantLevel into HUD target rate calculations', () => {
+      const books = new Map<string, RadarCleanBook>();
+      books.set('Banesco_BUY', {
+        side: 'BUY',
+        payMethod: 'Banesco',
+        userTier: 'UNVERIFIED',
+        cleanOffers: [],
+        rejectedOffers: [],
+        rawCount: 1,
+        cleanCount: 1,
+        rejectedCount: 0,
+        effectiveTopPrice: 100,
+        makerFeePct: 0.25,
+        takerFeePct: 0.0,
+        isHybridEligible: true,
+      });
+      books.set('Banesco_SELL', {
+        side: 'SELL',
+        payMethod: 'Banesco',
+        userTier: 'UNVERIFIED',
+        cleanOffers: [],
+        rejectedOffers: [],
+        rawCount: 1,
+        cleanCount: 1,
+        rejectedCount: 0,
+        effectiveTopPrice: 103,
+        makerFeePct: 0.25,
+        takerFeePct: 0.0,
+        isHybridEligible: true,
+      });
+
+      const noFriction = buildRadarHudPayload({
+        radarBooks: books,
+        matrixResult: null,
+        botReports: new Map(),
+        marketTrends: new Map(),
+        userTier: 'UNVERIFIED',
+        merchantLevel: 'STANDARD',
+        executionMode: 'DOBLE_MAKER',
+        operatingCapitalUsdt: 1000,
+        targetNetMarginPct: 0.5,
+        fiatFrictionPct: 0,
+        activeBanks: ['Banesco'],
+      });
+
+      const withFriction = buildRadarHudPayload({
+        radarBooks: books,
+        matrixResult: null,
+        botReports: new Map(),
+        marketTrends: new Map(),
+        userTier: 'UNVERIFIED',
+        merchantLevel: 'STANDARD',
+        executionMode: 'DOBLE_MAKER',
+        operatingCapitalUsdt: 1000,
+        targetNetMarginPct: 0.5,
+        fiatFrictionPct: 0.4,
+        activeBanks: ['Banesco'],
+      });
+
+      expect(noFriction.merchantLevel).toBe('STANDARD');
+      expect(withFriction.bankTargetRates['Banesco'].targetMakerSellPrice).toBeGreaterThan(
+        noFriction.bankTargetRates['Banesco'].targetMakerSellPrice,
+      );
+    });
   });
 });
