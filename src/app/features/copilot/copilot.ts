@@ -14,6 +14,7 @@ import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
 import type {
+  CopilotAttachmentDto,
   CopilotContextScope,
   CopilotStreamEvent,
   CopilotThreadDto,
@@ -81,6 +82,8 @@ export class Copilot implements OnInit, OnDestroy {
   readonly isTyping = signal<boolean>(false);
   readonly activeRequestId = signal<string | null>(null);
   readonly streamStatus = signal<CopilotStreamEvent | null>(null);
+  readonly streamingText = signal<string>('');
+  readonly pendingAttachments = signal<CopilotAttachmentDto[]>([]);
   readonly expandedTraces = signal<Record<string, boolean>>({});
   readonly webSessionApiKey = signal<string>('');
 
@@ -160,6 +163,12 @@ export class Copilot implements OnInit, OnDestroy {
       label: 'Resumen Tesorería & Earn',
       description: 'Revisa liquidez disponible, bóvedas Finance 360 y rendimiento ocioso.',
       template: '/tesoreria Resume el saldo disponible en tesorería y sugiere asignación óptima.',
+    },
+    {
+      command: '/evaluar',
+      label: 'Consenso Multi-Agente (Veto)',
+      description: 'Evalúa una orden en paralelo con Estratega, Tesorero 360 y Risk Gatekeeper.',
+      template: '/evaluar 1000 USDT en Binance P2P por Banesco verificando spread y cupo SUDEBAN.',
     },
   ];
 
@@ -423,6 +432,9 @@ export class Copilot implements OnInit, OnDestroy {
     this.executionError.set(null);
 
     const requestId = `REQ-${Date.now().toString(36).toUpperCase()}`;
+    const attachments = [...this.pendingAttachments()];
+    this.pendingAttachments.set([]);
+    this.streamingText.set('');
     this.activeRequestId.set(requestId);
     this.isTyping.set(true);
     this.streamStatus.set({
@@ -434,7 +446,10 @@ export class Copilot implements OnInit, OnDestroy {
 
     const userMsg: ChatMessageView = {
       role: 'user',
-      content: text,
+      content:
+        attachments.length > 0
+          ? `${text}\n\n[📎 ${attachments.length} imagen(es) adjunta(s) para análisis visual]`
+          : text,
       timestamp: Date.now(),
     };
     this.messages.update((m) => [...m, userMsg]);
@@ -451,6 +466,7 @@ export class Copilot implements OnInit, OnDestroy {
           agentId: this.selectedAgentId() ?? undefined,
           contextScope: this.contextScope(),
           requestId,
+          ...(attachments.length > 0 ? { attachments } : {}),
         });
 
         if (res.threadId && res.threadId !== this.activeThreadId()) {
@@ -782,11 +798,66 @@ export class Copilot implements OnInit, OnDestroy {
       this.unsubscribers.push(
         bridge.onStreamEvent((ev) => {
           if (ev.requestId === this.activeRequestId()) {
-            this.streamStatus.set(ev);
+            if (ev.phase === 'delta' && ev.delta) {
+              this.streamingText.update((prev) => prev + ev.delta);
+              this.scrollToBottom();
+            } else {
+              this.streamStatus.set(ev);
+              if (ev.phase === 'completed' || ev.phase === 'error' || ev.phase === 'cancelled') {
+                this.streamingText.set('');
+              }
+            }
           }
         }),
       );
     }
+  }
+
+  onComposerPaste(event: ClipboardEvent): void {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          event.preventDefault();
+          this.readImageAttachment(file);
+        }
+      }
+    }
+  }
+
+  onAttachmentFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const files = input.files;
+    if (!files) return;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith('image/')) {
+        this.readImageAttachment(file);
+      }
+    }
+    input.value = '';
+  }
+
+  removeAttachment(index: number): void {
+    this.pendingAttachments.update((list) => list.filter((_, i) => i !== index));
+  }
+
+  private readImageAttachment(file: File): void {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      const base64 = result.includes(',') ? result.split(',')[1] : result;
+      if (base64) {
+        this.pendingAttachments.update((list) => [
+          ...list.slice(0, 2),
+          { mimeType: file.type || 'image/png', base64, name: file.name || 'captura.png' },
+        ]);
+      }
+    };
+    reader.readAsDataURL(file);
   }
 
   private async loadInitialState(): Promise<void> {

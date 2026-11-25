@@ -296,6 +296,25 @@
             </div>
           }
 
+          @if (isTyping() && streamingText()) {
+            <div class="msg-row assistant">
+              <div class="msg-bubble">
+                <div class="msg-content" [innerHTML]="renderMarkdown(streamingText())"></div>
+              </div>
+            </div>
+          }
+
+          @if (pendingAttachments().length > 0) {
+            <div class="attach-strip">
+              @for (att of pendingAttachments(); track $index) {
+                <span class="metric-pill">
+                  📎 {{ att.name || 'captura.png' }}
+                  <button type="button" class="thread-del" (click)="removeAttachment($index)">✕</button>
+                </span>
+              }
+            </div>
+          }
+
           <div class="composer-controls">
             <select
               class="agent-select"
@@ -312,12 +331,29 @@
             </select>
 
             <input
+              #attachInput
+              type="file"
+              accept="image/*"
+              style="display: none"
+              (change)="onAttachmentFileSelected($event)"
+            />
+            <button
+              type="button"
+              class="btn-ghost"
+              title="Adjuntar captura de Pago Móvil o disputa (o pegá con Ctrl+V)"
+              (click)="attachInput.click()"
+            >
+              📎
+            </button>
+
+            <input
               #chatInputField
               type="text"
               class="chat-input"
-              placeholder="Consulta táctica, /spread, /riesgo o @agente (Ctrl+K)..."
+              placeholder="Consulta táctica, /evaluar, /spread, @agente o Ctrl+V captura..."
               [ngModel]="userInput()"
               (ngModelChange)="onInputChange($event)"
+              (paste)="onComposerPaste($event)"
               (keyup.enter)="sendPrompt()"
             />
 
@@ -347,20 +383,18 @@
         </div>
       </main>
 
-      <!-- Right HITL Inspector -->
-      @if (selectedPlan()) {
-        <app-copilot-hitl-inspector
-          [plan]="selectedPlan()"
-          [parallelRate]="liveParallelRate()"
-          [treasury]="treasurySnapshot()"
-          [killSwitchActive]="killSwitchArmed()"
-          [executing]="executingPlan()"
-          [executionError]="executionError()"
-          (approvePlan)="executePlan($event)"
-          (rejectPlan)="rejectPlan($event)"
-          (closeInspector)="selectedPlan.set(null)"
-        />
-      }
+      <!-- Right HITL Inspector (Always visible with Apple Pro SUDEBAN Radial Shield) -->
+      <app-copilot-hitl-inspector
+        [plan]="selectedPlan()"
+        [parallelRate]="liveParallelRate()"
+        [treasury]="treasurySnapshot()"
+        [killSwitchActive]="killSwitchArmed()"
+        [executing]="executingPlan()"
+        [executionError]="executionError()"
+        (approvePlan)="executePlan($event)"
+        (rejectPlan)="rejectPlan($event)"
+        (closeInspector)="selectedPlan.set(null)"
+      />
     </div>
   } @else {
     <!-- MODE 2: 4-QUADRANT AI GOVERNANCE DASHBOARD -->

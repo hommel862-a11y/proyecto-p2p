@@ -82,11 +82,13 @@ type PlanStatusFilter = 'ALL' | 'PROPOSED' | 'EXECUTED' | 'REJECTED';
 
       <!-- ROW 1: 4 Hero KPI Bento Cards (Exact Finanzas 360 Anatomy: 3 Sparklines + 1 Radial SVG Ring) -->
       <section class="hero-kpi-grid" aria-label="Indicadores principales del Copiloto IA">
-        <!-- 1. GOLD: Spread Capturado & Beneficio -->
+        <!-- 1. GOLD: Spread Capturado & Win Rate Real (Decision Journal) -->
         <article class="ai-kpi-aura tone-gold">
           <div class="kpi-head">
-            <span class="kpi-label">Spread Capturado</span>
-            <span class="kpi-badge ai-tabular">USDT</span>
+            <span class="kpi-label">Spread Capturado &amp; Win Rate</span>
+            <span class="kpi-badge ai-tabular">
+              {{ usageSummary()?.winRate?.winRatePct !== null && usageSummary()?.winRate?.winRatePct !== undefined ? usageSummary()!.winRate!.winRatePct + '% WIN' : 'USDT' }}
+            </span>
           </div>
           <div class="kpi-body">
             <div>
@@ -94,7 +96,12 @@ type PlanStatusFilter = 'ALL' | 'PROPOSED' | 'EXECUTED' | 'REJECTED';
                 +{{ capturedProfitUsdt() | number: '1.2-2' }}
               </strong>
               <span class="kpi-secondary ai-tabular">
-                {{ executedCount() }} orden(es) aprobadas/ejecutadas
+                {{ executedCount() }} planes ·
+                @if (usageSummary()?.winRate?.avgRealizedSpreadPct !== null && usageSummary()?.winRate?.avgRealizedSpreadPct !== undefined) {
+                  Real {{ usageSummary()!.winRate!.avgRealizedSpreadPct }}% vs Mod {{ usageSummary()!.winRate!.avgModeledSpreadPct ?? 'N/D' }}%
+                } @else {
+                  {{ usageSummary()?.winRate?.verifiedOutcomes ?? 0 }} outcomes verificados
+                }
               </span>
             </div>
             <svg class="kpi-spark" viewBox="0 0 112 32" preserveAspectRatio="none" aria-hidden="true">
