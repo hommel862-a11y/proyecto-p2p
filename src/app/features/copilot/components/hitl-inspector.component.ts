@@ -8,8 +8,39 @@ import type { TreasurySnapshot } from '../../../core/accounts.service';
   standalone: true,
   imports: [CommonModule],
   template: `
-    @if (plan(); as p) {
-      <aside class="hitl-panel" aria-label="Inspector de Ejecución HITL">
+    <aside class="hitl-panel" aria-label="Inspector de Ejecución HITL">
+      <!-- Always-visible Apple Pro SUDEBAN Radial Shield (matches Workbench mockup) -->
+      <div class="sudeban-aura">
+        <div class="sudeban-copy">
+          <span class="hitl-eyebrow">ESCUDO SUDEBAN &amp; CAPACIDAD</span>
+          <strong class="sudeban-big">
+            {{ sudebanPct() !== null ? (sudebanPct()! | number: '1.0-0') + '% Tope' : 'Sin Tope' }}
+          </strong>
+          <span class="sudeban-sub">
+            {{ killSwitchActive() ? 'Killswitch ARMADO' : 'Killswitch desarmado' }}
+          </span>
+        </div>
+        <svg width="48" height="48" viewBox="0 0 46 46" aria-hidden="true" class="sudeban-ring">
+          <circle cx="23" cy="23" r="18" fill="none" stroke="color-mix(in srgb, var(--muted) 22%, transparent)" stroke-width="5" />
+          <circle
+            cx="23"
+            cy="23"
+            r="18"
+            fill="none"
+            [attr.stroke]="killSwitchActive() || (sudebanPct() ?? 0) >= 85 ? 'var(--danger)' : 'var(--gold)'"
+            stroke-width="5"
+            stroke-dasharray="113"
+            [attr.stroke-dashoffset]="sudebanRingOffset()"
+            stroke-linecap="round"
+            transform="rotate(-90 23 23)"
+          />
+          <text x="23" y="26" text-anchor="middle" fill="var(--text)" font-size="9.5" font-weight="800">
+            {{ sudebanPct() !== null ? (sudebanPct()! | number: '1.0-0') + '%' : 'N/D' }}
+          </text>
+        </svg>
+      </div>
+
+      @if (plan(); as p) {
         <div class="hitl-head">
           <div>
             <div class="hitl-eyebrow">INSPECTOR DE EJECUCIÓN HITL</div>
@@ -43,7 +74,7 @@ import type { TreasurySnapshot } from '../../../core/accounts.service';
           </div>
           <div class="kpi-box">
             <span class="kpi-label">Ganancia Est.</span>
-            <strong class="kpi-value positive">+{{ p.expectedProfitUsdt.toFixed(2) }} USDT</strong>
+            <strong class="kpi-value gold">+{{ p.expectedProfitUsdt.toFixed(2) }} USDT</strong>
           </div>
           <div class="kpi-box">
             <span class="kpi-label">Capital</span>
@@ -120,7 +151,7 @@ import type { TreasurySnapshot } from '../../../core/accounts.service';
             [disabled]="executing() || p.status === 'REJECTED' || p.status === 'EXECUTED'"
             (click)="approvePlan.emit(p)"
           >
-            {{ executing() ? 'Validando Gatekeeper...' : 'Aprobar y Preparar Orden' }}
+            {{ executing() ? 'Validando Gatekeeper...' : '✓ Aprobar y Preparar Orden' }}
           </button>
           <button
             type="button"
@@ -128,26 +159,64 @@ import type { TreasurySnapshot } from '../../../core/accounts.service';
             [disabled]="executing() || p.status === 'REJECTED'"
             (click)="rejectPlan.emit(p)"
           >
-            Rechazar Plan
+            Rechazar
           </button>
         </div>
-      </aside>
-    }
+      } @else {
+        <div class="empty-inspector">
+          <div class="hitl-eyebrow">INSPECTOR HITL EN ESPERA</div>
+          <p>Cuando el Copiloto o un Agente proponga un plan táctico, aparecerá aquí con sus barreras Gatekeeper para tu aprobación humana.</p>
+        </div>
+      }
+    </aside>
   `,
   styles: [
     `
       .hitl-panel {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 11px;
         padding: 14px;
-        border-radius: 12px;
-        border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
-        background: var(--surface-card, #111827);
+        border-radius: var(--radius-lg, 20px);
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--text);
         font-size: 12px;
         height: 100%;
         overflow-y: auto;
+        font-variant-numeric: tabular-nums;
       }
+      .sudeban-aura {
+        position: relative;
+        overflow: hidden;
+        background: var(--panel-2);
+        border: 1px solid color-mix(in srgb, var(--gold) 32%, var(--line));
+        border-radius: 16px;
+        padding: 12px 13px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .sudeban-aura::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(circle at 88% 12%, color-mix(in srgb, var(--gold) 22%, transparent), transparent 62%);
+      }
+      .sudeban-copy, .sudeban-ring { position: relative; }
+      .sudeban-big { display: block; font-size: 18px; font-weight: 800; color: var(--text); margin-top: 2px; }
+      .sudeban-sub { display: block; font-size: 11px; color: var(--muted); }
+      .empty-inspector {
+        padding: 16px 12px;
+        border-radius: 14px;
+        border: 1px dashed var(--line-strong);
+        background: var(--panel-2);
+        color: var(--muted);
+        line-height: 1.45;
+      }
+      .empty-inspector p { margin: 6px 0 0; font-size: 11.5px; }
       .hitl-head {
         display: flex;
         justify-content: space-between;
@@ -157,15 +226,15 @@ import type { TreasurySnapshot } from '../../../core/accounts.service';
       .hitl-eyebrow,
       .section-label {
         font-size: 10px;
-        font-weight: 700;
+        font-weight: 800;
         letter-spacing: 0.06em;
-        color: var(--text-muted, #94a3b8);
+        color: var(--muted);
       }
       .hitl-title {
         margin: 2px 0 0;
         font-size: 14px;
-        font-weight: 600;
-        color: var(--text-primary, #f8fafc);
+        font-weight: 700;
+        color: var(--text);
       }
       .hitl-badges {
         display: flex;
@@ -175,35 +244,35 @@ import type { TreasurySnapshot } from '../../../core/accounts.service';
       .badge {
         font-size: 10px;
         font-weight: 700;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-family: monospace;
+        padding: 2px 8px;
+        border-radius: 999px;
       }
       .badge-live {
-        background: rgba(16, 185, 129, 0.14);
-        color: #10b981;
-        border: 1px solid rgba(16, 185, 129, 0.35);
+        background: color-mix(in srgb, var(--accent) 16%, transparent);
+        color: var(--accent);
+        border: 1px solid color-mix(in srgb, var(--accent) 36%, transparent);
       }
       .badge-sim {
-        background: rgba(245, 158, 11, 0.14);
-        color: #f59e0b;
-        border: 1px solid rgba(245, 158, 11, 0.35);
+        background: color-mix(in srgb, var(--gold) 16%, transparent);
+        color: var(--gold);
+        border: 1px solid color-mix(in srgb, var(--gold) 36%, transparent);
       }
       .icon-close {
-        background: transparent;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        color: #94a3b8;
-        border-radius: 6px;
-        padding: 2px 6px;
+        background: var(--panel-2);
+        border: 1px solid var(--line-strong);
+        color: var(--muted);
+        border-radius: 999px;
+        padding: 2px 7px;
         cursor: pointer;
       }
       .hitl-route {
-        font-family: monospace;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 11px;
-        color: #38bdf8;
-        padding: 6px 8px;
-        border-radius: 6px;
-        background: rgba(56, 189, 248, 0.08);
+        color: var(--gold);
+        padding: 7px 10px;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--gold) 10%, var(--panel-2));
+        border: 1px solid color-mix(in srgb, var(--gold) 28%, var(--line));
       }
       .kpi-grid {
         display: grid;
@@ -211,33 +280,36 @@ import type { TreasurySnapshot } from '../../../core/accounts.service';
         gap: 8px;
       }
       .kpi-box {
-        padding: 8px;
-        border-radius: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        background: rgba(15, 23, 42, 0.55);
+        padding: 9px 10px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: var(--panel-2);
         display: flex;
         flex-direction: column;
         gap: 2px;
       }
       .kpi-label {
         font-size: 10px;
-        color: #94a3b8;
+        color: var(--muted);
       }
       .kpi-value {
-        font-family: monospace;
-        font-size: 13px;
-        color: #f8fafc;
+        font-size: 13.5px;
+        font-weight: 800;
+        color: var(--text);
       }
       .kpi-value.positive {
-        color: #10b981;
+        color: var(--accent);
+      }
+      .kpi-value.gold {
+        color: var(--gold);
       }
       .breakdown-card,
       .gatekeeper-card,
       .rationale-box {
-        padding: 10px;
-        border-radius: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        background: rgba(15, 23, 42, 0.45);
+        padding: 10px 11px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: var(--panel-2);
         display: flex;
         flex-direction: column;
         gap: 6px;
@@ -245,36 +317,36 @@ import type { TreasurySnapshot } from '../../../core/accounts.service';
       .kv-row {
         display: flex;
         justify-content: space-between;
-        color: #cbd5e1;
+        color: var(--text);
       }
       .mono {
-        font-family: monospace;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       }
       .check-row {
         display: flex;
         gap: 6px;
-        color: #10b981;
+        color: var(--accent);
       }
       .check-row.fail {
-        color: #ef4444;
-        font-weight: 600;
+        color: var(--danger);
+        font-weight: 700;
       }
       .error-banner {
         padding: 10px;
-        border-radius: 8px;
-        border: 1px solid rgba(239, 68, 68, 0.55);
-        background: rgba(239, 68, 68, 0.14);
-        color: #fca5a5;
+        border-radius: 12px;
+        border: 1px solid color-mix(in srgb, var(--danger) 50%, var(--line));
+        background: color-mix(in srgb, var(--danger) 14%, var(--panel-2));
+        color: var(--danger);
         line-height: 1.4;
       }
       .error-sub {
         margin-top: 4px;
         font-size: 11px;
-        color: #fecaca;
+        color: var(--text);
       }
       .rationale-box p {
         margin: 0;
-        color: #cbd5e1;
+        color: var(--muted);
         line-height: 1.45;
       }
       .hitl-actions {
@@ -284,12 +356,12 @@ import type { TreasurySnapshot } from '../../../core/accounts.service';
         margin-top: auto;
       }
       .btn-approve {
-        padding: 9px 12px;
-        border-radius: 8px;
+        padding: 9px 14px;
+        border-radius: 999px;
         border: none;
-        background: #10b981;
-        color: #042f2e;
-        font-weight: 700;
+        background: var(--accent);
+        color: var(--bg-0);
+        font-weight: 800;
         cursor: pointer;
       }
       .btn-approve:disabled {
@@ -297,12 +369,12 @@ import type { TreasurySnapshot } from '../../../core/accounts.service';
         cursor: not-allowed;
       }
       .btn-reject {
-        padding: 9px 12px;
-        border-radius: 8px;
-        border: 1px solid rgba(239, 68, 68, 0.45);
-        background: transparent;
-        color: #fca5a5;
-        font-weight: 600;
+        padding: 9px 14px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--danger) 48%, var(--line));
+        background: color-mix(in srgb, var(--danger) 12%, var(--panel-2));
+        color: var(--danger);
+        font-weight: 700;
         cursor: pointer;
       }
       .btn-reject:disabled {
@@ -348,5 +420,16 @@ export class CopilotHitlInspectorComponent {
     const t = this.treasury();
     if (!t) return false;
     return t.overLimitCount > 0 || t.saturatedCount > 0;
+  });
+
+  readonly sudebanPct = computed<number | null>(() => {
+    const t = this.treasury();
+    if (!t || t.totalDailyLimitVes <= 0) return null;
+    return Math.min(100, Math.max(0, (t.totalSpentTodayVes / t.totalDailyLimitVes) * 100));
+  });
+
+  readonly sudebanRingOffset = computed(() => {
+    const pct = this.sudebanPct() ?? 0;
+    return Math.round(113 - (113 * pct) / 100);
   });
 }

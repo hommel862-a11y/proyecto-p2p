@@ -130,34 +130,34 @@ import type { AgentRunDto, AgentRunStatusDto, AgentRunTriggerTypeDto } from '../
   `,
   styles: [
     `
-      .ledger-wrap { background: rgba(15, 23, 42, 0.78); border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; gap: 0.85rem; }
+      .ledger-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-lg, 18px); padding: 1rem; display: flex; flex-direction: column; gap: 0.85rem; color: var(--text); }
       .ledger-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.65rem; }
       .filters, .actions { display: flex; flex-wrap: wrap; gap: 0.45rem; }
-      .sel { background: rgba(2, 6, 23, 0.75); border: 1px solid rgba(148, 163, 184, 0.24); color: #f1f5f9; border-radius: 8px; padding: 0.4rem 0.65rem; font-size: 0.78rem; }
-      .btn-tool { background: rgba(148, 163, 184, 0.14); color: #e2e8f0; border: 1px solid rgba(148, 163, 184, 0.24); border-radius: 8px; padding: 0.4rem 0.75rem; font-size: 0.78rem; cursor: pointer; }
-      .btn-tool.primary { background: #0284c7; border-color: #0284c7; color: #fff; font-weight: 600; }
+      .sel { background: var(--panel-2); border: 1px solid var(--line-strong); color: var(--text); border-radius: 999px; padding: 0.42rem 0.8rem; font-size: 0.78rem; }
+      .btn-tool { background: var(--panel-2); color: var(--text); border: 1px solid var(--line-strong); border-radius: 999px; padding: 0.42rem 0.85rem; font-size: 0.78rem; font-weight: 600; cursor: pointer; }
+      .btn-tool.primary { background: var(--text); border-color: var(--text); color: var(--bg-0); font-weight: 800; }
       .btn-tool:disabled { opacity: 0.5; cursor: not-allowed; }
       .table-scroll { overflow-x: auto; }
-      .ledger-table { width: 100%; border-collapse: collapse; font-size: 0.79rem; color: #e2e8f0; }
-      .ledger-table th { text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; padding: 0.55rem 0.6rem; border-bottom: 1px solid rgba(148, 163, 184, 0.18); }
-      .run-row td { padding: 0.55rem 0.6rem; border-bottom: 1px solid rgba(148, 163, 184, 0.1); cursor: pointer; }
-      .run-row:hover { background: rgba(56, 189, 248, 0.06); }
+      .ledger-table { width: 100%; border-collapse: collapse; font-size: 0.79rem; color: var(--text); font-variant-numeric: tabular-nums; }
+      .ledger-table th { text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--line); }
+      .run-row td { padding: 0.55rem 0.6rem; border-bottom: 1px solid color-mix(in srgb, var(--line) 75%, transparent); cursor: pointer; }
+      .run-row:hover { background: var(--panel-2); }
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.74rem; }
-      .pill-trigger { font-size: 0.68rem; padding: 0.12rem 0.45rem; border-radius: 6px; background: rgba(148, 163, 184, 0.15); color: #cbd5e1; }
-      .pill-status { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; padding: 0.12rem 0.45rem; border-radius: 6px; background: rgba(148, 163, 184, 0.15); color: #cbd5e1; }
-      .pill-status[data-status='success'] { background: rgba(16, 185, 129, 0.18); color: #34d399; }
-      .pill-status[data-status='error'] { background: rgba(244, 63, 94, 0.18); color: #fb7185; }
-      .pill-status[data-status='blocked_killswitch'], .pill-status[data-status='blocked_budget'] { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
-      .detail-row td { background: rgba(2, 6, 23, 0.72); padding: 0.8rem; border-bottom: 1px solid rgba(148, 163, 184, 0.18); }
+      .pill-trigger { font-size: 0.68rem; padding: 0.14rem 0.5rem; border-radius: 999px; background: var(--panel-2); color: var(--muted); }
+      .pill-status { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; padding: 0.14rem 0.5rem; border-radius: 999px; background: var(--panel-2); color: var(--muted); }
+      .pill-status[data-status='success'] { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+      .pill-status[data-status='error'] { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
+      .pill-status[data-status='blocked_killswitch'], .pill-status[data-status='blocked_budget'] { background: color-mix(in srgb, var(--gold) 20%, transparent); color: var(--gold); }
+      .detail-row td { background: var(--panel-2); padding: 0.8rem; border-bottom: 1px solid var(--line); }
       .detail-box { display: flex; flex-direction: column; gap: 0.55rem; }
-      .detail-label { font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; display: block; margin-bottom: 0.15rem; }
-      .detail-text { margin: 0; font-size: 0.79rem; color: #cbd5e1; }
+      .detail-label { font-size: 0.7rem; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 0.15rem; }
+      .detail-text { margin: 0; font-size: 0.79rem; color: var(--text); }
       .tools-inline { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-      .tool-badge { font-size: 0.7rem; padding: 0.12rem 0.45rem; border-radius: 6px; background: rgba(56, 189, 248, 0.14); color: #7dd3fc; }
-      .tool-badge.fail { background: rgba(244, 63, 94, 0.16); color: #fda4af; }
-      .detail-err { font-size: 0.78rem; color: #fda4af; background: rgba(244, 63, 94, 0.12); padding: 0.45rem 0.6rem; border-radius: 8px; }
-      .detail-pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 0.76rem; color: #e2e8f0; max-height: 220px; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-      .empty-cell { text-align: center; padding: 2rem; color: #94a3b8; }
+      .tool-badge { font-size: 0.7rem; padding: 0.14rem 0.5rem; border-radius: 999px; background: color-mix(in srgb, var(--gold) 16%, transparent); color: var(--gold); }
+      .tool-badge.fail { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+      .detail-err { font-size: 0.78rem; color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); padding: 0.45rem 0.6rem; border-radius: 10px; }
+      .detail-pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 0.76rem; color: var(--text); max-height: 220px; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .empty-cell { text-align: center; padding: 2rem; color: var(--muted); }
     `,
   ],
 })
