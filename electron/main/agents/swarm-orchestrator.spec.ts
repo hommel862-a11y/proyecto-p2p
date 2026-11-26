@@ -11,6 +11,24 @@ describe('Institutional Multi-Agent Swarm Orchestrator', () => {
   let dbService: P2PDatabaseService;
   let swarm: AgentSwarmOrchestrator;
 
+  /** Snapshot mínimo reutilizable para pruebas del pipeline bajo Zero-Seed fail-closed. */
+  function buildSnapshot(overrides: Partial<TreasurySnapshotDto> = {}): TreasurySnapshotDto {
+    return {
+      accounts: [],
+      totalBalanceVes: 240000,
+      totalSpentTodayVes: 0,
+      totalReceivedTodayVes: 0,
+      totalDailyLimitVes: 440000,
+      nearLimitCount: 0,
+      overLimitCount: 0,
+      disabledCount: 0,
+      saturatedCount: 0,
+      rotationRecommendationId: null,
+      generatedAt: Date.now(),
+      ...overrides,
+    };
+  }
+
   beforeEach(() => {
     if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
     const walPath = `${testDbPath}-wal`;
@@ -53,6 +71,8 @@ describe('Institutional Multi-Agent Swarm Orchestrator', () => {
   });
 
   it('should approve viable trades, generate plan and record Engram memory', async () => {
+    setTreasurySnapshot(buildSnapshot());
+
     const result = await swarm.runAnalysisPipeline({
       asset: 'USDT',
       fiat: 'VES',
@@ -95,6 +115,8 @@ describe('Institutional Multi-Agent Swarm Orchestrator', () => {
   });
 
   it('should exercise UNILATERAL VETO when counterparty risk is HIGH', async () => {
+    setTreasurySnapshot(buildSnapshot());
+
     const result = await swarm.runAnalysisPipeline({
       bestBid: 88.5,
       bestAsk: 89.9,
@@ -134,24 +156,6 @@ describe('Institutional Multi-Agent Swarm Orchestrator', () => {
   });
 
   describe('puente de tesorería real (T2)', () => {
-    /** Snapshot mínimo: solo los agregados numéricos son validados por el store. */
-    function buildSnapshot(overrides: Partial<TreasurySnapshotDto> = {}): TreasurySnapshotDto {
-      return {
-        accounts: [],
-        totalBalanceVes: 240000,
-        totalSpentTodayVes: 0,
-        totalReceivedTodayVes: 0,
-        totalDailyLimitVes: 440000,
-        nearLimitCount: 0,
-        overLimitCount: 0,
-        disabledCount: 0,
-        saturatedCount: 0,
-        rotationRecommendationId: null,
-        generatedAt: Date.now(),
-        ...overrides,
-      };
-    }
-
     it('audita contra el snapshot cacheado y no contra los literales históricos', async () => {
       // 9.500 + 1.000 = 10.500 > 10.000 con el snapshot real. Con los literales del pre-puente
       // (4.500 / 15.000) esta operación habría sido aprobada, así que el veto prueba que el
@@ -194,22 +198,23 @@ describe('Institutional Multi-Agent Swarm Orchestrator', () => {
       expect(result.executionSummary).toContain('OPERACIÓN VETADA POR EL OFICIAL DE RIESGO');
     });
 
-    it('cae a los literales históricos cuando no hay snapshot cacheado', async () => {
+    it('falla cerrado (Zero-Seed fail-closed) cuando no hay snapshot cacheado', async () => {
       setTreasurySnapshot(null);
 
-      // 4.500 (fallback) + 11.000 = 15.500 > 15.000 (fallback): veto idéntico al pre-puente.
+      // Zero-Seed fail-closed: sin snapshot del renderer, dailyVolumeProcessedUsdt=0 y dailyLimitUsdt=0.
       const result = await swarm.runAnalysisPipeline({
         bestBid: 88.5,
         bestAsk: 89.9,
-        capitalUsdt: 11000,
+        capitalUsdt: 1000,
         counterpartyRiskLevel: 'LOW',
       });
 
       expect(result.riskVerdict.status).toBe('VETOED');
-      expect(result.riskVerdict.vetoReason).toContain('15000');
+      expect(result.suggestedPlan).toBeUndefined();
+      expect(result.riskVerdict.vetoReason).toContain('0 USDT proyectados');
       expect(result.riskVerdict.auditedParameters.treasuryAudit?.source).toBe('FALLBACK_DEFAULTS');
-      expect(result.riskVerdict.auditedParameters.treasuryAudit?.dailyVolumeUsed).toBe(4500);
-      expect(result.riskVerdict.auditedParameters.treasuryAudit?.dailyLimitUsed).toBe(15000);
+      expect(result.riskVerdict.auditedParameters.treasuryAudit?.dailyVolumeUsed).toBe(0);
+      expect(result.riskVerdict.auditedParameters.treasuryAudit?.dailyLimitUsed).toBe(0);
     });
 
     it('rechaza un snapshot malformado y conserva el anterior', () => {

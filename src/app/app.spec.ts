@@ -27,11 +27,11 @@ describe('App', () => {
     expect(fixture.componentInstance).toBeTruthy();
   }, 15000);
 
-  it('should render a nav with 18 feature links, live alpha signal card, and mobile bottom nav', () => {
+  it('should render a nav with 19 feature links, live alpha signal card, and mobile bottom nav', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelectorAll('.sidebar .nav a')).toHaveLength(18);
+    expect(compiled.querySelectorAll('.sidebar .nav a')).toHaveLength(19);
     expect(compiled.querySelectorAll('.mobile-bottom-nav .bottom-tab')).toHaveLength(6);
     expect(compiled.querySelector('.sidebar-alpha-card')?.textContent).toContain('ALPHA SIGNAL');
   }, 15000);
@@ -209,14 +209,14 @@ describe('App', () => {
       fixture.detectChanges();
       expect(comp.hotkeys.isPaletteOpen()).toBe(!paletteOpenBefore);
 
-      // 4. Recessed capsule tabs switch between quoting (4) and treasury (4) while preserving all 18 nav links
+      // 4. Recessed capsule tabs switch between quoting (4) and treasury (4) while preserving all 19 nav links
       expect(comp.sidebarToolsTab()).toBe('quoting');
       const treasuryTabBtn = compiled.querySelector('[data-sidebar-tab="treasury"]') as HTMLButtonElement | null;
       expect(treasuryTabBtn).toBeTruthy();
       treasuryTabBtn?.click();
       fixture.detectChanges();
       expect(comp.sidebarToolsTab()).toBe('treasury');
-      expect(compiled.querySelectorAll('.sidebar .nav a')).toHaveLength(18);
+      expect(compiled.querySelectorAll('.sidebar .nav a')).toHaveLength(19);
 
       // 5. 4-tile AI & Governance dock + Alpha Orb
       expect(compiled.querySelectorAll('.nav-ai-dock-grid a')).toHaveLength(4);

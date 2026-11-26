@@ -365,7 +365,7 @@ describe('FinanceTelegramBridgeService', () => {
     expect(success).toBe(false);
   });
 
-  it('exposes FINANCE_360 category with all 6 f360_* skills and 6 Finanzas 360 / Pyme specialist presets in AgentStudioService', () => {
+  it('exposes FINANCE_360 category with all f360_* and treasury skills plus 6 Finanzas 360 / Pyme specialist presets in AgentStudioService', () => {
     const f360Skills = MCP_SKILL_CATALOG.filter((s) => s.category === 'FINANCE_360');
     expect(f360Skills.map((s) => s.id)).toEqual([
       'f360_get_treasury_summary',
@@ -374,6 +374,8 @@ describe('FinanceTelegramBridgeService', () => {
       'f360_check_pyme_drawers_and_stock',
       'f360_generate_quote_estimate',
       'f360_audit_overdue_and_runway',
+      'optimize_treasury_idle_yield',
+      'rebalance_capital_allocation',
     ]);
 
     const presetIds = FINANCE_360_SPECIALIST_PRESETS.map((p) => p.id);
