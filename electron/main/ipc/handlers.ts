@@ -1,9 +1,11 @@
-import { ipcMain, app, net, safeStorage, desktopCapturer, BrowserWindow, type IpcMainInvokeEvent } from 'electron';
+import { ipcMain, app, net, safeStorage, shell, desktopCapturer, BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { createHmac } from 'crypto';
 import {
   ARM_WORKSPACES,
+  type BinanceDockOpenRequest,
+  type BinanceDockStateDto,
   type P2PIpcChannels,
   type BinanceSearchParams,
   type BinanceC2cOrdersFetchRequest,
@@ -50,6 +52,7 @@ import {
 } from '../agents/monte-carlo-simulator';
 import { getMcpFullStatus, executeMcpToolTest } from '../mcp-bootstrap';
 import { AlphaWatcher } from '../alpha-watcher';
+import { BinanceOperatorDock, isAllowedBinanceDockUrl } from '../binance-operator-dock';
 import { ClipboardWatcherService } from '../services/clipboard-watcher';
 import { createNodeExecutor, resolveAppRoot, runBacktest } from '../services/backtest-runner';
 import {
@@ -2058,6 +2061,56 @@ export function registerIpcHandlers(): void {
       return handleFinance360ExportPdf(request);
     },
   );
+
+  const inactiveDockState = (): BinanceDockStateDto => ({
+    isOpen: false,
+    currentUrl: null,
+    widthPx: 0,
+    mode: null,
+  });
+
+  ipcMain.removeHandler('p2p:dock-open');
+  ipcMain.handle(
+    'p2p:dock-open',
+    async (_event: IpcMainInvokeEvent, req: BinanceDockOpenRequest): Promise<BinanceDockStateDto> => {
+      if (!binanceDockInstance) return inactiveDockState();
+      return binanceDockInstance.open(req);
+    },
+  );
+
+  ipcMain.removeHandler('p2p:dock-close');
+  ipcMain.handle('p2p:dock-close', (): BinanceDockStateDto => {
+    return binanceDockInstance ? binanceDockInstance.close() : inactiveDockState();
+  });
+
+  ipcMain.removeHandler('p2p:dock-toggle');
+  ipcMain.handle(
+    'p2p:dock-toggle',
+    async (
+      _event: IpcMainInvokeEvent,
+      req?: BinanceDockOpenRequest,
+    ): Promise<BinanceDockStateDto> => {
+      if (!binanceDockInstance) return inactiveDockState();
+      return binanceDockInstance.toggle(req);
+    },
+  );
+
+  ipcMain.removeHandler('p2p:dock-state');
+  ipcMain.handle('p2p:dock-state', (): BinanceDockStateDto => {
+    return binanceDockInstance ? binanceDockInstance.getState() : inactiveDockState();
+  });
+
+  ipcMain.removeHandler('p2p:open-external');
+  ipcMain.handle(
+    'p2p:open-external',
+    async (_event: IpcMainInvokeEvent, url: unknown): Promise<{ opened: boolean }> => {
+      if (!isAllowedBinanceDockUrl(url)) {
+        return { opened: false };
+      }
+      await shell.openExternal(url);
+      return { opened: true };
+    },
+  );
 }
 
 const F360_GEMINI_FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash'] as const;
@@ -2356,6 +2409,14 @@ export function getAgentSwarm(): AgentSwarmOrchestrator {
     agentSwarmInstance = new AgentSwarmOrchestrator(getDbService());
   }
   return agentSwarmInstance;
+}
+
+let binanceDockInstance: BinanceOperatorDock | null = null;
+export function setBinanceOperatorDock(dock: BinanceOperatorDock | null): void {
+  binanceDockInstance = dock;
+}
+export function getBinanceOperatorDock(): BinanceOperatorDock | null {
+  return binanceDockInstance;
 }
 
 /**

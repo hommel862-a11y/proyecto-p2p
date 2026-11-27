@@ -545,6 +545,26 @@ export interface P2PIpcChannels {
     request: Finance360ExportPdfRequest;
     response: Finance360ExportPdfResult;
   };
+  'p2p:dock-open': {
+    request: BinanceDockOpenRequest;
+    response: BinanceDockStateDto;
+  };
+  'p2p:dock-close': {
+    request: void;
+    response: BinanceDockStateDto;
+  };
+  'p2p:dock-toggle': {
+    request: BinanceDockOpenRequest | undefined;
+    response: BinanceDockStateDto;
+  };
+  'p2p:dock-state': {
+    request: void;
+    response: BinanceDockStateDto;
+  };
+  'p2p:open-external': {
+    request: string;
+    response: { opened: boolean };
+  };
 }
 
 export const F360_LEDGER_ENTRY_TYPES = {
@@ -1282,7 +1302,7 @@ export interface ElectronAPI {
     getGatewayConfig(): Promise<{ url: string; authToken: string }>;
   };
   finance360: Finance360ElectronBridge;
-  binanceDock?: {
+  binanceDock: {
     open(req: BinanceDockOpenRequest): Promise<BinanceDockStateDto>;
     close(): Promise<BinanceDockStateDto>;
     toggle(req?: BinanceDockOpenRequest): Promise<BinanceDockStateDto>;

@@ -8,11 +8,13 @@ import {
   triggerKillswitch,
   getDbService,
   setAlphaWatcher,
+  setBinanceOperatorDock,
   setClipboardWatcher,
   getOrchestrator,
   fetchCotizaveShared,
   fetchBinanceP2pShared,
 } from './ipc/handlers';
+import { createBrowserWindowDock } from './binance-operator-dock';
 import { killswitchState, resetKillswitch } from './ipc/killswitch-state';
 import { getTreasurySnapshot } from './ipc/treasury-snapshot';
 import { bootstrapMcpServer } from './mcp-bootstrap';
@@ -635,6 +637,7 @@ async function createWindow(): Promise<void> {
   });
 
   registerIpcHandlers();
+  setBinanceOperatorDock(createBrowserWindowDock(() => mainWindow));
 
   // Renderer colgado (modal bloqueante, bucle infinito) sin crashear: el evento
   // 'unresponsive' del webContents cubre lo que 'render-process-gone' no ve.
@@ -711,6 +714,7 @@ async function createWindow(): Promise<void> {
   });
 
   mainWindow.on('closed', () => {
+    setBinanceOperatorDock(null);
     mainWindow = null;
   });
 }
