@@ -188,6 +188,7 @@
       [whatIfPreview]="activeWhatIf()"
       (hoverPreview)="onHoverRow($event)"
       (fixPrice)="onFixLadderPrice($event)"
+      (takeOffer)="onTakeOffer($event)"
     />
 
     <app-microstructure-quant-advisor
@@ -224,5 +225,6 @@
     [otcWhaleReport]="engine.otcWhaleReport()"
     [refRate]="engine.refRate()"
     [spoofReport]="engine.spoofReport()"
+    (takeOffer)="onTakeOffer($event)"
   />
 </div>

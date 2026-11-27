@@ -5,6 +5,7 @@ import { McpAdPublisherService } from './mcp-ad-publisher.service';
 import { McpService } from './mcp.service';
 import { ToastService } from './toast.service';
 import { DecisionJournalService } from './decision-journal.service';
+import { BinanceAccountProfileService } from './binance-account-profile.service';
 import {
   BinanceRepricerService,
   REPRICER_EXECUTION_MODES,
@@ -785,6 +786,153 @@ describe('McpAdPublisherService', () => {
       expect(rows[0].filledAmountUsdt).toBe(0);
       // El spread modelado sigue siendo un modelo, no una medida.
       expect(rows[0].modeledSpreadPct).toBe(2.6);
+    });
+  });
+
+  describe('Binance C2C Merchant SAPI integration (T5)', () => {
+    afterEach(() => {
+      delete (globalThis as unknown as { window?: unknown }).window;
+    });
+
+    it('invokes signed Merchant SAPI UPDATE_AD for GOLD merchant and records BINANCE_MERCHANT outcome', async () => {
+      const ids = await seedDecisions(['BUY']);
+      const invokeMerchantSapi = vi.fn(async () => ({
+        ok: true,
+        action: 'UPDATE_AD' as const,
+        endpoint: '/sapi/v1/c2c/ads/update',
+        code: '000000',
+        statusCode: 200,
+        merchantRef: 'BN-C2C-11218246497340923904-1700000010000',
+      }));
+      (globalThis as unknown as { window?: unknown }).window = {
+        electron: { binanceVault: { invokeMerchantSapi } },
+      };
+
+      const childInjector = Injector.create({
+        providers: [
+          { provide: ToastService, useValue: mockToast },
+          { provide: McpService, useValue: mockMcp },
+          { provide: DecisionJournalService, useValue: harness.journal },
+          {
+            provide: BinanceAccountProfileService,
+            useValue: { canWriteMerchantApi: () => true },
+          },
+          McpAdPublisherService,
+        ],
+      });
+
+      const livePub = childInjector.get(McpAdPublisherService);
+      livePub.enablePublishing({
+        dryRun: false,
+        buyAdId: '11218246497340923904',
+        exchange: 'BINANCE_P2P',
+      });
+      mockMcp.testTool.mockResolvedValue({
+        success: true,
+        result: { success: true, simulated: false, auditTrail: { signature: 'SIG-AD-LOCAL' } },
+      });
+
+      const ok = await livePub.publish({
+        buyPrice: 960,
+        sellPrice: 0,
+        strategy: 'TOP_1',
+        decisionIds: { BUY: ids.BUY },
+      });
+
+      expect(ok).toBe(true);
+      expect(invokeMerchantSapi).toHaveBeenCalledWith({
+        action: 'UPDATE_AD',
+        payload: { advNo: '11218246497340923904', price: 960, side: 'BUY' },
+      });
+      const outcomes = await harness.repo.listOutcomesByDecision(ids.BUY);
+      expect(outcomes[0].source).toBe('BINANCE_MERCHANT');
+      expect(outcomes[0].externalRef).toBe('BN-C2C-11218246497340923904-1700000010000');
+    });
+
+    it('records failure and never claims BINANCE_MERCHANT when SAPI rejects', async () => {
+      const ids = await seedDecisions(['BUY']);
+      const invokeMerchantSapi = vi.fn(async () => ({
+        ok: false,
+        action: 'UPDATE_AD' as const,
+        endpoint: '/sapi/v1/c2c/ads/update',
+        code: 'BINANCE_26000',
+        error: 'Saldo insuficiente en billetera Funding',
+      }));
+      (globalThis as unknown as { window?: unknown }).window = {
+        electron: { binanceVault: { invokeMerchantSapi } },
+      };
+
+      const childInjector = Injector.create({
+        providers: [
+          { provide: ToastService, useValue: mockToast },
+          { provide: McpService, useValue: mockMcp },
+          { provide: DecisionJournalService, useValue: harness.journal },
+          {
+            provide: BinanceAccountProfileService,
+            useValue: { canWriteMerchantApi: () => true },
+          },
+          McpAdPublisherService,
+        ],
+      });
+
+      const livePub = childInjector.get(McpAdPublisherService);
+      livePub.enablePublishing({ dryRun: false, buyAdId: '11218246497340923904' });
+      mockMcp.testTool.mockResolvedValue({
+        success: true,
+        result: { success: true, auditTrail: { signature: 'SIG-AD-LOCAL' } },
+      });
+
+      const ok = await livePub.publish({
+        buyPrice: 960,
+        sellPrice: 0,
+        strategy: 'TOP_1',
+        decisionIds: { BUY: ids.BUY },
+      });
+
+      expect(ok).toBe(false);
+      const outcomes = await harness.repo.listOutcomesByDecision(ids.BUY);
+      expect(outcomes[0].success).toBe(false);
+      expect(outcomes[0].source).toBe('LOCAL_SIGNAL');
+    });
+
+    it('skips Merchant SAPI completely for STANDARD KYC accounts and stays LOCAL_SIGNAL', async () => {
+      const ids = await seedDecisions(['BUY']);
+      const invokeMerchantSapi = vi.fn();
+      (globalThis as unknown as { window?: unknown }).window = {
+        electron: { binanceVault: { invokeMerchantSapi } },
+      };
+
+      const childInjector = Injector.create({
+        providers: [
+          { provide: ToastService, useValue: mockToast },
+          { provide: McpService, useValue: mockMcp },
+          { provide: DecisionJournalService, useValue: harness.journal },
+          {
+            provide: BinanceAccountProfileService,
+            useValue: { canWriteMerchantApi: () => false },
+          },
+          McpAdPublisherService,
+        ],
+      });
+
+      const livePub = childInjector.get(McpAdPublisherService);
+      livePub.enablePublishing({ dryRun: false });
+      mockMcp.testTool.mockResolvedValue({
+        success: true,
+        result: { success: true, simulated: false, auditTrail: { signature: 'SIG-AD-123' } },
+      });
+
+      const ok = await livePub.publish({
+        buyPrice: 960,
+        sellPrice: 0,
+        strategy: 'TOP_1',
+        decisionIds: { BUY: ids.BUY },
+      });
+
+      expect(ok).toBe(true);
+      expect(invokeMerchantSapi).not.toHaveBeenCalled();
+      const outcomes = await harness.repo.listOutcomesByDecision(ids.BUY);
+      expect(outcomes[0].source).toBe('LOCAL_SIGNAL');
     });
   });
 });

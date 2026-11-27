@@ -28,6 +28,7 @@ import {
   type JohnsonBankProfit,
   computeHighDemandScan,
   type HighDemandScanResult,
+  type TierOpportunityRow,
   type MakerMerchantLevel,
   CAPITAL_BRACKETS,
   filterOffersByBracket,
@@ -58,6 +59,8 @@ import { BybitP2pService } from '../../core/bybit-p2p.service';
 import { BinanceRepricerService } from '../../core/binance-repricer.service';
 import { McpAdPublisherService } from '../../core/mcp-ad-publisher.service';
 import { AdComposerService } from '../../core/ad-composer.service';
+import { BinanceAccountProfileService } from '../../core/binance-account-profile.service';
+import { BinanceExecutionBridgeService } from '../../core/binance-execution-bridge.service';
 import { HotkeysService } from '../../core/hotkeys.service';
 import { AccountsService } from '../../core/accounts.service';
 import { MarketHistoryService } from '../../core/market-history.service';
@@ -155,6 +158,8 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   readonly mcp = inject(McpService);
   readonly mcpPublisher = inject(McpAdPublisherService);
   readonly adComposer = inject(AdComposerService);
+  readonly executionBridge = inject(BinanceExecutionBridgeService, { optional: true });
+  readonly accountProfile = inject(BinanceAccountProfileService, { optional: true });
   readonly spotMarket = inject(SpotMarketService);
   protected readonly Math = Math;
 
@@ -170,6 +175,8 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   readonly beSplitDrawerOpen = signal<boolean>(false);
   readonly microSplitDrawerOpen = signal<boolean>(false);
   readonly microWhatIfPreview = signal<MicrostructureWhatIfPreview | null>(null);
+  readonly selectedBuyOffer = signal<BinanceOfferSummary | null>(null);
+  readonly selectedSellOffer = signal<BinanceOfferSummary | null>(null);
   readonly isIntelWorkspace = computed<boolean>(() => {
     const mode = this.activeMode();
     return (
@@ -751,9 +758,15 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   }
 
   /** Load an offer directly from the interactive L2 orderbook into Buy or Sell price. */
-  selectOfferFromBook(side: 'BUY' | 'SELL', price: number, beatByCent = false): void {
+  selectOfferFromBook(
+    side: 'BUY' | 'SELL',
+    price: number,
+    beatByCent = false,
+    offer?: BinanceOfferSummary,
+  ): void {
     if (price <= 0) return;
     if (side === 'BUY') {
+      if (offer) this.selectedBuyOffer.set(offer);
       const target = beatByCent ? Number((price + 0.01).toFixed(2)) : Number(price.toFixed(2));
       this.buyPrice.set(target);
       if (beatByCent) this.buyRole.set('MAKER');
@@ -764,6 +777,7 @@ export class SpreadMonitor implements OnInit, OnDestroy {
         'Libro L2',
       );
     } else {
+      if (offer) this.selectedSellOffer.set(offer);
       const target = beatByCent
         ? Number(Math.max(0.01, price - 0.01).toFixed(2))
         : Number(price.toFixed(2));
@@ -776,6 +790,106 @@ export class SpreadMonitor implements OnInit, OnDestroy {
         'Libro L2',
       );
     }
+  }
+
+  hasOfferTakerLock(offer: BinanceOfferSummary): boolean {
+    return (
+      (typeof offer.buyerRegDaysLimit === 'number' && offer.buyerRegDaysLimit > 0) ||
+      (typeof offer.buyerBtcPositionLimit === 'number' && offer.buyerBtcPositionLimit > 0) ||
+      (typeof offer.buyerKycLimit === 'number' && offer.buyerKycLimit > 0) ||
+      offer.takerAdditionalKycRequired === true
+    );
+  }
+
+  executeBookOffer(
+    side: 'BUY' | 'SELL',
+    offer: BinanceOfferSummary,
+    preferAdvertiser = false,
+  ): void {
+    this.selectOfferFromBook(side, offer.price, false, offer);
+    const ticketUsdt = this.unit() === 'VES' && offer.price > 0 ? this.amount() / offer.price : this.amount();
+    const bank = this.binance.selectedBank();
+    void this.executionBridge?.executeOfferAction({
+      action: side,
+      offer: {
+        advNo: offer.advNo,
+        advertiserNo: offer.advertiserNo,
+        merchantName: offer.merchantName,
+        price: offer.price,
+        surplusAmount: offer.surplusAmount,
+        minVes: offer.minVes,
+        maxVes: offer.maxVes,
+        buyerKycLimit: offer.buyerKycLimit,
+        buyerRegDaysLimit: offer.buyerRegDaysLimit,
+        buyerBtcPositionLimit: offer.buyerBtcPositionLimit,
+        takerAdditionalKycRequired: offer.takerAdditionalKycRequired,
+        payMethods: offer.payMethods,
+      },
+      expectedPrice: offer.price,
+      targetUsdt: ticketUsdt > 0 ? ticketUsdt : undefined,
+      bank: bank !== 'ALL' ? bank : offer.payMethods[0],
+      preferAdvertiser,
+    });
+  }
+
+  executeSnipedAlert(alert: SnipedOpportunityAlert): void {
+    this.applySnipedAlert(alert);
+    const depth = this.binance.marketDepth();
+    const sourceOffers = alert.orderType === 'SELL' ? depth?.buyOffers : depth?.sellOffers;
+    const matched = sourceOffers?.find((o) => o.advNo === alert.advId);
+    const action = alert.orderType === 'SELL' ? 'BUY' : 'SELL';
+    const ticketUsdt = this.unit() === 'VES' && alert.adPrice > 0 ? this.amount() / alert.adPrice : this.amount();
+    const bank = this.binance.selectedBank();
+
+    void this.executionBridge?.executeOfferAction({
+      action,
+      offer: matched
+        ? {
+            advNo: matched.advNo,
+            advertiserNo: matched.advertiserNo,
+            merchantName: matched.merchantName,
+            price: matched.price,
+            surplusAmount: matched.surplusAmount,
+            minVes: matched.minVes,
+            maxVes: matched.maxVes,
+            buyerKycLimit: matched.buyerKycLimit,
+            buyerRegDaysLimit: matched.buyerRegDaysLimit,
+            buyerBtcPositionLimit: matched.buyerBtcPositionLimit,
+            takerAdditionalKycRequired: matched.takerAdditionalKycRequired,
+            payMethods: matched.payMethods,
+          }
+        : {
+            advNo: alert.advId,
+            merchantName: alert.merchantName,
+            price: alert.adPrice,
+          },
+      expectedPrice: alert.adPrice,
+      targetUsdt: ticketUsdt > 0 ? ticketUsdt : undefined,
+      bank: bank !== 'ALL' ? bank : undefined,
+    });
+  }
+
+  executeTierCompetitor(tier: TierOpportunityRow, side: 'BUY' | 'SELL'): void {
+    const advNo = side === 'BUY' ? tier.bestCompetitorBuyAdvNo : tier.bestCompetitorSellAdvNo;
+    const advertiserNo =
+      side === 'BUY' ? tier.bestCompetitorBuyAdvertiserNo : tier.bestCompetitorSellAdvertiserNo;
+    const merchantName =
+      side === 'BUY' ? tier.bestCompetitorBuyMerchant : tier.bestCompetitorSellMerchant;
+    const price = side === 'BUY' ? tier.bestCompetitorBuyPrice : tier.bestCompetitorSellPrice;
+    const bank = this.binance.selectedBank();
+
+    void this.executionBridge?.executeOfferAction({
+      action: side,
+      offer: {
+        advNo,
+        advertiserNo,
+        merchantName: merchantName ?? 'Competidor Líder',
+        price,
+      },
+      expectedPrice: price,
+      targetUsdt: tier.tierUsdt,
+      bank: bank !== 'ALL' ? bank : undefined,
+    });
   }
 
   /** Capture a sniped opportunity directly into the calculator. */
@@ -2400,6 +2514,8 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     const price = isBuy ? this.buyPrice() : this.sellPrice();
     const usdtAmount = res.usdtReceived;
     const vesAmount = isBuy ? res.usdtReceived * price : res.vesReceived;
+    const selectedOffer = isBuy ? this.selectedBuyOffer() : this.selectedSellOffer();
+    const selectedBank = this.binance.selectedBank();
 
     const preset: TradePreset = {
       pair: this.pair(),
@@ -2408,6 +2524,10 @@ export class SpreadMonitor implements OnInit, OnDestroy {
       usdtAmount: Number(usdtAmount.toFixed(6)),
       vesAmount: Number(vesAmount.toFixed(2)),
       merchantNote: `Arbitraje ${this.pair()} (Spread: ${this.nf.format(res.unitSpread)} Bs)`,
+      advNo: selectedOffer?.advNo || undefined,
+      advertiserNo: selectedOffer?.advertiserNo || undefined,
+      merchantName: selectedOffer?.merchantName || undefined,
+      bank: selectedBank !== 'ALL' ? selectedBank : selectedOffer?.payMethods?.[0],
     };
 
     this.timer.start(preset);

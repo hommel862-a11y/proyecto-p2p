@@ -176,4 +176,53 @@ describe('Binance P2P Market Depth Engine', () => {
     expect(depth.fullSellOffers?.[0].price).toBe(791);
     expect(depth.fullSellOffers?.[11].price).toBe(780);
   });
+
+  it('preserves advertiserNo, surplusAmount, merchant metadata, and taker locks when provided without polluting legacy objects', () => {
+    const legacy = parseBinanceP2pItems(mockBuyResponse);
+    expect('advertiserNo' in legacy[0]).toBe(false);
+    expect('surplusAmount' in legacy[0]).toBe(false);
+
+    const enriched = parseBinanceP2pItems({
+      data: [
+        {
+          adv: {
+            advNo: '11218246497340923904',
+            price: '800.00',
+            surplusAmount: '1250.50',
+            minSingleTransAmount: '500',
+            maxSingleTransAmount: '100000',
+            payTimeLimit: 15,
+            buyerKycLimit: 1,
+            buyerRegDaysLimit: 90,
+            buyerBtcPositionLimit: 0.05,
+            takerAdditionalKycRequired: true,
+            tradeMethods: [{ tradeMethodName: 'Banesco' }],
+          },
+          advertiser: {
+            userNo: 's8415f1294ebc335a98b50b6b5b7c5dea',
+            nickName: 'EliteMerchant',
+            monthOrderCount: 600,
+            monthFinishRate: 0.99,
+            userType: 'merchant',
+            userGrade: 3,
+            proMerchant: true,
+          },
+        },
+      ],
+    });
+
+    expect(enriched[0]).toMatchObject({
+      advNo: '11218246497340923904',
+      advertiserNo: 's8415f1294ebc335a98b50b6b5b7c5dea',
+      surplusAmount: 1250.5,
+      userType: 'merchant',
+      userGrade: 3,
+      isProMerchant: true,
+      payTimeLimit: 15,
+      buyerKycLimit: 1,
+      buyerRegDaysLimit: 90,
+      buyerBtcPositionLimit: 0.05,
+      takerAdditionalKycRequired: true,
+    });
+  });
 });

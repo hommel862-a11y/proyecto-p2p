@@ -346,20 +346,20 @@ describe('simulateMcpTool — sin dato antes que dato inventado', () => {
 
   it('calculate_spread calcula el veredicto con los precios que el llamante envía', () => {
     // Mismos números que el default usaba, pero ahora los envía la mesa como
-    // observación: 78.5 → 79.8 sobre 100 USDT con 0.35% de fee da 1.3% neto, que
+    // observación: 78.5 → 79.8 sobre 100 USDT con 0.25% de fee (STANDARD) da 1.4% neto, que
     // supera el umbral dorado de 0.5%.
     const result = run('calculate_spread', { buyPrice: 78.5, sellPrice: 79.8 });
 
     expect(result['buyPrice']).toBe(78.5);
     expect(result['sellPrice']).toBe(79.8);
     expect(result['unitSpread']).toBe(1.3);
-    expect(result['netGainVes']).toBe(102.07);
-    expect(result['netSpreadPercent']).toBeCloseTo(1.3, 2);
+    expect(result['netGainVes']).toBe(110.05);
+    expect(result['netSpreadPercent']).toBeCloseTo(1.4, 2);
     expect(result['isGoldenSpread']).toBe(true);
     expect(result['recommendation']).toBe('VIABLE_INSTITUCIONAL');
     // Los fees son parámetros del exchange, no lecturas: se devuelven para que el
     // costo asumido no quede escondido dentro del spread neto.
-    expect(result['makerFeePct']).toBe(0.35);
+    expect(result['makerFeePct']).toBe(0.25);
     expect(result['takerFeePct']).toBe(0);
     expect(result['rateStatus']).toBeUndefined();
   });

@@ -15,6 +15,11 @@ export interface BinanceP2pRawAd {
   surplusAmount?: string | number;
   minSingleTransAmount?: string | number;
   maxSingleTransAmount?: string | number;
+  payTimeLimit?: number | string | null;
+  buyerKycLimit?: number | string | null;
+  buyerRegDaysLimit?: number | string | null;
+  buyerBtcPositionLimit?: number | string | null;
+  takerAdditionalKycRequired?: boolean;
   tradeMethods?: { identifier?: string; tradeMethodName?: string }[];
 }
 
@@ -23,6 +28,9 @@ export interface BinanceP2pRawAdvertiser {
   nickName?: string;
   monthOrderCount?: number;
   monthFinishRate?: number;
+  userType?: string;
+  userGrade?: number | string | null;
+  proMerchant?: boolean;
 }
 
 export interface BinanceP2pRawItem {
@@ -39,6 +47,21 @@ export interface BinanceOfferSummary {
   minVes: number;
   maxVes: number;
   payMethods: string[];
+  /** Immutable Binance advertiser id (`advertiser.userNo`); survives nickname changes. */
+  advertiserNo?: string;
+  /** Remaining crypto available in the ad (`adv.surplusAmount`). */
+  surplusAmount?: number;
+  /** Binance advertiser type (`merchant` for verified Bronze/Silver/Gold merchants). */
+  userType?: string;
+  userGrade?: number | null;
+  isProMerchant?: boolean;
+  /** Payment window in minutes. */
+  payTimeLimit?: number;
+  /** Taker locks published by the advertiser (null when the ad has no lock). */
+  buyerKycLimit?: number | null;
+  buyerRegDaysLimit?: number | null;
+  buyerBtcPositionLimit?: number | null;
+  takerAdditionalKycRequired?: boolean;
 }
 
 export interface BinanceP2pMarketDepth {
@@ -155,7 +178,7 @@ export function parseBinanceP2pItems(data: unknown): BinanceOfferSummary[] {
       .map((m) => m.tradeMethodName ?? m.identifier ?? '')
       .filter((m) => m.length > 0);
 
-    offers.push({
+    const offer: BinanceOfferSummary = {
       advNo: String(adv.advNo ?? ''),
       price: roundMoney(price, 2),
       merchantName: advertiser?.nickName ?? 'Anónimo',
@@ -164,10 +187,49 @@ export function parseBinanceP2pItems(data: unknown): BinanceOfferSummary[] {
       minVes: Number.isFinite(rawMin) && rawMin >= 0 ? roundMoney(rawMin, 2) : 0,
       maxVes: Number.isFinite(rawMax) && rawMax >= 0 ? roundMoney(rawMax, 2) : 0,
       payMethods,
-    });
+    };
+
+    // Optional execution metadata: only set when Binance actually returned it,
+    // so legacy consumers and fixtures keep their exact shape.
+    if (typeof advertiser?.userNo === 'string' && advertiser.userNo.trim().length > 0) {
+      offer.advertiserNo = advertiser.userNo.trim();
+    }
+    const surplus = parseOptionalNumber(adv.surplusAmount);
+    if (surplus !== null && surplus >= 0) offer.surplusAmount = surplus;
+    if (typeof advertiser?.userType === 'string') offer.userType = advertiser.userType;
+    if (advertiser?.userGrade !== undefined) offer.userGrade = parseOptionalNumber(advertiser.userGrade);
+    if (typeof advertiser?.proMerchant === 'boolean') offer.isProMerchant = advertiser.proMerchant;
+    const payTime = parseOptionalNumber(adv.payTimeLimit);
+    if (payTime !== null && payTime > 0) offer.payTimeLimit = payTime;
+    if (adv.buyerKycLimit !== undefined) offer.buyerKycLimit = parseOptionalNumber(adv.buyerKycLimit);
+    if (adv.buyerRegDaysLimit !== undefined) {
+      offer.buyerRegDaysLimit = parseOptionalNumber(adv.buyerRegDaysLimit);
+    }
+    if (adv.buyerBtcPositionLimit !== undefined) {
+      offer.buyerBtcPositionLimit = parseOptionalNumber(adv.buyerBtcPositionLimit);
+    }
+    if (typeof adv.takerAdditionalKycRequired === 'boolean') {
+      offer.takerAdditionalKycRequired = adv.takerAdditionalKycRequired;
+    }
+
+    offers.push(offer);
   }
 
   return offers;
+}
+
+function parseOptionalNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * True when the advertiser is a Binance verified merchant (Bronze/Silver/Gold badge).
+ * KYC-only advertisers report `userType: 'user'`.
+ */
+export function isVerifiedMerchantOffer(offer: Pick<BinanceOfferSummary, 'userType' | 'isProMerchant'>): boolean {
+  return offer.userType === 'merchant' || offer.isProMerchant === true;
 }
 
 function normalizeMethod(value: string): string {

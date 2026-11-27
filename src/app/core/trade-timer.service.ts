@@ -8,6 +8,10 @@ export interface TradePreset {
   vesAmount: number;
   usdtAmount: number;
   merchantNote?: string;
+  advNo?: string;
+  advertiserNo?: string;
+  merchantName?: string;
+  bank?: string;
 }
 
 export type TimerState = 'idle' | 'running' | 'paused';

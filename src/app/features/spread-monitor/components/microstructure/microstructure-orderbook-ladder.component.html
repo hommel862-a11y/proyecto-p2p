@@ -69,6 +69,10 @@
               @if (row.isBelowBreakEven) {
                 <span class="badge-below-fifo">Bajo FIFO</span>
               }
+
+              @if (hasTakerLock(row)) {
+                <span class="crm-badge" title="Anuncio con candado Taker adicional">🔒</span>
+              }
             </div>
 
             <div class="row-sub-line num-tabular">
@@ -97,6 +101,26 @@
             >
               Fijar
             </button>
+            <button
+              type="button"
+              class="btn-fix-row"
+              title="Ir directo al anuncio en Binance P2P"
+              [attr.aria-label]="'Tomar anuncio ' + (row.item.offer.price | number: '1.2-2') + ' Bs de ' + row.item.offer.merchantName"
+              (click)="onTakeRow($event, row, false)"
+            >
+              ⚡
+            </button>
+            @if (hasAdvertiserId(row)) {
+              <button
+                type="button"
+                class="btn-fix-row"
+                title="Ver perfil del anunciante en Binance"
+                [attr.aria-label]="'Perfil de ' + row.item.offer.merchantName"
+                (click)="onTakeRow($event, row, true)"
+              >
+                👤
+              </button>
+            }
           </div>
         </div>
       }
@@ -191,6 +215,10 @@
                   SPOOF PURGADO · {{ row.item.lifespanSeconds }}s
                 </span>
               }
+
+              @if (hasTakerLock(row)) {
+                <span class="crm-badge" title="Anuncio con candado Taker adicional">🔒</span>
+              }
             </div>
 
             <div class="row-sub-line num-tabular">
@@ -219,6 +247,26 @@
             >
               Fijar
             </button>
+            <button
+              type="button"
+              class="btn-fix-row"
+              title="Ir directo al anuncio en Binance P2P"
+              [attr.aria-label]="'Tomar anuncio ' + (row.item.offer.price | number: '1.2-2') + ' Bs de ' + row.item.offer.merchantName"
+              (click)="onTakeRow($event, row, false)"
+            >
+              ⚡
+            </button>
+            @if (hasAdvertiserId(row)) {
+              <button
+                type="button"
+                class="btn-fix-row"
+                title="Ver perfil del anunciante en Binance"
+                [attr.aria-label]="'Perfil de ' + row.item.offer.merchantName"
+                (click)="onTakeRow($event, row, true)"
+              >
+                👤
+              </button>
+            }
           </div>
         </div>
       }

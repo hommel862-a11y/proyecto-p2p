@@ -443,11 +443,13 @@
     (removeRequest)="requestRemove($event)" />
 
   <app-backup-panel
+    [syncingBinanceSapi]="accountProfile?.syncing() ?? false"
     (downloadJson)="downloadBackup()"
     (openInvoiceModal)="showInvoiceModal.set(true)"
     (openRpaReconciler)="showRpaModal.set(true)"
     (importFile)="importFile($event)"
     (importBinanceCsv)="importBinanceCsvFile($event)"
+    (syncBinanceSapi)="syncBinanceSapiOrders()"
     (downloadCsv)="downloadCsv()"
     (downloadExtendedCsv)="downloadExtendedCsv()"
     (syncGoogleSheets)="syncAllToGoogleSheets()"

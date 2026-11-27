@@ -12,6 +12,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { renderSafeCopilotMarkdown } from './copilot-markdown';
 import { ActivatedRoute, Router } from '@angular/router';
 import type {
   CopilotAttachmentDto,
@@ -725,15 +726,7 @@ export class Copilot implements OnInit, OnDestroy {
   }
 
   renderMarkdown(raw: string): SafeHtml {
-    const escaped = (raw || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-    const formatted = escaped
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/\n/g, '<br />');
-    return this.sanitizer.bypassSecurityTrustHtml(formatted);
+    return this.sanitizer.bypassSecurityTrustHtml(renderSafeCopilotMarkdown(raw));
   }
 
   private scrubLegacyPlaintextKeys(): void {

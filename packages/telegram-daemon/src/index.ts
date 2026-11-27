@@ -35,6 +35,9 @@ import {
   escapeMarkdownV2,
   formatRadarTelegramMessage,
   formatRadarAltaDemandaTelegramMessage,
+  buildRadarExecutionKeyboard,
+  buildHighDemandExecutionButtons,
+  resolveTelegramAdDeepLink,
   formatMacroTelegramMessage,
   formatBacktestTelegramMessage,
   formatRepriceTelegramMessage,
@@ -115,7 +118,7 @@ const COPILOT_SYSTEM_PROMPT = `Sos el Copiloto Estratega de Arbitraje P2P Instit
 Tu rol es asistir a operadores profesionales de mesa de cambio con análisis cuantitativo riguroso, microestructura de mercado, arbitraje P2P (VES/USDT), triangulaciones, tasas BCV e identificación de riesgos.
 REGLAS ESTRICTAS:
 1. NUNCA inventes números ni tasas. Si no tenés una cifra de mercado, indicalo claramente ("N/D").
-2. Pensá siempre en términos de disciplina institucional: spread neto (descontando comisiones Maker/Taker de 0.35%), límites bancarios SUDEBAN y preservación de capital.
+2. Pensá siempre en términos de disciplina institucional: spread neto (descontando comisiones Maker/Taker de 0.25%), límites bancarios SUDEBAN y preservación de capital.
 3. Sé conciso, profesional y directo.`;
 
 // In-memory cache for proposed strategy plans
@@ -1223,6 +1226,8 @@ Si algún dato no aparece, usa null o cadena vacía. Devuelve ÚNICAMENTE el JSO
         break;
       }
       const params: RadarScanParams = (dispatch.params as RadarScanParams) || {};
+      const topBuyOffer = depth.buyOffers[0];
+      const topSellOffer = depth.sellOffers[0];
       const rows: RadarGapRow[] = [
         {
           bank: 'Banesco',
@@ -1230,6 +1235,8 @@ Si algún dato no aparece, usa null o cadena vacía. Devuelve ÚNICAMENTE el JSO
           volumeUsdt: 1250,
           spreadPct: depth.spreadPct,
           maxTc: 20,
+          ...(topBuyOffer?.advNo ? { advNo: topBuyOffer.advNo } : {}),
+          ...(topBuyOffer?.advertiserNo ? { advertiserNo: topBuyOffer.advertiserNo } : {}),
         },
         {
           bank: 'BDV',
@@ -1237,10 +1244,12 @@ Si algún dato no aparece, usa null o cadena vacía. Devuelve ÚNICAMENTE el JSO
           volumeUsdt: 2400,
           spreadPct: depth.spreadPct,
           maxTc: 20,
+          ...(topSellOffer?.advNo ? { advNo: topSellOffer.advNo } : {}),
+          ...(topSellOffer?.advertiserNo ? { advertiserNo: topSellOffer.advertiserNo } : {}),
         },
       ];
       const msg = formatRadarTelegramMessage(rows, params);
-      await sendTelegramMessage(BOT_TOKEN, chatId, msg);
+      await sendTelegramMessage(BOT_TOKEN, chatId, msg, buildRadarExecutionKeyboard(rows));
       break;
     }
 
@@ -1251,7 +1260,9 @@ Si algún dato no aparece, usa null o cadena vacía. Devuelve ÚNICAMENTE el JSO
         stepVes: 0.01,
       });
       const msg = formatRadarAltaDemandaTelegramMessage(scan);
-      await sendTelegramMessage(BOT_TOKEN, chatId, msg);
+      const btns = buildHighDemandExecutionButtons(scan);
+      const kb = btns.length > 0 ? { inline_keyboard: [btns] } : undefined;
+      await sendTelegramMessage(BOT_TOKEN, chatId, msg, kb);
       break;
     }
 
@@ -1337,7 +1348,7 @@ Si algún dato no aparece, usa null o cadena vacía. Devuelve ÚNICAMENTE el JSO
       }
 
       const grossSpreadPct = depth.grossSpreadPct;
-      const netSpreadPct = Math.max(0, grossSpreadPct - 0.70); // Descontando comisiones Maker/Taker 0.35% x 2
+      const netSpreadPct = Math.max(0, grossSpreadPct - 0.50); // Descontando comisiones Maker estándar 0.25% x 2
       const profitUsdt = Number(((capital * netSpreadPct) / 100).toFixed(2));
       const planId = `PLAN-${Date.now().toString(36).toUpperCase()}`;
 
@@ -1739,7 +1750,7 @@ async function startAlphaWatcher(): Promise<void> {
       const depth = await fetchLiveMarketDepth();
       if (!depth) continue;
 
-      const netSpread = depth.grossSpreadPct - 0.35;
+      const netSpread = depth.grossSpreadPct - 0.25;
       const now = Date.now();
 
       // Ingest tick into Time-Series Data Lake
@@ -1773,15 +1784,33 @@ async function startAlphaWatcher(): Promise<void> {
       // Proactive Alert when spread meets Golden Rule and throttle by 10 minutes
       if (netSpread >= MIN_NET_SPREAD_PCT && now - lastAlertTimestamp > 600_000) {
         lastAlertTimestamp = now;
+        const buyAdUrl = resolveTelegramAdDeepLink(depth.buyOffers[0]?.advNo);
+        const sellAdUrl = resolveTelegramAdDeepLink(depth.sellOffers[0]?.advNo);
+        const linkLines = [
+          buyAdUrl ? `• *Ad Compra:* \`${buyAdUrl}\`` : '',
+          sellAdUrl ? `• *Ad Venta:* \`${sellAdUrl}\`` : '',
+        ]
+          .filter(Boolean)
+          .join('\n');
+        const alertButtons = [
+          buyAdUrl ? { text: '⚡ Abrir Compra', url: buyAdUrl } : null,
+          sellAdUrl ? { text: '⚡ Abrir Venta', url: sellAdUrl } : null,
+        ].filter((b): b is { text: string; url: string } => Boolean(b));
         const alertMsg =
           `⚡ *OPORTUNIDAD DE ARBITRAJE DETECTADA POR CENTINELA VPS*\n\n` +
           `• *Spread Neto Estimado:* \`${netSpread.toFixed(2)}%\` \\(Regla de Oro \\>= ${MIN_NET_SPREAD_PCT.toFixed(2)}%\\)\n` +
-          `• *Compra (BUY):* \`${depth.bestBuyPrice.toFixed(2)}\` VES\n` +
-          `• *Venta (SELL):* \`${depth.bestSellPrice.toFixed(2)}\` VES\n` +
-          `• *Ruta:* Banesco / Pago Móvil\n\n` +
-          `_Enviá /heatmap para consultar la estacionalidad horaria o /status para libros en vivo\\._`;
+          `• *Compra \\(BUY\\):* \`${depth.bestBuyPrice.toFixed(2)}\` VES\n` +
+          `• *Venta \\(SELL\\):* \`${depth.bestSellPrice.toFixed(2)}\` VES\n` +
+          `• *Ruta:* Banesco / Pago Móvil\n` +
+          (linkLines ? `${linkLines}\n` : '') +
+          `\n_Enviá /heatmap para consultar la estacionalidad horaria o /status para libros en vivo\\._`;
 
-        await sendTelegramMessage(BOT_TOKEN, AUTHORIZED_CHAT_ID, alertMsg);
+        await sendTelegramMessage(
+          BOT_TOKEN,
+          AUTHORIZED_CHAT_ID,
+          alertMsg,
+          alertButtons.length > 0 ? { inline_keyboard: [alertButtons] } : undefined,
+        );
         console.log(`[Daemon] Alerta proactiva enviada: Spread Neto ${netSpread.toFixed(2)}%`);
       }
     } catch (err) {

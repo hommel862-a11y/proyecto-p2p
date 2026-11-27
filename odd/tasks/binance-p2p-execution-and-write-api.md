@@ -1,0 +1,66 @@
+# Binance P2P Execution Bridge, Deep-Links, KYC Cockpit & Merchant Write SAPI
+Objective: Enable 1-click ad/advertiser execution with pre-flight guards across Quantitative Radars, Microstructure L2, Spread Monitor, and Omnichannel surfaces; embedded Electron operator dock; KYC 5-gate auditing & assisted posting; and signed Binance C2C Merchant SAPI write adapter.
+Branch: `feat/binance-p2p-execution-bridge` (branched from `feat/p2p-decision-tool-mvp`) | Delivery: `exception-ok` (user-authorized work-unit commits + push on feature branch) | Runner: `npx vitest run` / `npm run test:electron`
+
+## Specs
+
+- **S1 (Core P2P Metadata, Deep-Links, KYC 5-Gate Rules & Canonical Fee Alignment):**
+  - Verbatim request: `"que mi aplicación de P2P pueda tener la API de escritura y pueda tomar anuncios dentro de los parámetros correctos, tomar anuncios, colocar anuncios, que haya un enlace o que haya una propuesta o una serie de recomendaciones para buscar la manera de que yo pueda cliquear en uno de los anuncios, tanto de los radares cuantitativos como en los libros de microestructura o en el monitor Spree donde están los libros y agarrar y que me mande directamente con el vendedor o con el comprador."`
+  - Verbatim tier request: `"Toma en cuenta dos cosas, una, el tema de los verificados en oro, plata y bronce con el tema de la escritura y toma la otra conjetura de los no verificados que solamente tienen la verificación KYC."`
+  - Preserve `advertiserNo` (`advertiser.userNo`), `surplusAmount`, `userType`, `userGrade`, `isProMerchant` (`proMerchant`), `payTimeLimit`, and Taker lock fields (`buyerRegDaysLimit`, `buyerBtcPositionLimit`, `buyerKycLimit`, `takerAdditionalKycRequired`) in `BinanceOfferSummary` (`projects/core/src/lib/binance-p2p.ts`), plus `adUrl` and `advertiserUrl`.
+  - Preserve winning `buyAdvNo`, `buyAdvertiserNo`, `sellAdvNo`, `sellAdvertiserNo` in `ArbitrageRoute` (`p2p-radar-spread-engine.ts`) and `TierOpportunityRow` (`market-scanner.ts`).
+  - Provide pure helpers in `@p2p/core`: `buildBinanceAdDeepLink(advNo, locale)` (`https://c2c.binance.com/{locale}/adv?code={advNo}`), `buildBinanceAdvertiserDeepLink(advertiserNo, locale)` (`https://p2p.binance.com/{locale}/advertiserDetail?advertiserNo={advertiserNo}`), `evaluateTakerPreFlight(...)`, and `evaluateKycMakerEligibility(...)` (5 gates: account age >=30d, completed taker orders >=20, 30d completion rate >=80%, unique counterparties >=10, KYC+2FA).
+  - Align all legacy fee fallbacks (`0.35%` and `0.10%/0.20%`) across `p2p-radar-clean-mode.ts`, `p2p-radar-spread-engine.ts`, `alpha-watcher.ts`, `telegram-worker.service.ts`, `packages/telegram-daemon/src/index.ts`, and `mcp-fallbacks.ts` to canonical `MAKER_FEE_RATES` (`STANDARD: 0.25%`, `BRONZE: 0.20%`, `SILVER: 0.175%`, `GOLD: 0.125%`).
+
+- **S2 (1-Click Ad Execution Bridge, Pre-Flight Guard, Blacklist Check & TradeTimer/Log Handoff across All 3 Views):**
+  - Verbatim request: `"de que en verdad pueda cliquear y mandarme directamente al anunciante. Y ya lo otro se puede hacer como humano in the loop."`
+  - Extend `CounterpartyService` (`src/app/core/counterparty.service.ts`) with `binanceUserNo?: string` matching so `BLOCKED` / `SUSPICIOUS` checks work against immutable `advertiserNo` as well as `nickName`.
+  - Extend `TradePreset` (`src/app/core/trade-timer.service.ts`) and `OperationLog` (`src/app/features/operation-log/operation-log.ts`) with `advNo`, `advertiserNo`, `merchantName`, and `bank` so taking an ad pre-populates the trade timer and `/log` draft.
+  - Implement `BinanceExecutionBridgeService` (`src/app/core/binance-execution-bridge.service.ts`): checks counterparty blacklist, executes live/cached pre-flight verification (`surplusAmount`, slippage, taker locks) with automatic fallback to `advertiserDetail` if `advNo` expired, copies target amount to clipboard, arms `TradeTimerService` when requested, and routes to Electron dock or external browser.
+  - Wire 1-click **"⚡ Tomar / Ir al Anuncio"** and **"👤 Perfil"** actions + Taker lock badges across:
+    1. Quantitative Radars (`RadarBooksGridComponent`, `RadarMatrixViewComponent`, `RadarForensicViewComponent`),
+    2. Microstructure L2 (`MicrostructureOrderbookLadderComponent`, `MicrostructureAuditTableComponent`),
+    3. Spread Monitor (`Top 5 Compra/Venta`, `Sniper Alert`, `High-Demand Radar` cards).
+
+- **S3 (Electron Isolated `WebContentsView` Operator Dock & Human-in-the-Loop HUD):**
+  - Build `BinanceOperatorDock` in Electron Main (`electron/main/`) using an isolated `WebContentsView` (`partition: 'persist:binance-p2p'`, `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`, strict URL allowlist `*.binance.com` / `*.bnbstatic.com`, zero DOM script injection).
+  - Expose IPC channels (`p2p:dock-open`, `p2p:dock-toggle`, `p2p:dock-close`, `p2p:dock-status`, `p2p:open-external`) in `electron/main/ipc/handlers.ts` and `electron/preload/`.
+  - Render an operator HUD bar in Angular when the dock is active showing copied amount, target price, counterparty status, mode switch (`adv?code=` / `myads` / `advPost`), and 1-click jump to `/log`.
+
+- **S4 (Binance Vault UI, KYC 5-Gate Live Checker, Ad Studio Tier Sync & SAPI Order Sync in `/log`):**
+  - Verbatim request: `"También quisiera que nos enfoquemos en revisar si hay posibilidades de nosotros colocar anuncios dentro de la aplicación."`
+  - Wire Binance P2P configuration into `ApiSettingsModalComponent` (`apiKey`, `apiSecret` encrypted via SQLite `secret-store.ts` / `CredentialStoreService`, `merchantLevel: 'STANDARD' | 'BRONZE' | 'SILVER' | 'GOLD'`, and optional `merchantProxyUrl` for static-IP whitelist).
+  - Sync `AdComposerService.makerFeePct` with `merchantLevel`, add tier selector and `myads` (Fast Edit Active Ad) vs `advPost` (New Ad) dock launcher to Ad Studio (`spread-monitor.html`), and render the 5-Gate KYC Maker Eligibility Traffic Light computed from `p2p:fetch-binance-c2c-orders`.
+  - Add 1-click **"🔄 Sincronizar Órdenes Binance SAPI"** button in `OperationLog` (`/log`) alongside CSV import.
+
+- **S5 (Signed `BinanceSapiMerchantPublisher` for Verified Bronze/Silver/Gold Merchants with Static-IP Proxy Support):**
+  - Implement signed C2C Merchant SAPI client in Electron Main (`electron/main/binance-merchant-sapi.ts` + IPC `p2p:binance-merchant-sapi`) supporting HMAC-SHA256 signing and optional HTTPS static-IP proxy routing for:
+    - `POST /sapi/v1/c2c/agent/ads/listWithPagination`
+    - `POST /sapi/v1/c2c/ads/update`
+    - `POST /sapi/v1/c2c/agent/ads/post`
+    - `POST /sapi/v1/c2c/ads/updateStatus`
+  - Connect to `McpAdPublisherService` / `BinanceRepricerService` (`RepricerAdPublisher` port) when verified merchant credentials are enabled, recording real `merchantConfirmed` and `merchantRef` in SQLite `decision_outcomes` while preserving honest `READ_ONLY` / assisted mode for `STANDARD` (KYC-only) accounts.
+
+- **S6 (Omnichannel & AI Surfaces: Telegram, AlphaWatcher, MCP Server & Copilot Safe Markdown Links):**
+  - Include `adUrl` (`https://c2c.binance.com/es-LA/adv?code={advNo}`) and `advertiserUrl` in `get_binance_p2p_orderbook` and `audit_distressed_liquidity_sniper` (`packages/mcp-server`), `AlphaWatcher` (`electron/main/alpha-watcher.ts`), `telegram-sentinel.ts`, `TelegramWorkerService`, and `packages/telegram-daemon`.
+  - Update `renderMarkdown()` in `src/app/features/copilot/copilot.ts` to safely render `[label](https://...)` markdown links with strict HTTPS allowlist and `rel="noopener noreferrer" target="_blank"`.
+
+- **S7 (Full Verification, ODD Closure, Push & Clean Branch):**
+  - Verbatim request: `"Acomoda todo, que quede todo commited, pusheado y limpia la rama al terminar todo."`
+  - Run test suites across `@p2p/core`, Electron, Angular, MCP Server, Telegram Daemon, and production build; close logbook and Engram mirror; push all work-unit commits to `origin/feat/p2p-decision-tool-mvp` and verify a 100% clean working tree.
+
+## Tasks
+
+- [x] **T1** (S1) — `inline` — Unify P2P offer metadata, deep-links, pre-flight & KYC 5-gate rules, and canonical maker fee rates in `@p2p/core` + stragglers. Commit: `32b76b4` (`Risk: item 3 - shared P2P parsers and fee constants`)
+- [x] **T2** (S2) — `inline` — Build `BinanceExecutionBridgeService`, immutable `binanceUserNo` CRM check, `TradeTimer`/`/log` preset handoff, and 1-click ad/profile buttons across Radars, Microstructure L2, and Spread Monitor. Commit: `0cb2eb8` (`Risk: item 3 - shared execution bridge and operation log handoff`)
+- [x] **T3** (S3) — `inline` — Implement Electron `BinanceOperatorDock` (`WebContentsView` with persistent session and strict Binance origin allowlist) + IPC + Angular operator HUD bar. Commit: `1375c5a` (`Risk: item 2 - embedded Electron webview origin allowlist and session isolation`)
+- [x] **T4** (S4) — `inline` — Wire Binance Vault UI in `ApiSettingsModalComponent`, KYC 5-gate live checker, Ad Studio tier selector & `myads`/`advPost` dock integration, and 1-click SAPI order sync in `/log`. Commit: `9d48ff0` (`Risk: item 2 - credential vault UI and account config persistence`)
+- [x] **T5** (S5) — `inline` + `independent-verifier` (High-Risk: Security/External Signed SAPI & Credentials) — Implement signed `BinanceSapiMerchantPublisher` with static-IP proxy support in Electron Main + `McpAdPublisherService` integration; audited by `t5-security-verifier` (`39908cc1`). Commit: `148f527` (`Risk: item 2 - signed HMAC-SHA256 merchant SAPI client, proxy CONNECT tunnel, fail-closed guards`)
+- [x] **T6** (S6) — `inline` — Add direct ad/advertiser deep-links across MCP server tools, `AlphaWatcher`, Telegram formatters/daemon, and safe HTTPS link rendering in `Copilot`. Commit: `c3631b8` (`Risk: item 3 - shared MCP schema, Telegram formatters, and Copilot markdown sanitization`)
+- [x] **T7** (S7) — `inline` — Execute full verification suites (`check:vendor` 27/27, `build:preload`, 5x `tsc --noEmit`, `@p2p/core` 95/95 files 1194/1194 tests, `mcp-server` 21/21 files 293/293 tests, `electron` 33/33 files 352/352 tests, focused Angular specs 5/5 files 40/40 tests, `mcp:build`, `telegram:daemon:build`, `ng build`), finalize ODD logbook & Engram mirror, push to `origin/feat/binance-p2p-execution-bridge`, and verify clean worktree. Commit: `final closure commit` (`Risk: item 2 & item 3 - cross-layer P2P execution, credentialed merchant SAPI, and shared parser/UI wiring`)
+
+## Log
+
+- **L1 (2026-11-26):** User original request: `"Quiero que hagas un análisis donde te enfoques en que mi aplicación de P2P pueda tener la API de escritura y pueda tomar anuncios dentro de los parámetros correctos, tomar anuncios, colocar anuncios, que haya un enlace o que haya una propuesta o una serie de recomendaciones para buscar la manera de que yo pueda cliquear en uno de los anuncios, tanto de los radares cuantitativos como en los libros de microestructura o en el monitor Spree donde están los libros y agarrar y que me mande directamente con el vendedor o con el comprador. También quisiera que nos enfoquemos en revisar si hay posibilidades de nosotros colocar anuncios dentro de la aplicación. Toma en cuenta dos cosas, una, el tema de los verificados en oro, plata y bronce con el tema de la escritura y toma la otra conjetura de los no verificados que solamente tienen la verificación KYC. Entonces, vamos a hacer una serie de recomendaciones para analizar ese trasfondo y ver si hay posibilidades de resolver en tiempo real eso. Busca la manera de llegar a nosotros tener ese nivel dentro del tema del P2P. Sé objetivo, no me vendas humo y vamos a buscar la manera de, si no se puede, buscar una forma que llegue a una posibilidad de que eso pueda pasar, de que en verdad pueda cliquear y mandarme directamente al anunciante. Y ya lo otro se puede hacer como humano in the loop. Conviértete en un programador de ingeniería. un ingeniero de programación con más de una década trabajando en proyectos de esta gran envergadura y llévalo a un nivel alto donde yo pueda buscar la forma de resolver esta problemática dentro de mi aplicación."`
+- **L2 (2026-11-26):** Follow-up plan & execution request: `"¿Puedes hacer un plan para organizar esto paso a paso y revisar si no hay otras cosas que se puedan quedar por fuera dentro de tus recomendaciones? Haz el plan y preséntamelo para ejecutarlo paso a paso. Acomoda todo, que quede todo commited, pusheado y limpia la rama al terminar todo."` -> User approved plan: `"procede"`.
+- **L3 (2026-11-27):** All work-unit commits executed cleanly inside isolated git worktree `E:\05_Proyectos\proyecto p2p\.worktrees\binance-p2p-exec` on branch `feat/binance-p2p-execution-bridge` (branched from `2fe8cfc` on `feat/p2p-decision-tool-mvp`) to avoid interfering with concurrent work in the primary checkout. `T5` passed independent adversarial security verification (`t5-security-verifier`, `39908cc1`) with defense-in-depth hardening verified via `electron/main/binance-merchant-sapi.spec.ts` (9/9) and `electron/main/binance-vault-config.spec.ts` (5/5). Full verification suites (`check:vendor` 27/27, `build:preload`, 5 `tsc --noEmit` targets, 154 Vitest files / 1,879 passing tests, `mcp:build`, `telegram:daemon:build`, and Angular `ng build`) passed prior to final push to `origin/feat/binance-p2p-execution-bridge`.

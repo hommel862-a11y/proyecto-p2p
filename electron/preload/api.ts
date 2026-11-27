@@ -14,6 +14,14 @@ import type {
   Finance360AiAnalyzeResult,
   Finance360ExportPdfRequest,
   Finance360ExportPdfResult,
+  BinanceDockOpenRequest,
+  BinanceDockStateDto,
+  BinanceVaultStatusDto,
+  BinanceVaultSaveRequest,
+  BinanceSyncOrdersRequest,
+  BinanceSyncedC2cOrderDto,
+  BinanceMerchantSapiRequest,
+  BinanceMerchantSapiResult,
 } from '../shared/types';
 // Type-only, so it is erased at compile time and cannot pull `node:sqlite` (or any
 // other main-process module) into the preload bundle. The reverse direction — the main
@@ -270,6 +278,32 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
       exportPdf: (request: Finance360ExportPdfRequest) =>
         ipc('f360:export-pdf', request) as Promise<Finance360ExportPdfResult>,
     },
+    binanceDock: {
+      open: (req: BinanceDockOpenRequest) =>
+        ipc('p2p:dock-open', req) as Promise<BinanceDockStateDto>,
+      close: () => ipc('p2p:dock-close') as Promise<BinanceDockStateDto>,
+      toggle: (req?: BinanceDockOpenRequest) =>
+        ipc('p2p:dock-toggle', req) as Promise<BinanceDockStateDto>,
+      getState: () => ipc('p2p:dock-state') as Promise<BinanceDockStateDto>,
+      openExternal: (url: string) =>
+        ipc('p2p:open-external', url) as Promise<{ opened: boolean }>,
+      onStateChanged: (listener: (state: BinanceDockStateDto) => void) => {
+        if (!onEvent) return () => {};
+        return onEvent('p2p:dock-state-changed', (payload) =>
+          listener(payload as BinanceDockStateDto),
+        );
+      },
+    },
+    binanceVault: {
+      getStatus: () => ipc('p2p:binance-config-get') as Promise<BinanceVaultStatusDto>,
+      saveConfig: (req: BinanceVaultSaveRequest) =>
+        ipc('p2p:binance-config-save', req) as Promise<BinanceVaultStatusDto>,
+      clearConfig: () => ipc('p2p:binance-config-clear') as Promise<BinanceVaultStatusDto>,
+      syncOrders: (req?: BinanceSyncOrdersRequest) =>
+        ipc('p2p:binance-sync-orders', req) as Promise<BinanceSyncedC2cOrderDto[]>,
+      invokeMerchantSapi: (req: BinanceMerchantSapiRequest) =>
+        ipc('p2p:binance-merchant-sapi', req) as Promise<BinanceMerchantSapiResult>,
+    },
   };
 }
 
@@ -297,6 +331,8 @@ export const EXPOSED_API_KEYS = [
   'telegram',
   'arm',
   'finance360',
+  'binanceDock',
+  'binanceVault',
 ] as const;
 
 // The channels the bridge is permitted to forward. Anything else must be
@@ -401,6 +437,16 @@ export const ALLOWED_CHANNELS = [
   'f360:save-snapshot',
   'f360:ai-analyze',
   'f360:export-pdf',
+  'p2p:dock-open',
+  'p2p:dock-close',
+  'p2p:dock-toggle',
+  'p2p:dock-state',
+  'p2p:open-external',
+  'p2p:binance-config-get',
+  'p2p:binance-config-save',
+  'p2p:binance-config-clear',
+  'p2p:binance-sync-orders',
+  'p2p:binance-merchant-sapi',
 ] as const;
 
 // Allow-listed server-to-renderer push event channels
@@ -411,4 +457,5 @@ export const ALLOWED_LISTEN_CHANNELS = [
   'copilot:stream-event',
   'p2p:killswitch-triggered',
   'agents:run-event',
+  'p2p:dock-state-changed',
 ] as const;

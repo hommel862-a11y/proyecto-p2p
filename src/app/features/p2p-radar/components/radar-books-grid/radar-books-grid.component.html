@@ -115,10 +115,13 @@
                 </div>
                 <div class="offers-list">
                   @for (row of vm.sellTopOffers; track row.offer.advNo; let i = $index) {
-                    <button
-                      type="button"
+                    <div
+                      role="button"
+                      tabindex="0"
                       class="radar-offer-row"
                       (click)="offerSelect.emit({ bank: bankKey, side: 'SELL', offer: row.offer })"
+                      (keydown.enter)="offerSelect.emit({ bank: bankKey, side: 'SELL', offer: row.offer })"
+                      (keydown.space)="$event.preventDefault(); offerSelect.emit({ bank: bankKey, side: 'SELL', offer: row.offer })"
                     >
                       <span class="depth-bar is-buy-depth" [style.width.%]="row.depthPct" aria-hidden="true"></span>
                       <span class="offer-rank radar-mono">#{{ i + 1 }}</span>
@@ -146,7 +149,27 @@
                         <strong class="offer-price">{{ row.offer.price | number:'1.2-2' }}</strong>
                         <span class="offer-surplus">{{ row.offer.surplusAmount | number:'1.0-0' }} USDT</span>
                       </span>
-                    </button>
+                      <span class="offer-actions-col">
+                        <button
+                          type="button"
+                          class="offer-exec-btn"
+                          title="Ir directo al anuncio en Binance P2P (Pre-Flight + autocopia)"
+                          (click)="onExecuteOffer($event, bankKey, 'SELL', row.offer, false)"
+                        >
+                          ⚡ Ir
+                        </button>
+                        @if (hasAdvertiserId(row.offer)) {
+                          <button
+                            type="button"
+                            class="offer-profile-btn"
+                            title="Abrir perfil y todos los anuncios de este anunciante"
+                            (click)="onExecuteOffer($event, bankKey, 'SELL', row.offer, true)"
+                          >
+                            👤
+                          </button>
+                        }
+                      </span>
+                    </div>
                   } @empty {
                     <div class="empty-side">Sin ofertas limpias tras filtros.</div>
                   }
@@ -161,10 +184,13 @@
                 </div>
                 <div class="offers-list">
                   @for (row of vm.buyTopOffers; track row.offer.advNo; let i = $index) {
-                    <button
-                      type="button"
+                    <div
+                      role="button"
+                      tabindex="0"
                       class="radar-offer-row"
                       (click)="offerSelect.emit({ bank: bankKey, side: 'BUY', offer: row.offer })"
+                      (keydown.enter)="offerSelect.emit({ bank: bankKey, side: 'BUY', offer: row.offer })"
+                      (keydown.space)="$event.preventDefault(); offerSelect.emit({ bank: bankKey, side: 'BUY', offer: row.offer })"
                     >
                       <span class="depth-bar is-sell-depth" [style.width.%]="row.depthPct" aria-hidden="true"></span>
                       <span class="offer-rank radar-mono">#{{ i + 1 }}</span>
@@ -192,7 +218,27 @@
                         <strong class="offer-price">{{ row.offer.price | number:'1.2-2' }}</strong>
                         <span class="offer-surplus">{{ row.offer.surplusAmount | number:'1.0-0' }} USDT</span>
                       </span>
-                    </button>
+                      <span class="offer-actions-col">
+                        <button
+                          type="button"
+                          class="offer-exec-btn"
+                          title="Ir directo al anuncio en Binance P2P (Pre-Flight + autocopia)"
+                          (click)="onExecuteOffer($event, bankKey, 'BUY', row.offer, false)"
+                        >
+                          ⚡ Ir
+                        </button>
+                        @if (hasAdvertiserId(row.offer)) {
+                          <button
+                            type="button"
+                            class="offer-profile-btn"
+                            title="Abrir perfil y todos los anuncios de este anunciante"
+                            (click)="onExecuteOffer($event, bankKey, 'BUY', row.offer, true)"
+                          >
+                            👤
+                          </button>
+                        }
+                      </span>
+                    </div>
                   } @empty {
                     <div class="empty-side">Sin ofertas limpias tras filtros.</div>
                   }

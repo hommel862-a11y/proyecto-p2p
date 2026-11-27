@@ -82,12 +82,13 @@
             <th>Volumen Máx. (VES / USD)</th>
             <th>Persistencia</th>
             <th>Clasificación</th>
+            <th>Ejecución</th>
           </tr>
         </thead>
         <tbody>
           @if (filteredRows().length === 0) {
             <tr>
-              <td colspan="5" class="audit-empty-cell">
+              <td colspan="6" class="audit-empty-cell">
                 Sin anuncios para el filtro seleccionado ({{ activeFilter() }}).
               </td>
             </tr>
@@ -126,6 +127,30 @@
                 @if (row.isWhale) {
                   <span class="whale-tag">BALLENA OTC</span>
                 }
+              </td>
+              <td>
+                <div style="display: flex; gap: 4px;">
+                  @if (row.offer.advNo) {
+                    <button
+                      type="button"
+                      class="btn-fix-row"
+                      title="Abrir anuncio en Binance P2P"
+                      (click)="onTakeOffer(row, false)"
+                    >
+                      ⚡ Ir
+                    </button>
+                  }
+                  @if (hasAdvertiserId(row)) {
+                    <button
+                      type="button"
+                      class="btn-fix-row"
+                      title="Abrir perfil del anunciante en Binance"
+                      (click)="onTakeOffer(row, true)"
+                    >
+                      👤
+                    </button>
+                  }
+                </div>
               </td>
             </tr>
           }

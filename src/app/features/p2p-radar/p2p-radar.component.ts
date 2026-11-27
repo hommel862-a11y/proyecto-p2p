@@ -21,6 +21,7 @@ import {
 } from '../../core/p2p-radar.service';
 import { AccountsService } from '../../core/accounts.service';
 import { AudioAlertsService } from '../../core/audio-alerts.service';
+import { BinanceExecutionBridgeService } from '../../core/binance-execution-bridge.service';
 import { ToastService } from '../../core/toast.service';
 import {
   type P2PUserTier,
@@ -91,6 +92,7 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
   readonly radarService = inject(P2PRadarService);
   private readonly accountsService = inject(AccountsService, { optional: true });
   private readonly audioAlerts = inject(AudioAlertsService);
+  private readonly executionBridge = inject(BinanceExecutionBridgeService, { optional: true });
   private readonly toast = inject(ToastService);
   private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly router = inject(Router, { optional: true });
@@ -572,6 +574,99 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     this.toast.success(
       `Ruta cargada: ${this.bankLabels[route.sourceBank] || route.sourceBank} -> ${this.bankLabels[route.targetBank] || route.targetBank}`,
     );
+  }
+
+  executeRadarOffer(
+    bank: string,
+    side: 'BUY' | 'SELL',
+    offer: CleanRadarOffer,
+    preferAdvertiser = false,
+  ): void {
+    this.selectOfferForSimulation(bank, side, offer);
+    void this.executionBridge?.executeOfferAction({
+      action: side,
+      offer: {
+        advNo: offer.advNo,
+        advertiserNo: offer.advertiserNo,
+        nickName: offer.nickName,
+        price: offer.price,
+        surplusAmount: offer.surplusAmount,
+        minVes: offer.minSingleTransAmount,
+        maxVes: offer.maxSingleTransAmount,
+        buyerKycLimit: offer.buyerKycLimit,
+        buyerRegDaysLimit: offer.buyerRegDaysLimit,
+        buyerBtcPositionLimit: offer.buyerBtcPositionLimit,
+        takerAdditionalKycRequired: offer.takerAdditionalKycRequired,
+        payMethods: offer.payMethods,
+      },
+      expectedPrice: offer.price,
+      targetUsdt: this.radarService.operatingCapitalUsdt(),
+      bank: this.bankLabels[bank] || bank,
+      preferAdvertiser,
+    });
+  }
+
+  executeMatrixRouteLeg(route: ArbitrageRoute, leg: 'BUY' | 'SELL'): void {
+    this.loadRouteIntoSimulator(route);
+    const bank = leg === 'BUY' ? route.targetBank : route.sourceBank;
+    const advNo = leg === 'BUY' ? route.buyLegAdvNo : route.sellLegAdvNo;
+    const advertiserNo = leg === 'BUY' ? route.buyLegAdvertiserNo : route.sellLegAdvertiserNo;
+    const nickName = leg === 'BUY' ? route.buyLegNickName : route.sellLegNickName;
+    const price = leg === 'BUY' ? route.buyPrice : route.sellPrice;
+    const book = this.getBook(bank, leg);
+    const liveOffer = book?.cleanOffers.find((o) => o.advNo === advNo) ?? book?.cleanOffers[0];
+
+    void this.executionBridge?.executeOfferAction({
+      action: leg,
+      offer: {
+        advNo: liveOffer?.advNo ?? advNo,
+        advertiserNo: liveOffer?.advertiserNo ?? advertiserNo,
+        nickName: liveOffer?.nickName ?? nickName ?? 'Anunciante Líder',
+        price: liveOffer?.price ?? price,
+        surplusAmount: liveOffer?.surplusAmount,
+        minVes: liveOffer?.minSingleTransAmount,
+        maxVes: liveOffer?.maxSingleTransAmount,
+        buyerKycLimit: liveOffer?.buyerKycLimit,
+        buyerRegDaysLimit: liveOffer?.buyerRegDaysLimit,
+        buyerBtcPositionLimit: liveOffer?.buyerBtcPositionLimit,
+        takerAdditionalKycRequired: liveOffer?.takerAdditionalKycRequired,
+        payMethods: liveOffer?.payMethods,
+      },
+      expectedPrice: price,
+      targetUsdt: this.radarService.operatingCapitalUsdt(),
+      bank: this.bankLabels[bank] || bank,
+    });
+  }
+
+  inspectForensicBot(row: RadarBotReportRow): void {
+    void this.executionBridge?.executeOfferAction({
+      action: row.side,
+      offer: {
+        advertiserNo: row.bot.advertiserNo,
+        nickName: row.bot.nickName,
+        price: row.bot.recommendedCounterPrice ?? 1,
+      },
+      bank: this.bankLabels[row.bank] || row.bank,
+      preferAdvertiser: true,
+    });
+  }
+
+  inspectForensicRejectedOffer(row: RadarRejectedOfferRow, preferAdvertiser = false): void {
+    const { offer, side, bank } = row;
+    void this.executionBridge?.executeOfferAction({
+      action: side,
+      offer: {
+        advNo: offer.advNo,
+        advertiserNo: offer.advertiserNo,
+        nickName: offer.nickName,
+        price: offer.price,
+        surplusAmount: offer.surplusAmount,
+        minVes: offer.minSingleTransAmount,
+        maxVes: offer.maxSingleTransAmount,
+      },
+      bank: this.bankLabels[bank] || bank,
+      preferAdvertiser,
+    });
   }
 
   swapSimulatorBanks(): void {

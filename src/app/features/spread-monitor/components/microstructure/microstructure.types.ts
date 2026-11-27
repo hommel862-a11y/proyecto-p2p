@@ -64,6 +64,12 @@ export interface MicrostructureApplyPriceEvent {
   readonly source: string;
 }
 
+export interface MicrostructureTakeOfferEvent {
+  readonly offer: BinanceOfferSummary;
+  readonly side: 'BUY' | 'SELL';
+  readonly preferAdvertiser?: boolean;
+}
+
 export interface MicrostructureWhatIfPreview {
   readonly side: 'BUY' | 'SELL';
   readonly price: number;

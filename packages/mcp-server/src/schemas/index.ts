@@ -580,6 +580,7 @@ export const AuditDistressedLiquiditySniperInputSchema = z.object({
   ads: z.array(
     z.object({
       advId: z.string(),
+      advertiserNo: z.string().optional(),
       merchantName: z.string(),
       orderType: z.enum(['BUY', 'SELL']),
       price: z.number().positive(),

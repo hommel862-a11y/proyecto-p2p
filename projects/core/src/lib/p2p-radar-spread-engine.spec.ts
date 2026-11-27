@@ -12,8 +12,8 @@ describe('p2p-radar-spread-engine', () => {
       expect(resolveMakerFeeRatio('VERIFIED')).toBe(0.002);
     });
 
-    it('returns standard 0.35% for UNVERIFIED tier', () => {
-      expect(resolveMakerFeeRatio('UNVERIFIED')).toBe(0.0035);
+    it('returns standard 0.25% for UNVERIFIED tier', () => {
+      expect(resolveMakerFeeRatio('UNVERIFIED')).toBe(0.0025);
     });
 
     it('honors custom fee override when provided', () => {
@@ -70,13 +70,13 @@ describe('p2p-radar-spread-engine', () => {
         sellPrice: 100.0,
         capitalUsdt: 1000,
         mode: 'MAKER_COMPRA_TAKER_VENTA',
-        userTier: 'UNVERIFIED', // 0.35% buy, 0% sell
+        userTier: 'UNVERIFIED', // 0.25% buy (STANDARD canonical), 0% sell
         fiatFrictionPct: 0,
       });
 
-      // K = (1 - 0.0035) * (1 - 0) = 0.9965
-      // Net multiplier: (100 / 98) * 0.9965 = 1.016836
-      expect(metrics.netSpreadPct).toBe(1.68);
+      // K = (1 - 0.0025) * (1 - 0) = 0.9975
+      // Net multiplier: (100 / 98) * 0.9975 = 1.017857
+      expect(metrics.netSpreadPct).toBe(1.79);
       expect(metrics.isViable).toBe(true);
     });
 
@@ -86,12 +86,12 @@ describe('p2p-radar-spread-engine', () => {
         sellPrice: 100.0,
         capitalUsdt: 1000,
         mode: 'TAKER_COMPRA_MAKER_VENTA',
-        userTier: 'UNVERIFIED', // 0% buy, 0.35% sell
+        userTier: 'UNVERIFIED', // 0% buy, 0.25% sell (STANDARD canonical)
         fiatFrictionPct: 0,
       });
 
-      // K = (1 - 0) * (1 - 0.0035) = 0.9965
-      expect(metrics.netSpreadPct).toBe(1.68);
+      // K = (1 - 0) * (1 - 0.0025) = 0.9975
+      expect(metrics.netSpreadPct).toBe(1.79);
     });
 
     it('applies fiat banking friction (e.g. Pago Móvil 0.3%) correctly', () => {
@@ -328,6 +328,23 @@ describe('p2p-radar-spread-engine', () => {
         res.bestRoute?.optimalHybridNetSpreadPct ?? 0,
       );
       expect(res.bestRoute?.recommendedMode).toBe('TAKER_COMPRA_MAKER_VENTA');
+    });
+
+    it('preserves leading buy and sell advNo / advertiserNo on scanned ArbitrageRoute', () => {
+      const books = new Map<string, RadarCleanBook>();
+      books.set('Banesco_BUY', makeCleanBook('Banesco', 'BUY', 98.0));
+      books.set('Mercantil_SELL', makeCleanBook('Mercantil', 'SELL', 100.0));
+
+      const res = scanArbitrageMatrix(books, {
+        capitalUsdt: 1000,
+        mode: 'DOBLE_MAKER',
+        userTier: 'VERIFIED',
+      });
+
+      expect(res.bestRoute?.buyLegAdvNo).toBe('ADV-Banesco-BUY');
+      expect(res.bestRoute?.buyLegAdvertiserNo).toBe('USR-Banesco');
+      expect(res.bestRoute?.sellLegAdvNo).toBe('ADV-Mercantil-SELL');
+      expect(res.bestRoute?.sellLegAdvertiserNo).toBe('USR-Mercantil');
     });
   });
 });

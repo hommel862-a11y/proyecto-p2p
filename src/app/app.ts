@@ -10,6 +10,8 @@ import { ApiSettingsModalComponent } from './shared/components/api-settings-moda
 import { ProductTourModalComponent } from './shared/components/product-tour-modal.component';
 import { CotizaveService } from './core/cotizave.service';
 import { BinanceP2pService } from './core/binance-p2p.service';
+import { BinanceExecutionBridgeService } from './core/binance-execution-bridge.service';
+import { BinanceOperatorHudComponent } from './shared/components/binance-operator-hud.component';
 import { TelegramWorkerService } from './core/telegram-worker.service';
 
 export type AppTheme = 'dark' | 'apple-dark' | 'neon-pink' | 'light';
@@ -27,6 +29,7 @@ export type SidebarToolsTab = 'quoting' | 'treasury';
     ClipboardPaymentBannerComponent,
     ApiSettingsModalComponent,
     ProductTourModalComponent,
+    BinanceOperatorHudComponent,
   ],
   selector: 'app-root',
   styleUrl: './app.scss',
@@ -36,6 +39,7 @@ export class App {
   protected readonly title = signal('p2p');
   readonly cotizave = inject(CotizaveService);
   readonly binance = inject(BinanceP2pService);
+  readonly executionBridge = inject(BinanceExecutionBridgeService);
   readonly telegram = inject(TelegramWorkerService);
   readonly mobileDrawerOpen = signal<boolean>(false);
   readonly sidebarCollapsed = signal<boolean>(this.initialSidebarCollapsed());

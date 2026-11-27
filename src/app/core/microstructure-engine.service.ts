@@ -15,6 +15,7 @@ import {
   detectOtcWhaleBlocks,
   filterOffersByBracket,
   getFullDepthOffers,
+  isVerifiedMerchantOffer,
   predictBcvIntervention,
   predictTwoHourVolatility,
   roundMoney,
@@ -948,7 +949,10 @@ export class MicrostructureEngineService {
     return offers.map((offer) => {
       const id = resolveOfferId(offer);
       const delta = deltas?.get(id);
-      const cp = this.counterparty.findByQuery(offer.merchantName);
+      const cp =
+        typeof this.counterparty.findByBinanceIdentity === 'function'
+          ? this.counterparty.findByBinanceIdentity(offer.advertiserNo, offer.merchantName)
+          : this.counterparty.findByQuery(offer.merchantName);
       const reputation: OfferTrustStatus = cp ? cp.reputation : OFFER_TRUST_STATUS.UNKNOWN;
       const isTrusted = reputation === OFFER_TRUST_STATUS.TRUSTED;
       const isVerifiedCounterparty =
@@ -956,7 +960,9 @@ export class MicrostructureEngineService {
       const isBlockedCounterparty = reputation === OFFER_TRUST_STATUS.BLOCKED;
       const isVerifiedPro =
         !isBlockedCounterparty &&
-        (isVerifiedCounterparty || (offer.finishRatePct >= 95 && offer.orderCount >= 100));
+        (isVerifiedCounterparty ||
+          isVerifiedMerchantOffer(offer) ||
+          (offer.finishRatePct >= 95 && offer.orderCount >= 100));
 
       const classified = classificationById.get(offer.advNo);
       const estimatedUsdt = offer.price > 0 ? roundMoney(offer.maxVes / offer.price, 2) : 0;

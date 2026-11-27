@@ -1,8 +1,13 @@
 import { DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import type { OtcWhaleReport, SpoofCategory, SpoofReport } from '@p2p/core';
 import type { EnrichedMicrostructureOffer } from '../../../../core/microstructure-engine.service';
-import { AUDIT_FILTERS, type AuditFilter, type AuditRowItem } from './microstructure.types';
+import {
+  AUDIT_FILTERS,
+  type AuditFilter,
+  type AuditRowItem,
+  type MicrostructureTakeOfferEvent,
+} from './microstructure.types';
 
 const WHALE_THRESHOLD_USD = 100_000;
 
@@ -21,6 +26,8 @@ export class MicrostructureAuditTableComponent {
   readonly otcWhaleReport = input<OtcWhaleReport | null>(null);
   readonly refRate = input<number>(0);
   readonly spoofReport = input<SpoofReport | null>(null);
+
+  readonly takeOffer = output<MicrostructureTakeOfferEvent>();
 
   readonly AUDIT_FILTERS = AUDIT_FILTERS;
   readonly isExpanded = signal<boolean>(false);
@@ -88,6 +95,15 @@ export class MicrostructureAuditTableComponent {
   selectFilter(filter: AuditFilter): void {
     this.activeFilter.set(filter);
     this.isExpanded.set(true);
+  }
+
+  hasAdvertiserId(row: AuditRowItem): boolean {
+    const id = row.offer.advertiserNo;
+    return typeof id === 'string' && id.trim().length > 0 && id !== 'UNKNOWN';
+  }
+
+  onTakeOffer(row: AuditRowItem, preferAdvertiser = false): void {
+    this.takeOffer.emit({ offer: row.offer, side: row.side, preferAdvertiser });
   }
 
   categoryLabel(category: SpoofCategory): string {

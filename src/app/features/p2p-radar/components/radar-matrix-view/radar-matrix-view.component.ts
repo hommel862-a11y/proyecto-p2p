@@ -19,6 +19,10 @@ export class RadarMatrixViewComponent {
 
   readonly filterChange = output<MatrixRouteFilter>();
   readonly selectRoute = output<ArbitrageRoute>();
+  readonly executeRouteLeg = output<{
+    readonly route: ArbitrageRoute;
+    readonly leg: 'BUY' | 'SELL';
+  }>();
 
   readonly filterOptions: readonly { id: MatrixRouteFilter; label: string }[] = [
     { id: 'ALL', label: 'Todas las Rutas' },

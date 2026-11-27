@@ -72,6 +72,11 @@ export interface TierOpportunityRow {
   bestCompetitorSellPrice: number;
   bestCompetitorBuyMerchant?: string;
   bestCompetitorSellMerchant?: string;
+  /** Leading competitor ads for 1-click execution / profile deep links. */
+  bestCompetitorBuyAdvNo?: string;
+  bestCompetitorBuyAdvertiserNo?: string;
+  bestCompetitorSellAdvNo?: string;
+  bestCompetitorSellAdvertiserNo?: string;
   suggestedBuyPrice: number;
   suggestedSellPrice: number;
   grossSpreadVes: number;
@@ -234,6 +239,8 @@ export function computeHighDemandScan(
       eligibleBuys.length > 0 ? eligibleBuys[0].merchantName : (fallbackBuy?.merchantName ?? '');
     const bestCompSellMerchant =
       eligibleSells.length > 0 ? eligibleSells[0].merchantName : (fallbackSell?.merchantName ?? '');
+    const bestBuyOffer = eligibleBuys.length > 0 ? eligibleBuys[0] : fallbackBuy;
+    const bestSellOffer = eligibleSells.length > 0 ? eligibleSells[0] : fallbackSell;
 
     let suggestedBuy = bestCompBuy > 0 ? roundMoney(bestCompBuy + stepVes, 2) : 0;
     let suggestedSell = bestCompSell > 0 ? roundMoney(bestCompSell - stepVes, 2) : 0;
@@ -299,6 +306,10 @@ export function computeHighDemandScan(
       bestCompetitorSellPrice: bestCompSell,
       bestCompetitorBuyMerchant: bestCompBuyMerchant || undefined,
       bestCompetitorSellMerchant: bestCompSellMerchant || undefined,
+      bestCompetitorBuyAdvNo: bestBuyOffer?.advNo || undefined,
+      bestCompetitorBuyAdvertiserNo: bestBuyOffer?.advertiserNo || undefined,
+      bestCompetitorSellAdvNo: bestSellOffer?.advNo || undefined,
+      bestCompetitorSellAdvertiserNo: bestSellOffer?.advertiserNo || undefined,
       suggestedBuyPrice: suggestedBuy,
       suggestedSellPrice: suggestedSell,
       grossSpreadVes,

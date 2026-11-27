@@ -137,7 +137,7 @@ describe('p2p-radar-clean-mode', () => {
       expect(cleanBook.cleanCount).toBe(2);
       expect(cleanBook.rejectedCount).toBe(2);
       expect(cleanBook.effectiveTopPrice).toBe(98.7);
-      expect(cleanBook.makerFeePct).toBe(0.10);
+      expect(cleanBook.makerFeePct).toBe(0.2);
       expect(cleanBook.takerFeePct).toBe(0.0);
       expect(cleanBook.isHybridEligible).toBe(false);
 
@@ -149,7 +149,7 @@ describe('p2p-radar-clean-mode', () => {
       expect(trap?.verdict.reasons).toContain('PAY_TIME_EXCEEDED');
     });
 
-    it('sets 0.20% maker fee and enables hybrid routing for UNVERIFIED tier', () => {
+    it('sets 0.25% maker fee and enables hybrid routing for UNVERIFIED tier', () => {
       const cleanBook = buildCleanRadarBook(
         [MOCK_BASE_OFFER],
         'SELL',
@@ -159,7 +159,7 @@ describe('p2p-radar-clean-mode', () => {
       );
 
       expect(cleanBook.userTier).toBe('UNVERIFIED');
-      expect(cleanBook.makerFeePct).toBe(0.20);
+      expect(cleanBook.makerFeePct).toBe(0.25);
       expect(cleanBook.isHybridEligible).toBe(true);
       expect(cleanBook.effectiveTopPrice).toBe(98.5);
     });

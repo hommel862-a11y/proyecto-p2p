@@ -1,4 +1,8 @@
-<div class="layout" [class.sidebar-collapsed]="sidebarCollapsed()">
+<div
+  class="layout"
+  [class.sidebar-collapsed]="sidebarCollapsed()"
+  [style.paddingRight.px]="executionBridge.dockState().isOpen ? executionBridge.dockState().widthPx : null"
+>
   <aside class="sidebar" [class.collapsed]="sidebarCollapsed()" aria-label="Barra lateral de navegación">
     <!-- Floating Edge Collapse Pill (macOS / Glass Dock Reference Style) -->
     <button
@@ -526,4 +530,5 @@
   <app-hotkeys-modal />
   <app-command-palette />
   <app-clipboard-payment-banner />
+  <app-binance-operator-hud />
 </div>

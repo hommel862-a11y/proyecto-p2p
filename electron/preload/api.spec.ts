@@ -704,4 +704,64 @@ describe('Electron preload bridge (secure IPC)', () => {
       'copilot:stream-event',
     ]);
   });
+
+  it('forwards binanceDock IPC methods and dock-state-changed listener', async () => {
+    const calls: { channel: string; args: unknown[] }[] = [];
+    const listenChannels: string[] = [];
+    const api = createP2PApi(
+      (channel, ...args) => {
+        calls.push({ channel, args });
+        return Promise.resolve({ isOpen: true, currentUrl: 'https://p2p.binance.com/es-LA/myads', widthPx: 480, mode: 'MY_ADS' });
+      },
+      (channel) => {
+        listenChannels.push(channel);
+        return () => {};
+      },
+    );
+
+    const openReq = { url: 'https://c2c.binance.com/es-LA/adv?code=11218246497340923904', mode: 'AD' as const };
+    await api.binanceDock.open(openReq);
+    await api.binanceDock.getState();
+    await api.binanceDock.toggle(openReq);
+    await api.binanceDock.close();
+    await api.binanceDock.openExternal('https://p2p.binance.com/es-LA/myads');
+    api.binanceDock.onStateChanged(() => {});
+
+    expect(calls).toEqual([
+      { channel: 'p2p:dock-open', args: [openReq] },
+      { channel: 'p2p:dock-state', args: [] },
+      { channel: 'p2p:dock-toggle', args: [openReq] },
+      { channel: 'p2p:dock-close', args: [] },
+      { channel: 'p2p:open-external', args: ['https://p2p.binance.com/es-LA/myads'] },
+    ]);
+    expect(listenChannels).toEqual(['p2p:dock-state-changed']);
+  });
+
+  it('forwards binanceVault config and order sync methods cleanly', async () => {
+    const calls: { channel: string; args: unknown[] }[] = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      return Promise.resolve({});
+    });
+
+    await api.binanceVault.getStatus();
+    await api.binanceVault.saveConfig({ merchantLevel: 'GOLD', apiKey: 'k', apiSecret: 's' });
+    await api.binanceVault.clearConfig();
+    await api.binanceVault.syncOrders({ rows: 50 });
+    await api.binanceVault.invokeMerchantSapi({ action: 'UPDATE_AD', payload: { advNo: '123', price: 93 } });
+
+    expect(calls).toEqual([
+      { channel: 'p2p:binance-config-get', args: [] },
+      {
+        channel: 'p2p:binance-config-save',
+        args: [{ merchantLevel: 'GOLD', apiKey: 'k', apiSecret: 's' }],
+      },
+      { channel: 'p2p:binance-config-clear', args: [] },
+      { channel: 'p2p:binance-sync-orders', args: [{ rows: 50 }] },
+      {
+        channel: 'p2p:binance-merchant-sapi',
+        args: [{ action: 'UPDATE_AD', payload: { advNo: '123', price: 93 } }],
+      },
+    ]);
+  });
 });

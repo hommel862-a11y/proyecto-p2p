@@ -8,6 +8,7 @@ import {
   formatBankLimitsTelegramMessage,
   formatRadarTelegramMessage,
   formatRadarAltaDemandaTelegramMessage,
+  buildRadarExecutionKeyboard,
   formatMacroTelegramMessage,
   formatBacktestTelegramMessage,
   formatRepriceTelegramMessage,
@@ -2038,6 +2039,43 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
         orderUsd: 1200,
         nonce: 'sig_abc99',
       });
+    });
+  });
+
+  describe('Binance P2P deep-link surfacing (T6)', () => {
+    it('renders clickable MarkdownV2 ad links and URL inline keyboard buttons when advNo/advertiserNo exist', () => {
+      const msg = formatRadarTelegramMessage(
+        [
+          {
+            bank: 'Banesco',
+            price: 92.5,
+            maxTc: 15,
+            volumeUsdt: 1200,
+            spreadPct: 1.4,
+            merchantName: 'RapidVES',
+            advNo: '11218246497340923904',
+            advertiserNo: 's8415f1294ebc335a98b50b6b5b7c5dea',
+          },
+        ],
+        { bank: 'Banesco', capital: 1000 },
+      );
+
+      expectParseableMarkdownV2(msg);
+      expect(msg).toContain('https://c2c.binance.com/es-LA/adv?code=11218246497340923904');
+
+      const kb = buildRadarExecutionKeyboard([
+        {
+          bank: 'Banesco',
+          price: 92.5,
+          maxTc: 15,
+          volumeUsdt: 1200,
+          spreadPct: 1.4,
+          advNo: '11218246497340923904',
+        },
+      ]);
+      expect(kb?.inline_keyboard[0]?.[0]?.url).toBe(
+        'https://c2c.binance.com/es-LA/adv?code=11218246497340923904',
+      );
     });
   });
 });

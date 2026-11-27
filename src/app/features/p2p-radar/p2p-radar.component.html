@@ -76,6 +76,7 @@
             (bankToggle)="toggleBank($event)"
             (densityToggle)="toggleDensityMode()"
             (offerSelect)="selectOfferForSimulation($event.bank, $event.side, $event.offer)"
+            (offerExecute)="executeRadarOffer($event.bank, $event.side, $event.offer, $event.preferAdvertiser)"
           />
         }
 
@@ -87,6 +88,7 @@
             [bankLabels]="bankLabels"
             (filterChange)="setRouteFilter($event)"
             (selectRoute)="loadRouteIntoSimulator($event)"
+            (executeRouteLeg)="executeMatrixRouteLeg($event.route, $event.leg)"
           />
         }
 
@@ -96,6 +98,8 @@
             [rejectedOffers]="mappedRejectedRows()"
             [bankLabels]="bankLabels"
             [reasonFormatter]="formatRejectionReasonBound"
+            (inspectBotProfile)="inspectForensicBot($event)"
+            (inspectRejectedOffer)="inspectForensicRejectedOffer($event.row, $event.preferAdvertiser)"
           />
         }
       }

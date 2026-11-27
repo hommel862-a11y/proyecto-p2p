@@ -12,6 +12,7 @@ import {
 import { type AccountUsage, type MarketDataPoint } from '@p2p/core';
 import { AccountsService } from '../../../core/accounts.service';
 import { AudioAlertsService } from '../../../core/audio-alerts.service';
+import { BinanceExecutionBridgeService } from '../../../core/binance-execution-bridge.service';
 import { BinanceP2pService, type BinanceFreshnessStatus } from '../../../core/binance-p2p.service';
 import { HOTKEY_ACTIONS, HotkeysService } from '../../../core/hotkeys.service';
 import { MarketHistoryService } from '../../../core/market-history.service';
@@ -33,6 +34,7 @@ import {
   type BankSaturationWarning,
   type MicrostructureApplyPriceEvent,
   type MicrostructureOperateBracketEvent,
+  type MicrostructureTakeOfferEvent,
   type MicrostructureTelegramPayload,
   type MicrostructureWhatIfPreview,
 } from './microstructure/microstructure.types';
@@ -42,6 +44,7 @@ export type {
   BankSaturationWarning,
   MicrostructureApplyPriceEvent,
   MicrostructureOperateBracketEvent,
+  MicrostructureTakeOfferEvent,
   MicrostructureTelegramPayload,
   MicrostructureWhatIfPreview,
 };
@@ -94,6 +97,7 @@ export class MicrostructureShield {
   private readonly accounts = inject(AccountsService);
   private readonly marketHistory = inject(MarketHistoryService, { optional: true });
   private readonly audioAlerts = inject(AudioAlertsService, { optional: true });
+  private readonly executionBridge = inject(BinanceExecutionBridgeService, { optional: true });
   private readonly hotkeys = inject(HotkeysService, { optional: true });
   private readonly toast = inject(ToastService, { optional: true });
   private readonly destroyRef = inject(DestroyRef);
@@ -107,6 +111,7 @@ export class MicrostructureShield {
 
   // Outputs for SpreadMonitor / Repricer / Ad Studio / Telegram integration
   readonly applyPrice = output<MicrostructureApplyPriceEvent>();
+  readonly takeOffer = output<MicrostructureTakeOfferEvent>();
   readonly applyToDesk = output<MicrostructureDeskPayload>();
   readonly sendToRepricer = output<MicrostructureRepricerPayload>();
   readonly openAdStudio = output<MicrostructureDeskPayload>();
@@ -376,6 +381,31 @@ export class MicrostructureShield {
     if (!this.isAudioMuted()) {
       this.audioAlerts?.playConfirmationTone?.();
     }
+  }
+
+  onTakeOffer(event: MicrostructureTakeOfferEvent): void {
+    this.takeOffer.emit(event);
+    void this.executionBridge?.executeOfferAction({
+      action: event.side,
+      offer: {
+        advNo: event.offer.advNo,
+        advertiserNo: event.offer.advertiserNo,
+        merchantName: event.offer.merchantName,
+        price: event.offer.price,
+        surplusAmount: event.offer.surplusAmount,
+        minVes: event.offer.minVes,
+        maxVes: event.offer.maxVes,
+        buyerKycLimit: event.offer.buyerKycLimit,
+        buyerRegDaysLimit: event.offer.buyerRegDaysLimit,
+        buyerBtcPositionLimit: event.offer.buyerBtcPositionLimit,
+        takerAdditionalKycRequired: event.offer.takerAdditionalKycRequired,
+        payMethods: event.offer.payMethods,
+      },
+      expectedPrice: event.offer.price,
+      targetUsdt: this.engine.targetUsdt(),
+      bank: this.selectedBank() !== 'ALL' ? this.selectedBank() : undefined,
+      preferAdvertiser: event.preferAdvertiser,
+    });
   }
 
   onOperateBracket(event: MicrostructureOperateBracketEvent): void {

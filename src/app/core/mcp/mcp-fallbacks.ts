@@ -204,7 +204,7 @@ export function simulateMcpTool(
       // mercado puede aportarlos. Se devuelven en la respuesta para que ningún costo
       // supuesto quede escondido dentro de `netSpreadPercent`; sin llamante solo
       // moldean una llamada de demostración.
-      const makerFee = Number((args as any)?.makerFeePct ?? 0.35);
+      const makerFee = Number((args as any)?.makerFeePct ?? 0.25);
       const takerFee = Number((args as any)?.takerFeePct ?? 0);
       const totalFeeRate = (makerFee + takerFee) / 100;
       const spread = computeSpread(buyRead.value, sellRead.value, 100, 'USDT', totalFeeRate);

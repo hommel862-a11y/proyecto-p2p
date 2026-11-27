@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core';
 import { AutoBackupService } from '../../core/auto-backup.service';
 
 @Component({
@@ -45,6 +45,16 @@ import { AutoBackupService } from '../../core/auto-backup.service';
           hidden
           (change)="importBinanceCsv.emit($event)"
         />
+
+        <button
+          type="button"
+          class="apple-pill-btn apple-btn-gold"
+          [disabled]="syncingBinanceSapi()"
+          (click)="syncBinanceSapi.emit()"
+          title="Consulta órdenes completadas desde Binance SAPI (Electron Vault) con deduplicación por orderNumber"
+        >
+          {{ syncingBinanceSapi() ? '⏳ Sincronizando SAPI...' : '🔄 Sincronizar Órdenes Binance SAPI' }}
+        </button>
 
         <button
           type="button"
@@ -221,6 +231,8 @@ export class BackupPanelComponent {
   readonly openRpaReconciler = output<void>();
   readonly importFile = output<Event>();
   readonly importBinanceCsv = output<Event>();
+  readonly syncingBinanceSapi = input<boolean>(false);
+  readonly syncBinanceSapi = output<void>();
   readonly downloadCsv = output<void>();
   readonly downloadExtendedCsv = output<void>();
   readonly syncGoogleSheets = output<void>();

@@ -541,6 +541,120 @@ export interface P2PIpcChannels {
     request: Finance360ExportPdfRequest;
     response: Finance360ExportPdfResult;
   };
+  'p2p:dock-open': {
+    request: BinanceDockOpenRequest;
+    response: BinanceDockStateDto;
+  };
+  'p2p:dock-close': {
+    request: void;
+    response: BinanceDockStateDto;
+  };
+  'p2p:dock-toggle': {
+    request: BinanceDockOpenRequest | undefined;
+    response: BinanceDockStateDto;
+  };
+  'p2p:dock-state': {
+    request: void;
+    response: BinanceDockStateDto;
+  };
+  'p2p:open-external': {
+    request: string;
+    response: { opened: boolean };
+  };
+  'p2p:binance-config-get': {
+    request: void;
+    response: BinanceVaultStatusDto;
+  };
+  'p2p:binance-config-save': {
+    request: BinanceVaultSaveRequest;
+    response: BinanceVaultStatusDto;
+  };
+  'p2p:binance-config-clear': {
+    request: void;
+    response: BinanceVaultStatusDto;
+  };
+  'p2p:binance-sync-orders': {
+    request: BinanceSyncOrdersRequest | undefined;
+    response: BinanceSyncedC2cOrderDto[];
+  };
+  'p2p:binance-merchant-sapi': {
+    request: BinanceMerchantSapiRequest;
+    response: BinanceMerchantSapiResult;
+  };
+}
+
+export type BinanceMerchantSapiAction = 'LIST_ADS' | 'UPDATE_AD' | 'POST_AD' | 'UPDATE_STATUS';
+
+export interface BinanceMerchantSapiRequest {
+  action: BinanceMerchantSapiAction;
+  payload?: Record<string, unknown>;
+}
+
+export type BinanceMerchantSapiErrorCode =
+  | 'KILLSWITCH_ACTIVE'
+  | 'MERCHANT_TIER_REQUIRED_FOR_WRITE_SAPI'
+  | 'CREDENTIALS_MISSING'
+  | 'INVALID_REQUEST'
+  | 'PROXY_TUNNEL_ERROR'
+  | 'HTTP_ERROR'
+  | 'BINANCE_API_ERROR'
+  | 'NETWORK_ERROR';
+
+export interface BinanceMerchantSapiResult {
+  ok: boolean;
+  action: BinanceMerchantSapiAction;
+  endpoint: string;
+  code?: BinanceMerchantSapiErrorCode | string;
+  statusCode?: number;
+  merchantRef?: string;
+  data?: unknown;
+  error?: string;
+  viaProxy?: boolean;
+}
+
+export type BinanceMerchantLevelDto = 'STANDARD' | 'BRONZE' | 'SILVER' | 'GOLD';
+
+export interface BinanceVaultStatusDto {
+  hasCredentials: boolean;
+  maskedApiKey: string | null;
+  merchantLevel: BinanceMerchantLevelDto;
+  hasProxyUrl: boolean;
+  redactedProxyHost: string | null;
+  accountAgeDaysOverride: number | null;
+  hasKycAnd2fa: boolean;
+  secretStorageAvailable: boolean;
+}
+
+export interface BinanceVaultSaveRequest {
+  apiKey?: string;
+  apiSecret?: string;
+  merchantLevel?: BinanceMerchantLevelDto;
+  merchantProxyUrl?: string | null;
+  clearProxy?: boolean;
+  accountAgeDaysOverride?: number | null;
+  hasKycAnd2fa?: boolean;
+}
+
+export interface BinanceSyncOrdersRequest {
+  apiKey?: string;
+  apiSecret?: string;
+  rows?: number;
+}
+
+export interface BinanceSyncedC2cOrderDto {
+  orderNumber: string;
+  advNo: string;
+  tradeType: 'BUY' | 'SELL';
+  asset: string;
+  fiat: string;
+  amount: number;
+  totalPrice: number;
+  unitPrice: number;
+  commission: number;
+  orderStatus: string;
+  counterpartyNickname: string;
+  counterpartyUserNo?: string;
+  createTime: number;
 }
 
 export const F360_LEDGER_ENTRY_TYPES = {
@@ -1071,6 +1185,20 @@ export interface TreasurySnapshotDto {
 }
 
 // The narrow, typed surface the preload exposes on `window.electron`.
+export type BinanceDockMode = 'AD' | 'ADVERTISER' | 'MY_ADS' | 'ADV_POST';
+
+export interface BinanceDockOpenRequest {
+  url: string;
+  mode: BinanceDockMode;
+}
+
+export interface BinanceDockStateDto {
+  isOpen: boolean;
+  currentUrl: string | null;
+  widthPx: number;
+  mode: BinanceDockMode | null;
+}
+
 export interface ElectronAPI {
   getVersion(): Promise<string>;
   fetchBinanceP2p(params: BinanceSearchParams): Promise<unknown>;
@@ -1262,6 +1390,21 @@ export interface ElectronAPI {
     getGatewayConfig(): Promise<{ url: string; authToken: string }>;
   };
   finance360: Finance360ElectronBridge;
+  binanceDock: {
+    open(req: BinanceDockOpenRequest): Promise<BinanceDockStateDto>;
+    close(): Promise<BinanceDockStateDto>;
+    toggle(req?: BinanceDockOpenRequest): Promise<BinanceDockStateDto>;
+    getState(): Promise<BinanceDockStateDto>;
+    openExternal(url: string): Promise<{ opened: boolean }>;
+    onStateChanged(listener: (state: BinanceDockStateDto) => void): () => void;
+  };
+  binanceVault: {
+    getStatus(): Promise<BinanceVaultStatusDto>;
+    saveConfig(req: BinanceVaultSaveRequest): Promise<BinanceVaultStatusDto>;
+    clearConfig(): Promise<BinanceVaultStatusDto>;
+    syncOrders(req?: BinanceSyncOrdersRequest): Promise<BinanceSyncedC2cOrderDto[]>;
+    invokeMerchantSapi(req: BinanceMerchantSapiRequest): Promise<BinanceMerchantSapiResult>;
+  };
 }
 
 declare global {

@@ -74,9 +74,31 @@
                 </div>
               </td>
               <td>
-                <button type="button" class="radar-pill-btn load-btn" (click)="selectRoute.emit(route)">
-                  Simular
-                </button>
+                <div style="display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
+                  <button type="button" class="radar-pill-btn load-btn" (click)="selectRoute.emit(route)">
+                    Simular
+                  </button>
+                  @if (route.buyLegAdvNo || route.buyLegAdvertiserNo) {
+                    <button
+                      type="button"
+                      class="radar-pill-btn"
+                      title="Abrir anuncio líder de compra en Binance P2P"
+                      (click)="executeRouteLeg.emit({ route, leg: 'BUY' })"
+                    >
+                      ⚡ Compra
+                    </button>
+                  }
+                  @if (route.sellLegAdvNo || route.sellLegAdvertiserNo) {
+                    <button
+                      type="button"
+                      class="radar-pill-btn"
+                      title="Abrir anuncio líder de venta en Binance P2P"
+                      (click)="executeRouteLeg.emit({ route, leg: 'SELL' })"
+                    >
+                      ⚡ Venta
+                    </button>
+                  }
+                </div>
               </td>
             </tr>
           }
