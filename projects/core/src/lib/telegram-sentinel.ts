@@ -93,7 +93,9 @@ export type SentinelAction =
   | 'COPILOT_CHAT'
   | 'FX_DESK'
   | 'FX_BOUGHT'
-  | 'FX_EMPTY';
+  | 'FX_EMPTY'
+  | 'PAIRING_CONFIRMED'
+  | 'PAIRING_DENIED';
 
 /** Filters accepted by `/radar [banco] [capital]`. */
 export interface RadarScanParams {
@@ -153,6 +155,11 @@ export interface FxEmptyCallbackParams {
   bankId: FxInterventionBankId;
 }
 
+export interface PairingActionParams {
+  code: string;
+  chatId: number;
+}
+
 /**
  * Payload carried by {@link DispatchResult.params}. The concrete shape depends on
  * {@link DispatchResult.action}; narrowing on the action is required to read it.
@@ -166,7 +173,171 @@ export type SentinelActionParams =
   | CopilotChatParams
   | FxDeskActionParams
   | FxBoughtCallbackParams
-  | FxEmptyCallbackParams;
+  | FxEmptyCallbackParams
+  | PairingActionParams;
+
+// ---------------------------------------------------------------------------
+// Zero-dependency Pure TS SHA-256 & HMAC-SHA256 + 6-digit Pairing OTP Helpers
+// ---------------------------------------------------------------------------
+
+const SHA256_K = new Uint32Array([
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+]);
+
+function encodeUtf8Bytes(input: string): Uint8Array {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(input);
+  }
+  const bytes: number[] = [];
+  for (let i = 0; i < input.length; i++) {
+    const code = input.charCodeAt(i);
+    if (code < 0x80) bytes.push(code);
+    else if (code < 0x800) {
+      bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+    } else {
+      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+    }
+  }
+  return new Uint8Array(bytes);
+}
+
+function sha256Bytes(data: Uint8Array): Uint8Array {
+  const h = new Uint32Array([
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+    0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+  ]);
+  const bitLen = data.length * 8;
+  const paddedLen = Math.ceil((data.length + 9) / 64) * 64;
+  const padded = new Uint8Array(paddedLen);
+  padded.set(data, 0);
+  padded[data.length] = 0x80;
+  const view = new DataView(padded.buffer);
+  view.setUint32(paddedLen - 8, Math.floor(bitLen / 0x100000000), false);
+  view.setUint32(paddedLen - 4, bitLen >>> 0, false);
+
+  const w = new Uint32Array(64);
+  for (let offset = 0; offset < paddedLen; offset += 64) {
+    for (let i = 0; i < 16; i++) {
+      w[i] = view.getUint32(offset + i * 4, false);
+    }
+    for (let i = 16; i < 64; i++) {
+      const s0 =
+        ((w[i - 15]! >>> 7) | (w[i - 15]! << 25)) ^
+        ((w[i - 15]! >>> 18) | (w[i - 15]! << 14)) ^
+        (w[i - 15]! >>> 3);
+      const s1 =
+        ((w[i - 2]! >>> 17) | (w[i - 2]! << 15)) ^
+        ((w[i - 2]! >>> 19) | (w[i - 2]! << 13)) ^
+        (w[i - 2]! >>> 10);
+      w[i] = (w[i - 16]! + s0 + w[i - 7]! + s1) >>> 0;
+    }
+
+    let [a, b, c, d, e, f, g, hh] = [h[0]!, h[1]!, h[2]!, h[3]!, h[4]!, h[5]!, h[6]!, h[7]!];
+    for (let i = 0; i < 64; i++) {
+      const S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+      const ch = (e & f) ^ (~e & g);
+      const temp1 = (hh + S1 + ch + SHA256_K[i]! + w[i]!) >>> 0;
+      const S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const temp2 = (S0 + maj) >>> 0;
+      hh = g;
+      g = f;
+      f = e;
+      e = (d + temp1) >>> 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (temp1 + temp2) >>> 0;
+    }
+
+    h[0] = (h[0]! + a) >>> 0;
+    h[1] = (h[1]! + b) >>> 0;
+    h[2] = (h[2]! + c) >>> 0;
+    h[3] = (h[3]! + d) >>> 0;
+    h[4] = (h[4]! + e) >>> 0;
+    h[5] = (h[5]! + f) >>> 0;
+    h[6] = (h[6]! + g) >>> 0;
+    h[7] = (h[7]! + hh) >>> 0;
+  }
+
+  const out = new Uint8Array(32);
+  const outView = new DataView(out.buffer);
+  for (let i = 0; i < 8; i++) {
+    outView.setUint32(i * 4, h[i]!, false);
+  }
+  return out;
+}
+
+/** Pure TypeScript synchronous SHA-256 hex digest (Node/Browser/Worker compatible). */
+export function computeSha256Hex(message: string): string {
+  const digest = sha256Bytes(encodeUtf8Bytes(message));
+  return Array.from(digest, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Pure TypeScript synchronous HMAC-SHA256 hex digest for Telegram FX_BOUGHT anti-replay signatures. */
+export function computeHmacSha256Hex(secret: string, message: string): string {
+  const keyRaw = encodeUtf8Bytes(secret);
+  const key = keyRaw.length > 64 ? sha256Bytes(keyRaw) : keyRaw;
+  const blockKey = new Uint8Array(64);
+  blockKey.set(key, 0);
+
+  const oKeyPad = new Uint8Array(64);
+  const iKeyPad = new Uint8Array(64);
+  for (let i = 0; i < 64; i++) {
+    oKeyPad[i] = blockKey[i]! ^ 0x5c;
+    iKeyPad[i] = blockKey[i]! ^ 0x36;
+  }
+
+  const msgBytes = encodeUtf8Bytes(message);
+  const innerInput = new Uint8Array(64 + msgBytes.length);
+  innerInput.set(iKeyPad, 0);
+  innerInput.set(msgBytes, 64);
+  const innerHash = sha256Bytes(innerInput);
+
+  const outerInput = new Uint8Array(64 + innerHash.length);
+  outerInput.set(oKeyPad, 0);
+  outerInput.set(innerHash, 64);
+  const outerHash = sha256Bytes(outerInput);
+
+  return Array.from(outerHash, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Constant-time string comparison for HMAC signatures. */
+export function timingSafeHexEqual(a: string, b: string): boolean {
+  if (a.length !== b.length || a.length === 0) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+/** Generates a CSPRNG 6-digit numeric OTP for Telegram `chatId` 1:1 pairing challenges. */
+export function generatePairingChallengeCode(): string {
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    const arr = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(arr);
+    const sixDigits = 100000 + (arr[0]! % 900000);
+    return String(sixDigits);
+  }
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+/** Extracts a 6-digit OTP from `/vincular 123456`, `/pair 123456`, `/start 123456`, or `123456`. */
+export function extractPairingChallengeCode(rawText?: string | null): string | null {
+  const clean = (rawText ?? '').trim();
+  const cmdMatch = /^\/(?:start|pair|vincular)(?:@[A-Za-z0-9_]+)?\s+(\d{6})$/i.exec(clean);
+  if (cmdMatch?.[1]) return cmdMatch[1];
+  const bareMatch = /^(\d{6})$/.exec(clean);
+  return bareMatch?.[1] ?? null;
+}
 
 export interface DispatchResult {
   authorized: boolean;
@@ -1237,6 +1408,7 @@ function formatRepriceUsageMessage(): string {
 export function dispatchTelegramUpdate(
   update: TelegramInboundUpdate,
   authorizedChatId: number | string,
+  expectedPairingCode?: string,
 ): DispatchResult {
   const authStr = String(authorizedChatId ?? '').trim();
   const authId = authStr.length > 0 ? Number(authStr) : Number.NaN;
@@ -1258,12 +1430,48 @@ export function dispatchTelegramUpdate(
     const rawText = (update.message.text || update.message.caption || '').trim();
     const text = normalizeButtonCommand(rawText);
 
+    // 6-digit private-chat pairing challenge (/vincular 123456, /pair 123456, /start 123456)
+    const isPairingCommand =
+      text.startsWith('/vincular') ||
+      text.startsWith('/pair') ||
+      (Boolean(expectedPairingCode) && /^\/start(?:@[A-Za-z0-9_]+)?\s+\d{4,8}$/i.test(rawText));
+    const submittedOtp = extractPairingChallengeCode(rawText);
+    if (isPairingCommand) {
+      if (!expectedPairingCode) {
+        return {
+          authorized: false,
+          action: 'PAIRING_DENIED',
+          responseMarkdown: escapeMarkdownV2(
+            '⛔ No hay un reto de vinculación de 6 dígitos activo. Generá uno desde Riesgos > Telegram Sentinel.',
+          ),
+        };
+      }
+      if (submittedOtp === expectedPairingCode) {
+        return {
+          authorized: true,
+          command: rawText,
+          action: 'PAIRING_CONFIRMED',
+          params: { code: submittedOtp, chatId: fromId },
+          responseMarkdown:
+            `🔐 *${escapeMarkdownV2('RETROSPECTIVA OTP 6 DÍGITOS VERIFICADA')}*\n\n` +
+            `✅ ${escapeMarkdownV2('Chat privado vinculado de forma segura con Chat ID:')} \`${fromId}\``,
+        };
+      }
+      return {
+        authorized: false,
+        action: 'PAIRING_DENIED',
+        responseMarkdown: escapeMarkdownV2(
+          '⛔ Código de vinculación de 6 dígitos incorrecto o expirado.',
+        ),
+      };
+    }
+
     // /start and /menu are discovery & keyboard provisioning handshakes
     if (text.startsWith('/start') || text.startsWith('/menu')) {
       const isAuth = fromId === authId;
       const pairingInfo = isAuth
         ? escapeMarkdownV2('Tu terminal P2P ya está vinculado a este chat.')
-        : `ℹ️ ${escapeMarkdownV2('Para autorizar este chat, ingresá este ID')} \`${fromId}\` ${escapeMarkdownV2('en')} *${escapeMarkdownV2('Reglas de Riesgo > Telegram Sentinel')}* ${escapeMarkdownV2('o pulsá')} *${escapeMarkdownV2('"Detectar mi Chat ID"')}*`;
+        : `ℹ️ ${escapeMarkdownV2('Para autorizar este chat privado usá el reto de 6 dígitos')} \`/vincular <6dígitos>\` ${escapeMarkdownV2('o ingresá tu ID')} \`${fromId}\` ${escapeMarkdownV2('en')} *${escapeMarkdownV2('Reglas de Riesgo > Telegram Sentinel')}*`;
       const availableCommands = [
         ['/status', 'Estado en tiempo real del terminal y conexión'],
         ['/spreads [banco]', 'Puntas en vivo y spread neto (opcional por banco)'],
@@ -1753,6 +1961,16 @@ export function dispatchTelegramUpdate(
 
   // 2. Callback Query Handling (from Inline Keyboards)
   if (update.callback_query) {
+    const cbChatType = (update.callback_query.message?.chat as { id: number; type?: string } | undefined)?.type;
+    if (cbChatType && cbChatType !== 'private') {
+      return {
+        authorized: false,
+        responseMarkdown: escapeMarkdownV2(
+          '⛔ SEGURIDAD OPSEC: Las acciones interactivas de Telegram Sentinel operan exclusivamente en chats privados 1:1.',
+        ),
+      };
+    }
+
     const fromId = update.callback_query.from.id;
     const data = update.callback_query.data || '';
 
@@ -1877,9 +2095,16 @@ export function dispatchTelegramUpdate(
       const bankId = resolveFxInterventionBankId(parts[1]);
       const orderUsd = parseFiniteNumber(parts[2]);
       const nonce = parts[3]?.trim();
+      if (!nonce) {
+        return {
+          authorized: false,
+          responseMarkdown: escapeMarkdownV2(
+            '⛔ Callback FX_BOUGHT rechazado: falta firma HMAC o nonce de un solo uso.',
+          ),
+        };
+      }
       if (bankId && orderUsd !== undefined && orderUsd > 0) {
-        const params: FxBoughtCallbackParams = { bankId, orderUsd };
-        if (nonce) params.nonce = nonce;
+        const params: FxBoughtCallbackParams = { bankId, orderUsd, nonce };
         return {
           authorized: true,
           action: 'FX_BOUGHT',

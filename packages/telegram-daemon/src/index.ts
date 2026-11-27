@@ -76,6 +76,8 @@ import {
   type FxBoughtCallbackParams,
   type FxEmptyCallbackParams,
   type FxInterventionBankId,
+  type PairingActionParams,
+  generatePairingChallengeCode,
   type TelegramInboundUpdate,
   type TelegramInlineKeyboardMarkup,
   type TelegramReplyKeyboardMarkup,
@@ -483,10 +485,37 @@ export function getActiveDaemonFxDepletedBanks(nowMs = Date.now()): FxInterventi
   return active;
 }
 
+const DAEMON_PAIRING_TTL_MS = 10 * 60 * 1000;
+let activeDaemonPairingCode: string | null = process.env['TELEGRAM_PAIRING_CODE']?.trim() || null;
+let activeDaemonPairingExpiresAtMs = activeDaemonPairingCode
+  ? Date.now() + DAEMON_PAIRING_TTL_MS
+  : 0;
+let dynamicAuthorizedChatId: string = AUTHORIZED_CHAT_ID;
+
+export function issueDaemonPairingChallenge(ttlMs = DAEMON_PAIRING_TTL_MS): string {
+  const code = generatePairingChallengeCode();
+  activeDaemonPairingCode = code;
+  activeDaemonPairingExpiresAtMs = Date.now() + ttlMs;
+  return code;
+}
+
+export function getActiveDaemonPairingCode(nowMs = Date.now()): string | undefined {
+  if (!activeDaemonPairingCode) return undefined;
+  if (activeDaemonPairingExpiresAtMs <= nowMs) {
+    activeDaemonPairingCode = null;
+    activeDaemonPairingExpiresAtMs = 0;
+    return undefined;
+  }
+  return activeDaemonPairingCode;
+}
+
 export function resetDaemonFxStateForTesting(): void {
   pendingDaemonFxNonces.clear();
   consumedDaemonFxKeys.clear();
   daemonFxDepletedUntilMs.clear();
+  activeDaemonPairingCode = null;
+  activeDaemonPairingExpiresAtMs = 0;
+  dynamicAuthorizedChatId = AUTHORIZED_CHAT_ID;
 }
 
 // ─── HTTP Bearer Auth & Finanzas 360 Telegram Command Routing ───
@@ -800,6 +829,7 @@ export interface HandleDaemonUpdateOverrides {
   readonly botToken?: string;
   readonly authorizedChatId?: string;
   readonly cotizaveApiKey?: string;
+  readonly expectedPairingCode?: string;
 }
 
 export async function handleUpdate(
@@ -807,8 +837,9 @@ export async function handleUpdate(
   overrides?: HandleDaemonUpdateOverrides,
 ): Promise<void> {
   const activeToken = overrides?.botToken ?? BOT_TOKEN;
-  const activeAuthChatId = overrides?.authorizedChatId ?? AUTHORIZED_CHAT_ID;
+  const activeAuthChatId = overrides?.authorizedChatId ?? dynamicAuthorizedChatId;
   const activeCotizaveKey = overrides?.cotizaveApiKey ?? COTIZAVE_API_KEY;
+  const activePairingCode = overrides?.expectedPairingCode ?? getActiveDaemonPairingCode();
 
   const chat = update.message?.chat || update.callback_query?.message?.chat;
   const chatId = chat?.id || activeAuthChatId;
@@ -837,7 +868,7 @@ export async function handleUpdate(
     return;
   }
 
-  const dispatch = dispatchTelegramUpdate(update, activeAuthChatId);
+  const dispatch = dispatchTelegramUpdate(update, activeAuthChatId, activePairingCode);
 
   if (!dispatch.authorized) {
     await sendTelegramMessage(activeToken, chatId, dispatch.responseMarkdown);
@@ -1570,6 +1601,16 @@ Si algún dato no aparece, usa null o cadena vacía. Devuelve ÚNICAMENTE el JSO
         );
       }
       await sendTelegramMessage(activeToken, chatId, dispatch.responseMarkdown);
+      break;
+    }
+
+    case 'PAIRING_CONFIRMED': {
+      const params = dispatch.params as PairingActionParams | undefined;
+      const pairedId = String(params?.chatId ?? chatId);
+      dynamicAuthorizedChatId = pairedId;
+      activeDaemonPairingCode = null;
+      activeDaemonPairingExpiresAtMs = 0;
+      await sendTelegramMessage(activeToken, pairedId, dispatch.responseMarkdown);
       break;
     }
 

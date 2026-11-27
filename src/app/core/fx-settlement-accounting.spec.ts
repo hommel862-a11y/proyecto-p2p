@@ -73,6 +73,7 @@ describe('TelegramWorkerService — FX Settlement Accounting, Multi-Account Spli
           provide: CredentialStoreService,
           useValue: {
             getTelegramConfig: vi.fn().mockResolvedValue({ botToken: '', chatId: '', alertsEnabled: false }),
+            setTelegramConfig: vi.fn().mockResolvedValue(undefined),
           },
         },
         { provide: ToastService, useValue: { success: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() } },
@@ -189,5 +190,234 @@ describe('TelegramWorkerService — FX Settlement Accounting, Multi-Account Spli
     // Verify OPS_KEY has 2 clean operations
     const savedOps = store[OPS_KEY] as Operation[];
     expect(savedOps.length).toBe(2);
+  });
+
+  it('enforces HMAC-SHA256 single-use FX_BOUGHT nonces, blocks unsigned/tampered/group callbacks, and clears replay', async () => {
+    const bdvAcc: BankAccount = {
+      id: 'bdv-hmac-1',
+      bankName: 'BDV Transferencia',
+      bankCode: 'BDV',
+      rail: 'TRANSFERENCIA',
+      accountNumberMasked: '0102-***1111',
+      dailyLimitVes: 250000,
+      initialBalanceVes: 100000,
+    };
+    accountsService.accounts.set([bdvAcc]);
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => 'OK',
+      json: async () => ({ ok: true }),
+    }) as unknown as typeof fetch;
+
+    try {
+      const nonce = worker.issueFxBoughtNonce('BDV', 250);
+      expect(nonce).toMatch(/^[a-f0-9]{16}$/);
+
+      const processUpdate = (worker as unknown as {
+        processIncomingUpdate: (u: unknown, t: string, c: string) => Promise<void>;
+      }).processIncomingUpdate.bind(worker);
+
+      // 1. Unsigned callback (missing nonce) must fail closed
+      await processUpdate(
+        {
+          update_id: 7001,
+          callback_query: {
+            id: 'cb-unsigned',
+            from: { id: 555001 },
+            data: 'FX_BOUGHT:BDV:250',
+            message: { message_id: 10, chat: { id: 555001, type: 'private' } },
+          },
+        },
+        'tok-1',
+        '555001',
+      );
+      expect(accountsService.usages()[0].spentTodayVes).toBe(0);
+
+      // 2. Group chat callback with valid nonce must be rejected
+      await processUpdate(
+        {
+          update_id: 7002,
+          callback_query: {
+            id: 'cb-group',
+            from: { id: 555001 },
+            data: `FX_BOUGHT:BDV:250:${nonce}`,
+            message: { message_id: 11, chat: { id: 555001, type: 'supergroup' } },
+          },
+        },
+        'tok-1',
+        '555001',
+      );
+      expect(accountsService.usages()[0].spentTodayVes).toBe(0);
+
+      // 3. Tampered amount or bank must fail without settling
+      await processUpdate(
+        {
+          update_id: 7003,
+          callback_query: {
+            id: 'cb-tamper-amt',
+            from: { id: 555001 },
+            data: `FX_BOUGHT:BDV:500:${nonce}`,
+            message: { message_id: 12, chat: { id: 555001, type: 'private' } },
+          },
+        },
+        'tok-1',
+        '555001',
+      );
+      expect(accountsService.usages()[0].spentTodayVes).toBe(0);
+
+      // 4. Legitimate private callback settles ONCE (250 * 62.5 = 15,625 + 0.25% = 15,664.06 Bs)
+      await processUpdate(
+        {
+          update_id: 7004,
+          callback_query: {
+            id: 'cb-valid',
+            from: { id: 555001 },
+            data: `FX_BOUGHT:BDV:250:${nonce}`,
+            message: { message_id: 13, chat: { id: 555001, type: 'private' } },
+          },
+        },
+        'tok-1',
+        '555001',
+      );
+      expect(accountsService.usages()[0].spentTodayVes).toBeCloseTo(15664.06, 2);
+
+      // 5. Exact replay of the same nonce cannot double-book
+      await processUpdate(
+        {
+          update_id: 7005,
+          callback_query: {
+            id: 'cb-replay',
+            from: { id: 555001 },
+            data: `FX_BOUGHT:BDV:250:${nonce}`,
+            message: { message_id: 13, chat: { id: 555001, type: 'private' } },
+          },
+        },
+        'tok-1',
+        '555001',
+      );
+      expect(accountsService.usages()[0].spentTodayVes).toBeCloseTo(15664.06, 2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('requires matching 6-digit OTP pairing challenge when active and blocks wrong/group attempts', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/getMe')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, result: { id: 1, username: 'TestBot', first_name: 'Bot' } }),
+        } as unknown as Response;
+      }
+      if (url.includes('/getUpdates')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            result: [
+              {
+                update_id: 1,
+                message: {
+                  message_id: 1,
+                  from: { id: 999111 },
+                  chat: { id: 999111, type: 'private' },
+                  text: '/start',
+                  date: 1_700_000_000,
+                },
+              },
+              {
+                update_id: 2,
+                message: {
+                  message_id: 2,
+                  from: { id: 555111 },
+                  chat: { id: -100555111, type: 'supergroup' },
+                  text: `/vincular ${otp}`,
+                  date: 1_700_000_001,
+                },
+              },
+              {
+                update_id: 3,
+                message: {
+                  message_id: 3,
+                  from: { id: 555111, username: 'owner', first_name: 'Owner' },
+                  chat: { id: 555111, type: 'private' },
+                  text: `/vincular ${otp}`,
+                  date: 1_700_000_002,
+                },
+              },
+            ],
+          }),
+        } as unknown as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => 'OK',
+        json: async () => ({ ok: true }),
+      } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    const otp = worker.generatePairingChallenge();
+    expect(otp).toMatch(/^\d{6}$/);
+
+    try {
+      const processUpdate = (worker as unknown as {
+        processIncomingUpdate: (u: unknown, t: string, c: string) => Promise<void>;
+      }).processIncomingUpdate.bind(worker);
+
+      // Wrong OTP cannot pair or poison lastInboundChat
+      await processUpdate(
+        {
+          update_id: 8001,
+          message: {
+            message_id: 50,
+            from: { id: 999111 },
+            chat: { id: 999111, type: 'private' },
+            text: '/vincular 000000',
+            date: 1_700_000_000,
+          },
+        },
+        'tok-1',
+        '',
+      );
+      expect(worker.lastInboundChat()).toBeNull();
+      expect(worker.pairingChallengeCode()).toBe(otp);
+
+      // Unmatched OTP in detectChatIdFromUpdates rejects strangers & groups
+      const wrongDetect = await worker.detectChatIdFromUpdates('tok-1', '999999');
+      expect(wrongDetect.success).toBe(false);
+
+      // Matching OTP in private chat resolves owner chatId and clears challenge on processIncomingUpdate
+      const matchedDetect = await worker.detectChatIdFromUpdates('tok-1', otp);
+      expect(matchedDetect.success).toBe(true);
+      expect(matchedDetect.chatId).toBe('555111');
+
+      await processUpdate(
+        {
+          update_id: 8002,
+          message: {
+            message_id: 51,
+            from: { id: 555111, username: 'owner', first_name: 'Owner' },
+            chat: { id: 555111, type: 'private' },
+            text: `/vincular ${otp}`,
+            date: 1_700_000_003,
+          },
+        },
+        'tok-1',
+        '',
+      );
+      expect(worker.pairingChallengeCode()).toBeNull();
+      expect(worker.lastInboundChat()?.chatId).toBe('555111');
+      expect(worker.lastInboundChat()?.pairingCode).toBe(otp);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

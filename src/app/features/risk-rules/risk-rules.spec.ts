@@ -41,6 +41,8 @@ describe('RiskRules', () => {
     getConfig: MockFn;
     getBotInfo: MockFn;
     detectChatIdFromUpdates: MockFn;
+    generatePairingChallenge: MockFn;
+    clearPairingChallenge: MockFn;
     saveConfig: MockFn;
     startPolling: MockFn;
     stopPolling: MockFn;
@@ -82,11 +84,16 @@ describe('RiskRules', () => {
         success: false,
         botUsername: 'MockBot',
       }),
+      generatePairingChallenge: vi.fn(() => '482913'),
+      clearPairingChallenge: vi.fn(),
       saveConfig: vi.fn().mockResolvedValue(undefined),
       startPolling: vi.fn(),
       stopPolling: vi.fn(),
       isPolling: vi.fn(() => false),
       recentLogs: vi.fn(() => []),
+    } as typeof worker & {
+      generatePairingChallenge: MockFn;
+      clearPairingChallenge: MockFn;
     };
     binance = {
       fetchMarketDepth: vi.fn().mockResolvedValue({
@@ -322,6 +329,44 @@ describe('RiskRules', () => {
     await component.detectChatId();
     expect(toast.warn).toHaveBeenCalledWith(expect.stringContaining('Token'));
     expect(worker.detectChatIdFromUpdates).not.toHaveBeenCalled();
+  });
+
+  it('generates 6-digit OTP pairing challenge and forwards it to detectChatIdFromUpdates', async () => {
+    component.telegramToken.set('123456789:AAA-bot-token');
+    component.generateTelegramPairingCode();
+    expect(component.activePairingCode()).toBe('482913');
+    expect(toast.info).toHaveBeenCalledWith(
+      expect.stringContaining('/vincular 482913'),
+      'Reto OTP 6 Dígitos',
+    );
+
+    worker.detectChatIdFromUpdates.mockResolvedValue({
+      success: true,
+      chatId: '987654321',
+      firstName: 'Ana',
+      botUsername: 'MockBot',
+    });
+    vi.spyOn(component, 'sendTestTelegramAlert').mockResolvedValue();
+
+    await component.detectChatId();
+
+    expect(worker.detectChatIdFromUpdates).toHaveBeenCalledWith(
+      '123456789:AAA-bot-token',
+      '482913',
+    );
+    expect(component.activePairingCode()).toBeNull();
+    expect(worker.clearPairingChallenge).toHaveBeenCalled();
+  });
+
+  it('saveTelegramConfig() blocks negative group/supergroup Chat IDs (OPSEC 1:1 private chat only)', () => {
+    component.telegramToken.set('123456789:AAA-bot-token');
+    component.telegramChatId.set('-1001234567890');
+    component.saveTelegramConfig();
+
+    expect(worker.saveConfig).not.toHaveBeenCalled();
+    expect(toast.warn).toHaveBeenCalledWith(
+      expect.stringContaining('chat privado 1:1'),
+    );
   });
 
   it('detectChatId() on success updates chatId, saves config, and triggers test alert', async () => {

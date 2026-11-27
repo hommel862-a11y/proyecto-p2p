@@ -6,6 +6,7 @@ import {
   handleUpdate,
   issueDaemonFxBoughtNonce,
   validateAndConsumeDaemonFxBoughtNonce,
+  issueDaemonPairingChallenge,
   resetDaemonFxStateForTesting,
 } from '../index';
 
@@ -214,5 +215,88 @@ describe('Telegram Daemon — Mesa Cambiaria BCV (/mesa, FX_BOUGHT, FX_EMPTY)', 
 
     const answerCall = apiCalls.find((c) => c.url.includes('/answerCallbackQuery'));
     expect(String(answerCall?.body['text'] ?? '')).toMatch(/procesado|expirado/i);
+  });
+
+  it('rejects unsigned FX_BOUGHT callbacks and verifies 6-digit private-chat pairing challenge', async () => {
+    const apiCalls: Array<{ url: string; body: Record<string, unknown> }> = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('api.cotizave.com')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ rates: { bcv: { mid: 65.0, price: 65.0 } } }),
+        } as unknown as Response;
+      }
+      apiCalls.push({
+        url,
+        body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
+      });
+      return { ok: true, status: 200, text: async () => 'OK', json: async () => ({ ok: true }) } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    // 1. Unsigned FX_BOUGHT (missing HMAC nonce) must be rejected fail-closed
+    await handleUpdate(
+      {
+        update_id: 9010,
+        callback_query: {
+          id: 'cb-unsigned-1',
+          from: { id: 777001 },
+          data: 'FX_BOUGHT:BDV:100',
+          message: {
+            message_id: 90,
+            chat: { id: 777001, type: 'private' },
+          },
+        },
+      },
+      {
+        botToken: 'test-bot-token',
+        authorizedChatId: '777001',
+        cotizaveApiKey: 'cotiza-test-key',
+      },
+    );
+    expect(apiCalls.some((c) => String(c.body['text'] ?? '').includes('Asiento 1x Fee'))).toBe(false);
+
+    // 2. 6-digit OTP pairing challenge: wrong code denied, valid code confirms private chat
+    const code = issueDaemonPairingChallenge();
+    expect(code).toMatch(/^\d{6}$/);
+
+    apiCalls.length = 0;
+    await handleUpdate(
+      {
+        update_id: 9011,
+        message: {
+          message_id: 91,
+          from: { id: 888999 },
+          chat: { id: 888999, type: 'private' },
+          text: '/vincular 000000',
+          date: 1_700_000_001,
+        },
+      },
+      {
+        botToken: 'test-bot-token',
+        authorizedChatId: '',
+      },
+    );
+    expect(String(apiCalls[0]?.body['text'] ?? '')).toMatch(/incorrecto|expirado/i);
+
+    apiCalls.length = 0;
+    await handleUpdate(
+      {
+        update_id: 9012,
+        message: {
+          message_id: 92,
+          from: { id: 888999 },
+          chat: { id: 888999, type: 'private' },
+          text: `/vincular ${code}`,
+          date: 1_700_000_002,
+        },
+      },
+      {
+        botToken: 'test-bot-token',
+        authorizedChatId: '',
+      },
+    );
+    expect(String(apiCalls[0]?.body['text'] ?? '')).toMatch(/OTP 6 DÍGITOS VERIFICADA/i);
   });
 });

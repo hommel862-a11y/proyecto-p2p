@@ -73,6 +73,10 @@ import {
   detectFxInterventionReceipt,
   formatFxDeskTelegramMessage,
   buildFxDeskTelegramKeyboard,
+  computeHmacSha256Hex,
+  timingSafeHexEqual,
+  generatePairingChallengeCode,
+  extractPairingChallengeCode,
   type FxDeskEvaluationPlan,
   type FxDeskModality,
   type FxInterventionBankId,
@@ -80,6 +84,7 @@ import {
   type FxDeskActionParams,
   type FxBoughtCallbackParams,
   type FxEmptyCallbackParams,
+  type PairingActionParams,
 } from '@p2p/core';
 import Tesseract from 'tesseract.js';
 import { DecisionJournalService, IN_MEMORY_JOURNAL_REASON } from './decision-journal.service';
@@ -465,8 +470,21 @@ export class TelegramWorkerService implements OnDestroy {
     chatId: string;
     username?: string;
     firstName?: string;
+    pairingCode?: string;
     receivedAt: Date;
   } | null>(null);
+  readonly pairingChallengeCode = signal<string | null>(null);
+
+  private static readonly FX_PAIRING_TTL_MS = 10 * 60 * 1000;
+  private pairingChallengeExpiresAt = 0;
+  private readonly fxHmacSecret: string = (() => {
+    const bytes = new Uint8Array(32);
+    if (typeof globalThis.crypto?.getRandomValues === 'function') {
+      globalThis.crypto.getRandomValues(bytes);
+      return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    }
+    return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+  })();
 
   private abortController: AbortController | null = null;
   private currentOffset = 0;
@@ -555,11 +573,37 @@ export class TelegramWorkerService implements OnDestroy {
     }
   }
 
-  async detectChatIdFromUpdates(token: string): Promise<TelegramChatDetectionResult> {
+  generatePairingChallenge(ttlMs = TelegramWorkerService.FX_PAIRING_TTL_MS): string {
+    const code = generatePairingChallengeCode();
+    this.pairingChallengeExpiresAt = Date.now() + ttlMs;
+    this.pairingChallengeCode.set(code);
+    return code;
+  }
+
+  clearPairingChallenge(): void {
+    this.pairingChallengeExpiresAt = 0;
+    this.pairingChallengeCode.set(null);
+  }
+
+  getActivePairingChallenge(nowMs = Date.now()): string | undefined {
+    const code = this.pairingChallengeCode();
+    if (!code) return undefined;
+    if (this.pairingChallengeExpiresAt <= nowMs) {
+      this.clearPairingChallenge();
+      return undefined;
+    }
+    return code;
+  }
+
+  async detectChatIdFromUpdates(
+    token: string,
+    expectedPairingCode?: string,
+  ): Promise<TelegramChatDetectionResult> {
     const cleanToken = token.trim();
     if (!cleanToken) {
       return { success: false, error: 'Ingresa primero el Token del Bot.' };
     }
+    const cleanExpectedOtp = expectedPairingCode?.trim() || undefined;
 
     const botInfo = await this.getBotInfo(cleanToken);
     if (!botInfo) {
@@ -572,7 +616,7 @@ export class TelegramWorkerService implements OnDestroy {
 
     // Check if an inbound message was already captured in memory by background long-polling
     const cachedChat = this.lastInboundChat();
-    if (cachedChat?.chatId) {
+    if (cachedChat?.chatId && (!cleanExpectedOtp || cachedChat.pairingCode === cleanExpectedOtp)) {
       return {
         success: true,
         chatId: cachedChat.chatId,
@@ -594,10 +638,13 @@ export class TelegramWorkerService implements OnDestroy {
     // from cache. We only query getUpdates directly when polling is OFF (the usual
     // first-pairing path, since startPolling requires a chatId that is still unknown).
     if (this.isPolling()) {
+      const actionHint = cleanExpectedOtp
+        ? `enviá "/vincular ${cleanExpectedOtp}"`
+        : 'tocá "Iniciar" (/start)';
       return {
         success: false,
         botUsername: botInfo.username,
-        error: `El worker 24/7 ya está escuchando al bot (long-polling activo). Abrí https://t.me/${botInfo.username}, tocá "Iniciar" (/start) y reintentá: el propio worker captura tu chat y lo detectará en el siguiente intento.`,
+        error: `El worker 24/7 ya está escuchando al bot (long-polling activo). Abrí https://t.me/${botInfo.username}, ${actionHint} y reintentá: el propio worker captura tu chat privado y lo detectará en el siguiente intento.`,
       };
     }
 
@@ -626,6 +673,10 @@ export class TelegramWorkerService implements OnDestroy {
         const chat = u.message?.chat || u.callback_query?.message?.chat;
         const chatType = chat && 'type' in chat ? chat.type : undefined;
         if (chatType && chatType !== 'private') continue;
+        if (cleanExpectedOtp) {
+          const msgText = (u.message?.text || u.message?.caption || '').trim();
+          if (extractPairingChallengeCode(msgText) !== cleanExpectedOtp) continue;
+        }
         const from = u.message?.from || u.callback_query?.from;
         if (chat?.id) {
           const firstName = from && 'first_name' in from ? (from as { first_name?: string }).first_name : undefined;
@@ -642,7 +693,9 @@ export class TelegramWorkerService implements OnDestroy {
       return {
         success: false,
         botUsername: botInfo.username,
-        error: `No se detectó ningún chat válido. Escribile /start a @${botInfo.username} en Telegram.`,
+        error: cleanExpectedOtp
+          ? `No se detectó el reto OTP ${cleanExpectedOtp} en ningún chat privado. Enviá /vincular ${cleanExpectedOtp} a @${botInfo.username} en Telegram.`
+          : `No se detectó ningún chat privado válido. Escribile /start a @${botInfo.username} en Telegram.`,
       };
     } catch {
       return {
@@ -776,20 +829,31 @@ export class TelegramWorkerService implements OnDestroy {
     const chatId =
       update.message?.chat.id || update.callback_query?.message?.chat.id || authorizedChatId;
 
-    // Anti-hijack guard: only cache private chats, and once paired, never overwrite with strangers
+    // Anti-hijack guard: dispatch first with active 6-digit OTP challenge; only cache private,
+    // authorized/matched-OTP chats into lastInboundChat (never PAIRING_DENIED or groups).
     const inboundChatType = chat && 'type' in chat ? chat.type : undefined;
     const isPrivateChat = !inboundChatType || inboundChatType === 'private';
     const matchesPaired = !authorizedChatId || String(chat?.id) === String(authorizedChatId);
-    if (chat?.id && isPrivateChat && matchesPaired) {
+    const activePairingCode = this.getActivePairingChallenge();
+    const dispatch = dispatchTelegramUpdate(update, authorizedChatId, activePairingCode);
+    const rawMsgOrCaption = (update.message?.text || update.message?.caption || '').trim();
+    const extractedOtp = extractPairingChallengeCode(rawMsgOrCaption) ?? undefined;
+
+    if (
+      chat?.id &&
+      isPrivateChat &&
+      dispatch.action !== 'PAIRING_DENIED' &&
+      (matchesPaired || dispatch.action === 'PAIRING_CONFIRMED')
+    ) {
       this.lastInboundChat.set({
         chatId: String(chat.id),
         username: from?.username,
         firstName: from && 'first_name' in from ? (from as { first_name?: string }).first_name : undefined,
+        pairingCode: extractedOtp,
         receivedAt: new Date(),
       });
     }
 
-    const dispatch = dispatchTelegramUpdate(update, authorizedChatId);
     const timeStr = new Date().toLocaleTimeString('es-VE');
 
     if (!dispatch.authorized) {
@@ -1570,6 +1634,14 @@ export class TelegramWorkerService implements OnDestroy {
       }
 
       case 'FX_BOUGHT': {
+        if (inboundChatType && inboundChatType !== 'private') {
+          await this.answerCallbackQuery(
+            token,
+            update.callback_query?.id,
+            'Operación bloqueada en grupos: usá chat privado 1:1',
+          );
+          break;
+        }
         const params = dispatch.params as FxBoughtCallbackParams | undefined;
         if (!params?.bankId || !params.orderUsd) {
           await this.answerCallbackQuery(token, update.callback_query?.id, 'Datos incompletos');
@@ -1584,7 +1656,7 @@ export class TelegramWorkerService implements OnDestroy {
           await this.answerCallbackQuery(
             token,
             update.callback_query?.id,
-            'Pacto ya procesado o expirado (Anti-Doble Gasto)',
+            'Pacto rechazado: firma HMAC faltante, inválida o expirada (Anti-Doble Gasto)',
           );
           if (cbMsgId) {
             await this.clearTelegramInlineKeyboard(token, chatId, cbMsgId);
@@ -1646,6 +1718,24 @@ export class TelegramWorkerService implements OnDestroy {
           command: `Sin cupo ${params?.bankId ?? ''}`,
           action: 'FX_EMPTY',
           status: 'SUCCESS',
+        });
+        break;
+      }
+
+      case 'PAIRING_CONFIRMED': {
+        const params = dispatch.params as PairingActionParams | undefined;
+        const pairedId = String(params?.chatId ?? chatId);
+        this.clearPairingChallenge();
+        if (!authorizedChatId || authorizedChatId !== pairedId) {
+          void this.saveConfig({ ...this.config(), chatId: pairedId });
+        }
+        await this.sendTelegramMessage(token, pairedId, dispatch.responseMarkdown);
+        this.addLog({
+          time: timeStr,
+          command: dispatch.command || '/vincular',
+          action: 'PAIRING_CONFIRMED',
+          status: 'SUCCESS',
+          details: `Chat privado ${pairedId}`,
         });
         break;
       }
@@ -2759,7 +2849,7 @@ export class TelegramWorkerService implements OnDestroy {
 
   private readonly pendingFxNonces = new Map<
     string,
-    { bankId: FxInterventionBankId; orderUsd: number; expiresAt: number }
+    { bankId: FxInterventionBankId; orderUsd: number; mac: string; expiresAt: number }
   >();
   private readonly consumedFxDedupKeys = new Set<string>();
 
@@ -2878,14 +2968,25 @@ export class TelegramWorkerService implements OnDestroy {
     for (const [k, v] of this.pendingFxNonces.entries()) {
       if (v.expiresAt <= now) this.pendingFxNonces.delete(k);
     }
-    const bytes = new Uint8Array(6);
-    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-      crypto.getRandomValues(bytes);
+    const normalizedUsd = roundMoney(orderUsd, 2);
+    const bytes = new Uint8Array(4);
+    if (typeof globalThis.crypto?.getRandomValues === 'function') {
+      globalThis.crypto.getRandomValues(bytes);
+    } else {
+      for (let i = 0; i < bytes.length; i++) {
+        bytes[i] = Math.floor(Math.random() * 256);
+      }
     }
-    const nonce = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    const salt = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    const mac = computeHmacSha256Hex(
+      this.fxHmacSecret,
+      `${salt}:${bankId}:${normalizedUsd}`,
+    );
+    const nonce = `${salt}${mac.slice(0, 8)}`;
     this.pendingFxNonces.set(nonce, {
       bankId,
-      orderUsd,
+      orderUsd: normalizedUsd,
+      mac,
       expiresAt: now + TelegramWorkerService.FX_NONCE_TTL_MS,
     });
     return nonce;
@@ -2897,25 +2998,56 @@ export class TelegramWorkerService implements OnDestroy {
     orderUsd: number,
     dedupKey: string,
   ): boolean {
-    if (this.consumedFxDedupKeys.has(dedupKey)) return false;
-    const profile = VENEZUELAN_FX_BANKS.find((b) => b.id === bankId);
-    if (!profile || orderUsd <= 0 || orderUsd > profile.maxTicketUsd * 4) return false;
-
-    if (nonce) {
-      const record = this.pendingFxNonces.get(nonce);
-      if (!record) return false;
-      if (
-        record.expiresAt <= Date.now() ||
-        record.bankId !== bankId ||
-        Math.abs(record.orderUsd - orderUsd) > 0.01
-      ) {
-        this.pendingFxNonces.delete(nonce);
-        return false;
-      }
-      this.pendingFxNonces.delete(nonce);
+    if (!nonce || !/^[a-f0-9]{16}$/i.test(nonce)) return false;
+    const normalizedNonce = nonce.toLowerCase();
+    if (
+      this.consumedFxDedupKeys.has(dedupKey) ||
+      this.consumedFxDedupKeys.has(`nonce:${normalizedNonce}`)
+    ) {
+      return false;
     }
 
+    const profile = VENEZUELAN_FX_BANKS.find((b) => b.id === bankId);
+    const normalizedUsd = roundMoney(orderUsd, 2);
+    if (
+      !profile ||
+      !Number.isFinite(normalizedUsd) ||
+      normalizedUsd <= 0 ||
+      normalizedUsd > profile.maxTicketUsd * 4
+    ) {
+      return false;
+    }
+
+    const record = this.pendingFxNonces.get(normalizedNonce);
+    if (!record) return false;
+    if (record.expiresAt <= Date.now()) {
+      this.pendingFxNonces.delete(normalizedNonce);
+      return false;
+    }
+    if (record.bankId !== bankId || Math.abs(record.orderUsd - normalizedUsd) > 0.01) {
+      return false;
+    }
+
+    const salt = normalizedNonce.slice(0, 8);
+    const macTag = normalizedNonce.slice(8);
+    const expectedMac = computeHmacSha256Hex(
+      this.fxHmacSecret,
+      `${salt}:${bankId}:${normalizedUsd}`,
+    );
+    if (
+      !timingSafeHexEqual(record.mac, expectedMac) ||
+      !timingSafeHexEqual(macTag, expectedMac.slice(0, 8))
+    ) {
+      return false;
+    }
+
+    this.pendingFxNonces.delete(normalizedNonce);
     this.consumedFxDedupKeys.add(dedupKey);
+    this.consumedFxDedupKeys.add(`nonce:${normalizedNonce}`);
+    if (this.consumedFxDedupKeys.size > 500) {
+      const oldest = this.consumedFxDedupKeys.values().next().value;
+      if (oldest) this.consumedFxDedupKeys.delete(oldest);
+    }
     return true;
   }
 

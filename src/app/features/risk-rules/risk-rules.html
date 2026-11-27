@@ -469,8 +469,8 @@
         <!-- Chat ID -->
         <div class="terminal-field">
           <label class="terminal-label" for="telegram-chat-id">
-            <span>Chat ID Autorizado (Personal o Supergrupo)</span>
-            <span class="terminal-subtext">Ej. 987654321 o -100...</span>
+            <span>Chat ID Autorizado (Chat Privado 1:1)</span>
+            <span class="terminal-subtext">Ej. 987654321 · Reto OTP 6 dígitos</span>
           </label>
           <div class="input-control-wrap">
             <input
@@ -496,16 +496,32 @@
             <button
               type="button"
               class="btn btn-secondary btn-sm"
-              style="flex: 1.3; font-size: 0.75rem; padding: 6px 8px; display: flex; align-items: center; justify-content: center; gap: 4px;"
+              style="flex: 1; font-size: 0.75rem; padding: 6px 8px; display: flex; align-items: center; justify-content: center; gap: 4px;"
+              (click)="generateTelegramPairingCode()"
+              title="Genera un reto OTP de 6 dígitos para vincular tu chat privado sin riesgo de secuestro"
+            >
+              <span>🔐 Reto 6 Dígitos</span>
+            </button>
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              style="flex: 1.2; font-size: 0.75rem; padding: 6px 8px; display: flex; align-items: center; justify-content: center; gap: 4px;"
               [disabled]="detectingChatId()"
               (click)="detectChatId()"
-              title="Detecta automáticamente tu Chat ID leyendo el último mensaje /start que enviaste a tu bot"
+              title="Detecta automáticamente tu Chat ID verificando el reto OTP o último /start en chat privado"
             >
               <span>{{ detectingChatId() ? '⏳ Vinculando...' : '🔍 Detectar Chat ID' }}</span>
             </button>
           </div>
+          @if (activePairingCode(); as otpCode) {
+            <div style="margin-top: 6px; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(56, 189, 248, 0.35); background: rgba(14, 165, 233, 0.08); font-size: 0.74rem;">
+              🔐 Enviá en tu chat privado a <strong>@{{ botUsername() || 'P2pTradeServiceBot' }}</strong>:
+              <code class="font-mono" style="font-weight: 700;">/vincular {{ otpCode }}</code>
+              <span> y luego presioná Detectar Chat ID.</span>
+            </div>
+          }
           <div style="margin-top: 4px; font-size: 0.72rem; color: #38bdf8;">
-            Bot: <strong>@{{ botUsername() || 'P2pTradeServiceBot' }}</strong> • Presioná "Abrir Bot" e "Iniciar" (/start) en Telegram.
+            Bot: <strong>@{{ botUsername() || 'P2pTradeServiceBot' }}</strong> • Chat privado 1:1 (grupos bloqueados por OPSEC).
           </div>
         </div>
 

@@ -28,6 +28,9 @@ import {
   buildPlanApprovalKeyboard,
   formatFxDeskTelegramMessage,
   buildFxDeskTelegramKeyboard,
+  computeHmacSha256Hex,
+  generatePairingChallengeCode,
+  extractPairingChallengeCode,
   type StrategyPlanTelegramCard,
   type PanelReport,
 } from './telegram-sentinel';
@@ -1854,21 +1857,59 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       expect(kb.inline_keyboard[0][1].callback_data).toMatch(/^FX_BOUGHT:/);
     });
 
-    it('despacha callbacks FX_BOUGHT y FX_EMPTY con MarkdownV2 válido', () => {
-      const boughtRes = dispatchTelegramUpdate(
+    it('despacha callbacks FX_BOUGHT (con nonce obligatorio) y FX_EMPTY con MarkdownV2 válido y bloquea callbacks sin nonce o en grupos', () => {
+      // 1. Callback sin nonce debe rechazarse fail-closed
+      const unsignedBought = dispatchTelegramUpdate(
         {
-          update_id: 9002,
+          update_id: 9001,
           callback_query: {
-            id: 'cb-fx-1',
+            id: 'cb-fx-unsigned',
             from: { id: 123456 },
             data: 'FX_BOUGHT:BDV:750',
           },
         },
         123456,
       );
+      expect(unsignedBought.authorized).toBe(false);
+      expect(unsignedBought.action).toBeUndefined();
+
+      // 2. Callback con nonce desde grupo/supergrupo debe bloquearse
+      const groupCb = dispatchTelegramUpdate(
+        {
+          update_id: 90011,
+          callback_query: {
+            id: 'cb-fx-group',
+            from: { id: 123456 },
+            data: 'FX_BOUGHT:BDV:750:sig_test_750',
+            message: {
+              message_id: 40,
+              chat: { id: -100111222333, type: 'supergroup' } as unknown as { id: number },
+            },
+          },
+        },
+        123456,
+      );
+      expect(groupCb.authorized).toBe(false);
+
+      // 3. Callback firmado con nonce en chat privado es autorizado
+      const boughtRes = dispatchTelegramUpdate(
+        {
+          update_id: 9002,
+          callback_query: {
+            id: 'cb-fx-1',
+            from: { id: 123456 },
+            data: 'FX_BOUGHT:BDV:750:sig_test_750',
+            message: {
+              message_id: 41,
+              chat: { id: 123456, type: 'private' } as unknown as { id: number },
+            },
+          },
+        },
+        123456,
+      );
       expect(boughtRes.authorized).toBe(true);
       expect(boughtRes.action).toBe('FX_BOUGHT');
-      expect(boughtRes.params).toEqual({ bankId: 'BDV', orderUsd: 750 });
+      expect(boughtRes.params).toEqual({ bankId: 'BDV', orderUsd: 750, nonce: 'sig_test_750' });
       expectParseableMarkdownV2(boughtRes.responseMarkdown);
 
       const emptyRes = dispatchTelegramUpdate(
@@ -1886,6 +1927,50 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       expect(emptyRes.action).toBe('FX_EMPTY');
       expect(emptyRes.params).toEqual({ bankId: 'BANCAMIGA' });
       expectParseableMarkdownV2(emptyRes.responseMarkdown);
+
+      // 4. Reto de vinculación chatId de 6 dígitos + HMAC-SHA256 puro
+      const otp = generatePairingChallengeCode();
+      expect(otp).toMatch(/^\d{6}$/);
+      expect(extractPairingChallengeCode(`/vincular ${otp}`)).toBe(otp);
+
+      const validPair = dispatchTelegramUpdate(
+        {
+          update_id: 9004,
+          message: {
+            message_id: 10,
+            from: { id: 555777 },
+            chat: { id: 555777, type: 'private' },
+            text: `/vincular ${otp}`,
+            date: Date.now(),
+          },
+        },
+        123456,
+        otp,
+      );
+      expect(validPair.authorized).toBe(true);
+      expect(validPair.action).toBe('PAIRING_CONFIRMED');
+
+      const badPair = dispatchTelegramUpdate(
+        {
+          update_id: 9005,
+          message: {
+            message_id: 11,
+            from: { id: 555777 },
+            chat: { id: 555777, type: 'private' },
+            text: `/vincular 000000`,
+            date: Date.now(),
+          },
+        },
+        123456,
+        otp,
+      );
+      expect(badPair.authorized).toBe(false);
+      expect(badPair.action).toBe('PAIRING_DENIED');
+
+      const mac1 = computeHmacSha256Hex('secret-key', 'BDV:100');
+      const mac2 = computeHmacSha256Hex('secret-key', 'BDV:200');
+      expect(mac1).toMatch(/^[a-f0-9]{64}$/);
+      expect(mac1).not.toBe(mac2);
     });
 
     it('resolves multi-word "/mesa 100% Banco 50000", carries FX_BOUGHT nonces, uses activeExitRailLabel & blocks group leaks', () => {
