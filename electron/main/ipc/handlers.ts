@@ -28,6 +28,10 @@ import {
   type Finance360ExportPdfResult,
 } from '../../shared/types';
 import { P2PDatabaseService } from '../db/database';
+import {
+  isTrustedRendererOrigin,
+  validateTelegramFileDownloadParams,
+} from '../security/bridge-guards';
 import { parseCloseCyclePayload } from '../db/decision-journal.repository';
 import type {
   DecisionCyclesFilter,
@@ -431,7 +435,10 @@ function normalizeElectronCotizaveKey(raw: string): string {
  * Shared singleflight + cached + 429-protected Cotizave fetcher.
  * Used by both `p2p:fetch-cotizave` IPC and the local HTTP bridge (`/api/cotizave/rates`).
  */
-export async function fetchCotizaveShared(req: CotizaveRequest): Promise<unknown> {
+export async function fetchCotizaveShared(
+  req: CotizaveRequest,
+  options?: { persistKey?: boolean },
+): Promise<unknown> {
   if (!req || typeof req.apiKey !== 'string') {
     throw new Error('Cotizave API key is required');
   }
@@ -442,17 +449,7 @@ export async function fetchCotizaveShared(req: CotizaveRequest): Promise<unknown
   if (req.endpoint !== 'rates') {
     throw new Error('Cotizave endpoint must be "rates"');
   }
-  process.env['COTIZAVE_API_KEY'] = trimmedKey;
-
-  if (isSecretStorageAvailable()) {
-    try {
-      const db = getDbService();
-      db.setConfigValue('cotizave_api_key', encryptSecret(trimmedKey));
-      db.setConfigValue('cotizave_api_key_scheme', SECRET_SCHEME);
-    } catch (err) {
-      console.warn('[Cotizave] safeStorage failed to persist API key:', err);
-    }
-  }
+  const shouldPersistKey = options?.persistKey !== false;
 
   const now = Date.now();
   if (
@@ -530,6 +527,18 @@ export async function fetchCotizaveShared(req: CotizaveRequest): Promise<unknown
       }
       const jsonResult = await response.json();
       cotizaveIpcCache = { apiKey: trimmedKey, data: jsonResult, timestamp: Date.now() };
+      if (shouldPersistKey) {
+        process.env['COTIZAVE_API_KEY'] = trimmedKey;
+        if (isSecretStorageAvailable()) {
+          try {
+            const db = getDbService();
+            db.setConfigValue('cotizave_api_key', encryptSecret(trimmedKey));
+            db.setConfigValue('cotizave_api_key_scheme', SECRET_SCHEME);
+          } catch (err) {
+            console.warn('[Cotizave] safeStorage failed to persist API key:', err);
+          }
+        }
+      }
       try {
         const reading = parseCotizaveRatesPayload(jsonResult);
         if (reading && typeof reading.usd === 'number' && reading.usd > 0) {
@@ -950,8 +959,9 @@ export function registerIpcHandlers(): void {
       params: { token: string; filePath: string },
     ): Promise<{ success: boolean; base64: string; mimeType: string }> => {
       const { token, filePath } = params || {};
-      if (!token || !filePath) {
-        throw new Error('Parámetros de Telegram inválidos (token o filePath faltante)');
+      const check = validateTelegramFileDownloadParams(token, filePath);
+      if (!check.valid || !token || !filePath) {
+        throw new Error(check.reason ?? 'Parámetros de Telegram inválidos (token o filePath faltante)');
       }
       const downloadUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
       const response = await net.fetch(downloadUrl, {
@@ -995,21 +1005,93 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.removeHandler('crypto:encrypt');
-  ipcMain.handle('crypto:encrypt', (_event: IpcMainInvokeEvent, plaintext: string): string => {
+  ipcMain.handle('crypto:encrypt', (event: IpcMainInvokeEvent, plaintext: string): string => {
+    if (!isTrustedRendererOrigin(event.senderFrame?.url)) {
+      throw new Error('Untrusted renderer frame rejected by DPAPI guard');
+    }
     if (!safeStorage.isEncryptionAvailable()) {
       throw new Error('safeStorage encryption is not available on this platform');
+    }
+    if (typeof plaintext !== 'string' || plaintext.length > 8192) {
+      throw new Error('Invalid plaintext length');
     }
     const buffer = safeStorage.encryptString(plaintext);
     return buffer.toString('base64');
   });
 
   ipcMain.removeHandler('crypto:decrypt');
-  ipcMain.handle('crypto:decrypt', (_event: IpcMainInvokeEvent, ciphertext: string): string => {
+  ipcMain.handle('crypto:decrypt', (event: IpcMainInvokeEvent, ciphertext: string): string => {
+    if (!isTrustedRendererOrigin(event.senderFrame?.url)) {
+      throw new Error('Untrusted renderer frame rejected by DPAPI guard');
+    }
     if (!safeStorage.isEncryptionAvailable()) {
       throw new Error('safeStorage encryption is not available on this platform');
     }
+    if (typeof ciphertext !== 'string' || ciphertext.length > 16384) {
+      throw new Error('Invalid ciphertext length');
+    }
     const buffer = Buffer.from(ciphertext, 'base64');
     return safeStorage.decryptString(buffer);
+  });
+
+  ipcMain.removeHandler('vault:set');
+  ipcMain.handle(
+    'vault:set',
+    (event: IpcMainInvokeEvent, payload: { key: string; secret: string }): boolean => {
+      if (!isTrustedRendererOrigin(event.senderFrame?.url)) {
+        throw new Error('Untrusted renderer frame rejected by Vault guard');
+      }
+      const key = String(payload?.key ?? '').trim();
+      const secret = String(payload?.secret ?? '');
+      if (!/^[a-zA-Z0-9._:-]{1,96}$/.test(key) || secret.length > 8192) {
+        return false;
+      }
+      if (!safeStorage.isEncryptionAvailable()) {
+        return false;
+      }
+      const encrypted = safeStorage.encryptString(secret).toString('base64');
+      db.setConfigValue(`vault:${key}`, encrypted);
+      return true;
+    },
+  );
+
+  ipcMain.removeHandler('vault:get');
+  ipcMain.handle('vault:get', (event: IpcMainInvokeEvent, payload: { key: string }): string | null => {
+    if (!isTrustedRendererOrigin(event.senderFrame?.url)) {
+      throw new Error('Untrusted renderer frame rejected by Vault guard');
+    }
+    const key = String(payload?.key ?? '').trim();
+    if (!/^[a-zA-Z0-9._:-]{1,96}$/.test(key) || !safeStorage.isEncryptionAvailable()) {
+      return null;
+    }
+    const stored = db.getConfigValue(`vault:${key}`);
+    if (!stored) return null;
+    try {
+      return safeStorage.decryptString(Buffer.from(stored, 'base64'));
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.removeHandler('vault:has');
+  ipcMain.handle('vault:has', (event: IpcMainInvokeEvent, payload: { key: string }): boolean => {
+    if (!isTrustedRendererOrigin(event.senderFrame?.url)) {
+      return false;
+    }
+    const key = String(payload?.key ?? '').trim();
+    if (!/^[a-zA-Z0-9._:-]{1,96}$/.test(key)) return false;
+    return Boolean(db.getConfigValue(`vault:${key}`));
+  });
+
+  ipcMain.removeHandler('vault:delete');
+  ipcMain.handle('vault:delete', (event: IpcMainInvokeEvent, payload: { key: string }): boolean => {
+    if (!isTrustedRendererOrigin(event.senderFrame?.url)) {
+      return false;
+    }
+    const key = String(payload?.key ?? '').trim();
+    if (!/^[a-zA-Z0-9._:-]{1,96}$/.test(key)) return false;
+    db.setConfigValue(`vault:${key}`, '');
+    return true;
   });
 
 
@@ -1163,6 +1245,32 @@ export function registerIpcHandlers(): void {
         return db.listOperationRecords(params?.limit);
       } catch (err) {
         console.warn('[IPC] Error in p2p:db-list-operation-records:', err);
+        return [];
+      }
+    },
+  );
+
+  ipcMain.removeHandler('p2p:db-save-fx-settlement');
+  ipcMain.handle(
+    'p2p:db-save-fx-settlement',
+    (_event: IpcMainInvokeEvent, record: any) => {
+      try {
+        return db.saveFxSettlementRecord(record);
+      } catch (err) {
+        console.warn('[IPC] Error in p2p:db-save-fx-settlement:', err);
+        return { saved: false, duplicate: false, prevHash: '', rowHash: '' };
+      }
+    },
+  );
+
+  ipcMain.removeHandler('p2p:db-list-fx-settlements');
+  ipcMain.handle(
+    'p2p:db-list-fx-settlements',
+    (_event: IpcMainInvokeEvent, params?: { limit?: number }): unknown[] => {
+      try {
+        return db.listFxSettlementRecords(params?.limit);
+      } catch (err) {
+        console.warn('[IPC] Error in p2p:db-list-fx-settlements:', err);
         return [];
       }
     },

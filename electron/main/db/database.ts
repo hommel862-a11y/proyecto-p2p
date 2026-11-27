@@ -149,6 +149,38 @@ export interface BankAccountRecord {
   updatedAt?: number;
 }
 
+export interface FxSettlementInput {
+  id: string;
+  idempotencyKey: string;
+  timestamp: string;
+  vetDateKey: string;
+  bankId: string;
+  bankName: string;
+  accountId?: string | null;
+  accountName?: string | null;
+  modality: string;
+  purchasedUsd: number;
+  bcvRateVes: number;
+  principalVes: number;
+  bankFeePct: number;
+  bankFeeVes: number;
+  totalDebitVes: number;
+  exitRail: string;
+  igtfPct: number;
+  igtfUsd: number;
+  railFeePct: number;
+  railFeeUsd: number;
+  netUsdt: number;
+  channel: string;
+  createdAt?: number;
+}
+
+export interface FxSettlementRecord extends FxSettlementInput {
+  prevHash: string;
+  rowHash: string;
+  createdAt: number;
+}
+
 export class P2PDatabaseService {
   private db: DatabaseSync;
   /**
@@ -287,6 +319,53 @@ export class P2PDatabaseService {
         );
       `);
     }
+
+    // Ensure fx_settlement_ledger and operation_records always exist across upgraded DBs and inline fallback
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS operation_records (
+        id TEXT PRIMARY KEY,
+        timestamp TEXT NOT NULL,
+        side TEXT NOT NULL,
+        fiat_amount REAL NOT NULL,
+        crypto_amount REAL NOT NULL,
+        price REAL NOT NULL,
+        bank TEXT NOT NULL,
+        reference TEXT,
+        counterparty TEXT,
+        status TEXT NOT NULL,
+        raw_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS fx_settlement_ledger (
+        id TEXT PRIMARY KEY,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        timestamp TEXT NOT NULL,
+        vet_date_key TEXT NOT NULL,
+        bank_id TEXT NOT NULL,
+        bank_name TEXT NOT NULL,
+        account_id TEXT,
+        account_name TEXT,
+        modality TEXT NOT NULL,
+        purchased_usd REAL NOT NULL,
+        bcv_rate_ves REAL NOT NULL,
+        principal_ves REAL NOT NULL,
+        bank_fee_pct REAL NOT NULL,
+        bank_fee_ves REAL NOT NULL,
+        total_debit_ves REAL NOT NULL,
+        exit_rail TEXT NOT NULL,
+        igtf_pct REAL NOT NULL DEFAULT 0,
+        igtf_usd REAL NOT NULL DEFAULT 0,
+        rail_fee_pct REAL NOT NULL DEFAULT 0,
+        rail_fee_usd REAL NOT NULL DEFAULT 0,
+        net_usdt REAL NOT NULL,
+        channel TEXT NOT NULL,
+        prev_hash TEXT NOT NULL,
+        row_hash TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_fx_ledger_vet_date ON fx_settlement_ledger(vet_date_key DESC);
+      CREATE INDEX IF NOT EXISTS idx_fx_ledger_created ON fx_settlement_ledger(created_at DESC);
+    `);
 
     // Column migration: strategy_plans gains es_simulated. CREATE TABLE IF NOT
     // EXISTS does not add columns to an existing table, so an already-created
@@ -1491,28 +1570,233 @@ export class P2PDatabaseService {
 
   /**
    * Saves an operation record into the SQLite relational ledger.
+   * Accepts both `OperationRecord` DTOs and renderer `@p2p/core` `Operation` objects,
+   * normalizing fields so FX and OCR settlements never fail SQLite `NOT NULL` constraints.
    */
-  saveOperationRecord(op: OperationRecord): boolean {
+  saveOperationRecord(op: OperationRecord | Record<string, unknown>): boolean {
+    const raw = op as Record<string, unknown>;
+    const id = String(raw['id'] || crypto.randomUUID());
+    const timestamp = String(raw['timestamp'] || new Date().toISOString());
+    const sideRaw = String(raw['side'] || raw['type'] || 'BUY').toUpperCase();
+    const side = sideRaw === 'SELL' ? 'SELL' : 'BUY';
+    const fiatAmount = Number(raw['fiatAmount'] ?? raw['vesAmount'] ?? 0);
+    const cryptoAmount = Number(raw['cryptoAmount'] ?? raw['usdtAmount'] ?? 0);
+    const price = Number(raw['price'] ?? 0);
+    const bank = String(
+      raw['bank'] || raw['merchantNote'] || raw['bankAccountId'] || 'MESA_BCV',
+    );
+    const reference =
+      raw['reference'] !== undefined
+        ? String(raw['reference'])
+        : raw['receiptReference'] !== undefined
+          ? String(raw['receiptReference'])
+          : null;
+    const counterparty =
+      raw['counterparty'] !== undefined
+        ? String(raw['counterparty'])
+        : raw['payerName'] !== undefined
+          ? String(raw['payerName'])
+          : null;
+    const status = String(raw['status'] || 'COMPLETED');
+    const rawJson =
+      typeof raw['rawJson'] === 'string' && raw['rawJson'].length > 0
+        ? raw['rawJson']
+        : JSON.stringify(raw);
+    const createdAt = Number(raw['createdAt'] || Date.now());
+
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO operation_records (
         id, timestamp, side, fiat_amount, crypto_amount, price, bank, reference, counterparty, status, raw_json, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
-      op.id,
-      op.timestamp,
-      op.side,
-      op.fiatAmount,
-      op.cryptoAmount,
-      op.price,
-      op.bank,
-      op.reference ?? null,
-      op.counterparty ?? null,
-      op.status,
-      op.rawJson,
-      op.createdAt || Date.now(),
+      id,
+      timestamp,
+      side,
+      Number.isFinite(fiatAmount) ? fiatAmount : 0,
+      Number.isFinite(cryptoAmount) ? cryptoAmount : 0,
+      Number.isFinite(price) ? price : 0,
+      bank,
+      reference,
+      counterparty,
+      status,
+      rawJson,
+      createdAt,
     );
     return true;
+  }
+
+  private computeFxSettlementHash(prevHash: string, input: FxSettlementInput): string {
+    const canonical = [
+      prevHash,
+      input.idempotencyKey,
+      input.timestamp,
+      input.vetDateKey,
+      input.bankId,
+      input.modality,
+      input.purchasedUsd.toFixed(2),
+      input.bcvRateVes.toFixed(4),
+      input.totalDebitVes.toFixed(2),
+      input.igtfUsd.toFixed(2),
+      input.netUsdt.toFixed(2),
+      input.channel,
+    ].join('|');
+    return crypto.createHash('sha256').update(canonical, 'utf8').digest('hex');
+  }
+
+  /**
+   * Appends a tamper-evident Venezuelan FX settlement row with SHA-256 hash chaining.
+   * Rejects duplicate `idempotencyKey` replays atomically without mutating the chain.
+   */
+  saveFxSettlementRecord(input: FxSettlementInput): {
+    saved: boolean;
+    duplicate: boolean;
+    prevHash: string;
+    rowHash: string;
+  } {
+    const existing = this.db
+      .prepare('SELECT prev_hash, row_hash FROM fx_settlement_ledger WHERE idempotency_key = ?')
+      .get(input.idempotencyKey) as { prev_hash: string; row_hash: string } | undefined;
+
+    if (existing) {
+      return {
+        saved: false,
+        duplicate: true,
+        prevHash: existing.prev_hash,
+        rowHash: existing.row_hash,
+      };
+    }
+
+    const tail = this.db
+      .prepare(
+        'SELECT row_hash FROM fx_settlement_ledger ORDER BY created_at DESC, rowid DESC LIMIT 1',
+      )
+      .get() as { row_hash: string } | undefined;
+
+    const prevHash = tail?.row_hash ?? 'GENESIS';
+    const rowHash = this.computeFxSettlementHash(prevHash, input);
+    const createdAt = input.createdAt ?? Date.now();
+
+    this.db
+      .prepare(
+        `INSERT INTO fx_settlement_ledger (
+          id, idempotency_key, timestamp, vet_date_key, bank_id, bank_name,
+          account_id, account_name, modality, purchased_usd, bcv_rate_ves,
+          principal_ves, bank_fee_pct, bank_fee_ves, total_debit_ves,
+          exit_rail, igtf_pct, igtf_usd, rail_fee_pct, rail_fee_usd,
+          net_usdt, channel, prev_hash, row_hash, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.id,
+        input.idempotencyKey,
+        input.timestamp,
+        input.vetDateKey,
+        input.bankId,
+        input.bankName,
+        input.accountId ?? null,
+        input.accountName ?? null,
+        input.modality,
+        input.purchasedUsd,
+        input.bcvRateVes,
+        input.principalVes,
+        input.bankFeePct,
+        input.bankFeeVes,
+        input.totalDebitVes,
+        input.exitRail,
+        input.igtfPct,
+        input.igtfUsd,
+        input.railFeePct,
+        input.railFeeUsd,
+        input.netUsdt,
+        input.channel,
+        prevHash,
+        rowHash,
+        createdAt,
+      );
+
+    return { saved: true, duplicate: false, prevHash, rowHash };
+  }
+
+  listFxSettlementRecords(limit = 100): FxSettlementRecord[] {
+    const safeLimit = Math.max(1, Math.min(500, Math.floor(limit || 100)));
+    const rows = this.db
+      .prepare(
+        'SELECT * FROM fx_settlement_ledger ORDER BY created_at DESC, rowid DESC LIMIT ?',
+      )
+      .all(safeLimit) as Record<string, unknown>[];
+
+    return rows.map((r) => ({
+      id: String(r['id']),
+      idempotencyKey: String(r['idempotency_key']),
+      timestamp: String(r['timestamp']),
+      vetDateKey: String(r['vet_date_key']),
+      bankId: String(r['bank_id']),
+      bankName: String(r['bank_name']),
+      accountId: r['account_id'] ? String(r['account_id']) : null,
+      accountName: r['account_name'] ? String(r['account_name']) : null,
+      modality: String(r['modality']),
+      purchasedUsd: Number(r['purchased_usd']),
+      bcvRateVes: Number(r['bcv_rate_ves']),
+      principalVes: Number(r['principal_ves']),
+      bankFeePct: Number(r['bank_fee_pct']),
+      bankFeeVes: Number(r['bank_fee_ves']),
+      totalDebitVes: Number(r['total_debit_ves']),
+      exitRail: String(r['exit_rail']),
+      igtfPct: Number(r['igtf_pct']),
+      igtfUsd: Number(r['igtf_usd']),
+      railFeePct: Number(r['rail_fee_pct']),
+      railFeeUsd: Number(r['rail_fee_usd']),
+      netUsdt: Number(r['net_usdt']),
+      channel: String(r['channel']),
+      prevHash: String(r['prev_hash']),
+      rowHash: String(r['row_hash']),
+      createdAt: Number(r['created_at']),
+    }));
+  }
+
+  verifyFxSettlementChain(): { valid: boolean; checkedRows: number; brokenAtId?: string } {
+    const rows = this.db
+      .prepare('SELECT * FROM fx_settlement_ledger ORDER BY created_at ASC, rowid ASC')
+      .all() as Record<string, unknown>[];
+
+    let expectedPrev = 'GENESIS';
+    for (const r of rows) {
+      const id = String(r['id']);
+      if (String(r['prev_hash']) !== expectedPrev) {
+        return { valid: false, checkedRows: rows.length, brokenAtId: id };
+      }
+      const recomputed = this.computeFxSettlementHash(expectedPrev, {
+        id,
+        idempotencyKey: String(r['idempotency_key']),
+        timestamp: String(r['timestamp']),
+        vetDateKey: String(r['vet_date_key']),
+        bankId: String(r['bank_id']),
+        bankName: String(r['bank_name']),
+        accountId: r['account_id'] ? String(r['account_id']) : null,
+        accountName: r['account_name'] ? String(r['account_name']) : null,
+        modality: String(r['modality']),
+        purchasedUsd: Number(r['purchased_usd']),
+        bcvRateVes: Number(r['bcv_rate_ves']),
+        principalVes: Number(r['principal_ves']),
+        bankFeePct: Number(r['bank_fee_pct']),
+        bankFeeVes: Number(r['bank_fee_ves']),
+        totalDebitVes: Number(r['total_debit_ves']),
+        exitRail: String(r['exit_rail']),
+        igtfPct: Number(r['igtf_pct']),
+        igtfUsd: Number(r['igtf_usd']),
+        railFeePct: Number(r['rail_fee_pct']),
+        railFeeUsd: Number(r['rail_fee_usd']),
+        netUsdt: Number(r['net_usdt']),
+        channel: String(r['channel']),
+      });
+      if (recomputed !== String(r['row_hash'])) {
+        return { valid: false, checkedRows: rows.length, brokenAtId: id };
+      }
+      expectedPrev = recomputed;
+    }
+
+    return { valid: true, checkedRows: rows.length };
   }
 
   /**

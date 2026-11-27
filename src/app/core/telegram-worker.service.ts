@@ -62,13 +62,19 @@ import {
   type CopilotChatParams,
   VENEZUELAN_FX_BANKS,
   FX_EXIT_RAIL_OPTIONS,
+  FX_DESK_MODALITIES,
+  VEN_DEFAULT_IGTF_PCT,
+  computeAntiRejectionUsdLot,
   evaluateFxBankDeskPlan,
+  evaluateVenezuelanFxWindow,
+  getVenezuelaDateKey,
   matchAccountsForFxBank,
   selectPrimaryFxBankAccount,
   detectFxInterventionReceipt,
   formatFxDeskTelegramMessage,
   buildFxDeskTelegramKeyboard,
   type FxDeskEvaluationPlan,
+  type FxDeskModality,
   type FxInterventionBankId,
   type FxExitRailType,
   type FxDeskActionParams,
@@ -82,6 +88,35 @@ import { FinanceAiIngestorService } from './services/finance-ai-ingestor.service
 import { VoiceDictationService } from './voice-dictation.service';
 import { P2PRadarService } from './p2p-radar.service';
 import { StorageService } from './storage';
+import { AuditLoggerService } from './audit-logger.service';
+import { SecureVaultService } from './secure-vault.service';
+
+export interface FxSettlementLedgerEntry {
+  id: string;
+  idempotencyKey: string;
+  timestamp: string;
+  vetDateKey: string;
+  bankId: FxInterventionBankId;
+  bankName: string;
+  accountId: string | null;
+  accountName: string | null;
+  modality: FxDeskModality;
+  purchasedUsd: number;
+  bcvRateVes: number;
+  principalVes: number;
+  bankFeePct: number;
+  bankFeeVes: number;
+  totalDebitVes: number;
+  exitRail: FxExitRailType;
+  igtfPct: number;
+  igtfUsd: number;
+  railFeePct: number;
+  railFeeUsd: number;
+  netUsdt: number;
+  channel: string;
+  prevHash?: string;
+  rowHash?: string;
+}
 
 /**
  * ¿Este resumen se puede imprimir sin que el panel mienta?
@@ -399,6 +434,8 @@ export class TelegramWorkerService implements OnDestroy {
   private readonly accounts = inject(AccountsService);
   private readonly cotizave = inject(CotizaveService);
   private readonly marketHistory = inject(MarketHistoryService);
+  private readonly auditLogger = inject(AuditLoggerService, { optional: true });
+  private readonly vault = inject(SecureVaultService, { optional: true });
   /**
    * El journal, o `null` si el token no está cableado.
    *
@@ -583,10 +620,12 @@ export class TelegramWorkerService implements OnDestroy {
         };
       }
 
-      // Search from newest to oldest update for a valid chat id
+      // Search from newest to oldest update for a valid private chat id (ignore groups)
       for (let i = data.result.length - 1; i >= 0; i--) {
         const u = data.result[i];
         const chat = u.message?.chat || u.callback_query?.message?.chat;
+        const chatType = chat && 'type' in chat ? chat.type : undefined;
+        if (chatType && chatType !== 'private') continue;
         const from = u.message?.from || u.callback_query?.from;
         if (chat?.id) {
           const firstName = from && 'first_name' in from ? (from as { first_name?: string }).first_name : undefined;
@@ -737,7 +776,11 @@ export class TelegramWorkerService implements OnDestroy {
     const chatId =
       update.message?.chat.id || update.callback_query?.message?.chat.id || authorizedChatId;
 
-    if (chat?.id) {
+    // Anti-hijack guard: only cache private chats, and once paired, never overwrite with strangers
+    const inboundChatType = chat && 'type' in chat ? chat.type : undefined;
+    const isPrivateChat = !inboundChatType || inboundChatType === 'private';
+    const matchesPaired = !authorizedChatId || String(chat?.id) === String(authorizedChatId);
+    if (chat?.id && isPrivateChat && matchesPaired) {
       this.lastInboundChat.set({
         chatId: String(chat.id),
         username: from?.username,
@@ -1490,33 +1533,31 @@ export class TelegramWorkerService implements OnDestroy {
         const rates = this.cotizave.ratesByMarket();
         const bcv = rates['bcv']?.mid ?? rates['oficial']?.mid ?? null;
         const p2pSell =
-          depth?.bestBuyPrice ??
           depth?.bestSellPrice ??
-          rates['binance']?.ask ??
+          depth?.bestBuyPrice ??
           rates['binance']?.bid ??
+          rates['binance']?.ask ??
           null;
-        const intel =
-          bcv && bcv > 0 && p2pSell && p2pSell > 0
-            ? getBcvMarketIntelligence(p2pSell, bcv)
-            : null;
-        const isBcvWindowOpen = intel
-          ? intel.window.phase === 'INTERVENTION_ACTIVE' ||
-            intel.window.phase === 'PRE_INTERVENTION_COMPRESSION'
-          : false;
+        const fxWin = evaluateVenezuelanFxWindow();
         const plan = evaluateFxBankDeskPlan({
           bcvOfficialRateVes: bcv && bcv > 0 ? bcv : null,
           p2pSellRateVes: p2pSell && p2pSell > 0 ? p2pSell : null,
+          modality: this.fxModality(),
+          igtfPct: this.fxIgtfPct(),
           simulatedCapitalVes: params.capitalVes ?? 100000,
+          useSimulatedCapital: params.capitalVes !== undefined && params.capitalVes > 0,
           accounts: this.accounts.accounts(),
           usages: this.accounts.usages(),
           velocities: this.accounts.accountVelocities(),
           confirmedFluidBanks: this.fxFluidBanks(),
           depletedBanks: this.fxDepletedBanks(),
-          isBcvWindowOpen,
+          isBcvWindowOpen: fxWin.isWindowOpen,
           exitRailOverrides: this.fxExitRailOverrides(),
         });
         const msg = formatFxDeskTelegramMessage(plan, params.bankId);
-        const kb = buildFxDeskTelegramKeyboard(plan, params.bankId);
+        const kb = buildFxDeskTelegramKeyboard(plan, params.bankId, (bId, usd) =>
+          this.issueFxBoughtNonce(bId, usd),
+        );
         await this.sendTelegramMessage(token, chatId, msg, kb);
         this.addLog({
           time: timeStr,
@@ -1535,21 +1576,46 @@ export class TelegramWorkerService implements OnDestroy {
           await this.sendTelegramMessage(token, chatId, dispatch.responseMarkdown);
           break;
         }
+        const cbMsgId = update.callback_query?.message?.message_id;
+        const dedupKey = params.nonce
+          ? `tg-nonce:${params.nonce}`
+          : `tg-msg:${cbMsgId ?? 'na'}:${params.bankId}:${params.orderUsd}`;
+        if (!this.validateAndConsumeFxBoughtNonce(params.nonce, params.bankId, params.orderUsd, dedupKey)) {
+          await this.answerCallbackQuery(
+            token,
+            update.callback_query?.id,
+            'Pacto ya procesado o expirado (Anti-Doble Gasto)',
+          );
+          if (cbMsgId) {
+            await this.clearTelegramInlineKeyboard(token, chatId, cbMsgId);
+          }
+          break;
+        }
         let rates = this.cotizave.ratesByMarket();
         if (!(rates['bcv']?.mid || rates['oficial']?.mid)) {
           await this.cotizave.refreshIfStale().catch(() => {});
           rates = this.cotizave.ratesByMarket();
         }
         const liveBcv = rates['bcv']?.mid ?? rates['oficial']?.mid ?? undefined;
-        const settled = this.settleFxBankPurchase(params.bankId, params.orderUsd, liveBcv);
+        const settled = this.settleFxBankPurchase(params.bankId, params.orderUsd, liveBcv, {
+          channel: 'TELEGRAM_CALLBACK',
+          idempotencyKey: dedupKey,
+        });
         if (!settled) {
-          await this.answerCallbackQuery(token, update.callback_query?.id, 'Sin tasa BCV verificada');
+          await this.answerCallbackQuery(
+            token,
+            update.callback_query?.id,
+            'Bloqueado: sin tasa BCV o saldo insuficiente en cuenta vinculada',
+          );
           await this.sendTelegramMessage(
             token,
             chatId,
-            `⚠️ *Asiento FIFO bloqueado \\(Fail\\-Closed\\):* No se pudo obtener la tasa oficial BCV en vivo para liquidar la compra de \`${escapeMarkdownV2(String(params.orderUsd))} USD\` en *${escapeMarkdownV2(params.bankId)}*\\. Verifica tu conexión a Cotizave o liquida desde la Mesa Cambiaria en la app\\.`,
+            `⚠️ *Asiento FIFO bloqueado \\(Fail\\-Closed\\):* Verificá tener tasa BCV activa y cuenta *TRANSFERENCIA* vinculada con saldo suficiente para \`${escapeMarkdownV2(String(params.orderUsd))} USD\` en *${escapeMarkdownV2(params.bankId)}*\\.`,
           );
           break;
+        }
+        if (cbMsgId) {
+          await this.clearTelegramInlineKeyboard(token, chatId, cbMsgId);
         }
         await this.answerCallbackQuery(token, update.callback_query?.id, 'Pacto registrado en FIFO');
         await this.sendTelegramMessage(
@@ -1997,11 +2063,13 @@ export class TelegramWorkerService implements OnDestroy {
       }
     }
 
-    // Nivel B: Servidor HTTP local (Bridge CORS en puerto 51857)
+    // Nivel B: Servidor HTTP local (Bridge CORS en puerto 51857 — token en header, nunca en query URL)
     if (!base64Data) {
       try {
-        const bridgeUrl = `http://localhost:51857/api/telegram/file?token=${encodeURIComponent(token)}&filePath=${encodeURIComponent(filePath)}`;
-        const bridgeRes = await fetch(bridgeUrl);
+        const bridgeUrl = `http://localhost:51857/api/telegram/file?file_path=${encodeURIComponent(filePath)}`;
+        const bridgeRes = await fetch(bridgeUrl, {
+          headers: { 'X-Telegram-Bot-Token': token },
+        });
         if (bridgeRes.ok) {
           const buf = await bridgeRes.arrayBuffer();
           const bytes = new Uint8Array(buf);
@@ -2301,6 +2369,19 @@ export class TelegramWorkerService implements OnDestroy {
         } else {
           // Registrar nueva operación en el libro mayor (detecta si es Compra Cambiaria BCV o Venta P2P)
           const fxReceipt = detectFxInterventionReceipt(text, finalBankLabel);
+          const fxBankProfile = fxReceipt.bankId
+            ? VENEZUELAN_FX_BANKS.find((b) => b.id === fxReceipt.bankId)
+            : undefined;
+          const fxPrimaryAccount = fxBankProfile
+            ? selectPrimaryFxBankAccount(
+                fxBankProfile,
+                this.accounts.accounts(),
+                this.accounts.usages(),
+              ).account
+            : undefined;
+          const targetAccount = fxReceipt.isFxPurchase
+            ? (fxPrimaryAccount ?? matchedAccount)
+            : matchedAccount;
           const bcvRateNow =
             fxReceipt.bcvRateVes ??
             this.cotizave.ratesByMarket()['bcv']?.mid ??
@@ -2319,7 +2400,7 @@ export class TelegramWorkerService implements OnDestroy {
             usdtAmount: fxReceipt.isFxPurchase ? fxUsdLot : usdtAmount,
             price: fxReceipt.isFxPurchase ? bcvRateNow : marketPrice,
             merchantNote: fxReceipt.isFxPurchase
-              ? `MESA_BCV:${fxReceipt.bankId ?? finalBankLabel} (Ref: ${finalReference})`
+              ? `MESA_BCV:${fxReceipt.bankId ?? finalBankLabel}:USD=${fxUsdLot} (Ref: ${finalReference})`
               : `Ref: ${finalReference} (${finalBankLabel})`,
             fees: 0,
             notes: fxReceipt.isFxPurchase
@@ -2327,12 +2408,12 @@ export class TelegramWorkerService implements OnDestroy {
               : `Comprobante verificado vía Telegram Sentinel · Banco: ${finalBankLabel}${payerLabel ? ' · Titular: ' + payerLabel : ''}`,
             errorFree: audit.riskLevel === 'SAFE',
             payerName: payerLabel || undefined,
-            bankAccountId: matchedAccount?.id,
+            bankAccountId: targetAccount?.id,
             receiptImage: receiptDataUrl,
             receiptReference: finalReference,
           };
           ops.unshift(newOp);
-          void (window as unknown as { p2p?: { db?: { saveOperationRecord?: (o: Operation) => Promise<boolean> } } }).p2p?.db?.saveOperationRecord?.(newOp);
+          void (window as unknown as { p2p?: { db?: { saveOperationRecord?: (o: unknown) => Promise<boolean> } } }).p2p?.db?.saveOperationRecord?.(newOp);
           registeredOpId = newOpId;
           operationRegistered = true;
         }
@@ -2461,11 +2542,21 @@ export class TelegramWorkerService implements OnDestroy {
       )
       .join('; ');
 
-    const apiKey = (
+    let vaultGeminiKey = '';
+    if (this.vault) {
+      vaultGeminiKey = (await this.vault.getSecret('gemini_api_key')) ?? '';
+    }
+    const legacyPlainKey = (
       this.storage.get<string>('p2p.gemini.apiKey') ||
       this.storage.get<string>('p2p.ai.key.gemini') ||
       ''
     ).trim();
+    if (legacyPlainKey && this.vault) {
+      await this.vault.storeSecret('gemini_api_key', legacyPlainKey).catch(() => {});
+      this.storage.remove('p2p.gemini.apiKey');
+      this.storage.remove('p2p.ai.key.gemini');
+    }
+    const apiKey = (vaultGeminiKey || legacyPlainKey).trim();
 
     if (apiKey) {
       const systemInstruction = {
@@ -2659,11 +2750,21 @@ export class TelegramWorkerService implements OnDestroy {
   private static readonly FX_FLUID_STORAGE_KEY = 'p2p.fx.fluidBanks';
   private static readonly FX_DEPLETED_MAP_STORAGE_KEY = 'p2p.fx.depletedExpiryMap';
   private static readonly FX_EXIT_RAILS_STORAGE_KEY = 'p2p.fx.exitRailOverrides';
+  private static readonly FX_MODALITY_STORAGE_KEY = 'p2p.fx.modality';
+  private static readonly FX_IGTF_STORAGE_KEY = 'p2p.fx.igtfPct';
+  private static readonly FX_LEDGER_STORAGE_KEY = 'p2p.fx.settlementHistory';
   private static readonly FX_MORNING_BELL_DATE_KEY = 'p2p.fx.lastMorningBellDate';
   private static readonly FX_DEPLETED_TTL_MS = 30 * 60 * 1000;
+  private static readonly FX_NONCE_TTL_MS = 15 * 60 * 1000;
 
-  /** Banks marked as having active FX liquidity during the current session. */
-  readonly fxFluidBanks = signal<FxInterventionBankId[]>(['BDV', 'BANCAMIGA', 'BANESCO']);
+  private readonly pendingFxNonces = new Map<
+    string,
+    { bankId: FxInterventionBankId; orderUsd: number; expiresAt: number }
+  >();
+  private readonly consumedFxDedupKeys = new Set<string>();
+
+  /** Banks marked as having active FX liquidity during the current session (starts empty, zero fake defaults). */
+  readonly fxFluidBanks = signal<FxInterventionBankId[]>([]);
 
   /** Banks marked as depleted/no-quota by the operator (auto-expires after 30 minutes). */
   readonly fxDepletedBanks = signal<FxInterventionBankId[]>([]);
@@ -2674,25 +2775,167 @@ export class TelegramWorkerService implements OnDestroy {
   /** Operator-selected exit rail per bank (persisted in StorageService). */
   readonly fxExitRailOverrides = signal<Partial<Record<FxInterventionBankId, FxExitRailType>>>({});
 
+  /** Active Venezuelan FX desk modality (`MENUDEO_BCV` | `MESA_CAMBIO_PACTO` | `TAQUILLA_EFECTIVO_OTC`). */
+  readonly fxModality = signal<FxDeskModality>(FX_DESK_MODALITIES.MENUDEO_BCV);
+
+  /** Active Venezuelan IGTF percentage applied on electronic foreign-currency exits (default 3.0%). */
+  readonly fxIgtfPct = signal<number>(VEN_DEFAULT_IGTF_PCT);
+
+  /** Local + SQLite synced FX settlement audit ledger entries. */
+  readonly fxSettlementHistory = signal<FxSettlementLedgerEntry[]>([]);
+
   private hydrateFxDeskState(): void {
-    const savedFluid = this.storage.get<FxInterventionBankId[]>(
-      TelegramWorkerService.FX_FLUID_STORAGE_KEY,
-    );
-    if (Array.isArray(savedFluid) && savedFluid.length > 0) {
-      this.fxFluidBanks.set(savedFluid);
+    const validBankIds = new Set<string>(VENEZUELAN_FX_BANKS.map((b) => b.id));
+    const validRailIds = new Set<string>(FX_EXIT_RAIL_OPTIONS.map((r) => r.id));
+    const validModalities = new Set<string>(Object.values(FX_DESK_MODALITIES));
+
+    const savedFluid = this.storage.get<unknown>(TelegramWorkerService.FX_FLUID_STORAGE_KEY);
+    if (Array.isArray(savedFluid)) {
+      this.fxFluidBanks.set(
+        savedFluid.filter((id): id is FxInterventionBankId => typeof id === 'string' && validBankIds.has(id)),
+      );
     }
-    const savedRails = this.storage.get<Partial<Record<FxInterventionBankId, FxExitRailType>>>(
+
+    const savedRails = this.storage.get<Record<string, unknown>>(
       TelegramWorkerService.FX_EXIT_RAILS_STORAGE_KEY,
     );
     if (savedRails && typeof savedRails === 'object') {
-      this.fxExitRailOverrides.set(savedRails);
+      const cleanRails: Partial<Record<FxInterventionBankId, FxExitRailType>> = {};
+      for (const [k, v] of Object.entries(savedRails)) {
+        if (validBankIds.has(k) && typeof v === 'string' && validRailIds.has(v)) {
+          cleanRails[k as FxInterventionBankId] = v as FxExitRailType;
+        }
+      }
+      this.fxExitRailOverrides.set(cleanRails);
     }
-    const savedDepleted = this.storage.get<Partial<Record<FxInterventionBankId, number>>>(
+
+    const savedModality = this.storage.get<string>(TelegramWorkerService.FX_MODALITY_STORAGE_KEY);
+    if (savedModality && validModalities.has(savedModality)) {
+      this.fxModality.set(savedModality as FxDeskModality);
+    }
+
+    const savedIgtf = this.storage.get<number>(TelegramWorkerService.FX_IGTF_STORAGE_KEY);
+    if (typeof savedIgtf === 'number' && Number.isFinite(savedIgtf) && savedIgtf >= 0 && savedIgtf <= 10) {
+      this.fxIgtfPct.set(savedIgtf);
+    }
+
+    const savedLedger = this.storage.get<FxSettlementLedgerEntry[]>(
+      TelegramWorkerService.FX_LEDGER_STORAGE_KEY,
+    );
+    if (Array.isArray(savedLedger)) {
+      this.fxSettlementHistory.set(savedLedger.slice(0, 100));
+    }
+    void this.refreshFxSettlementsFromSqlite();
+
+    const savedDepleted = this.storage.get<Record<string, unknown>>(
       TelegramWorkerService.FX_DEPLETED_MAP_STORAGE_KEY,
     );
     if (savedDepleted && typeof savedDepleted === 'object') {
-      this.fxDepletedExpiryMap.set(savedDepleted);
+      const cleanDepleted: Partial<Record<FxInterventionBankId, number>> = {};
+      for (const [k, v] of Object.entries(savedDepleted)) {
+        if (validBankIds.has(k) && typeof v === 'number' && Number.isFinite(v)) {
+          cleanDepleted[k as FxInterventionBankId] = v;
+        }
+      }
+      this.fxDepletedExpiryMap.set(cleanDepleted);
       this.pruneExpiredFxDepletedBanks();
+    }
+  }
+
+  async refreshFxSettlementsFromSqlite(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    try {
+      const listFn = (
+        window as unknown as {
+          p2p?: { db?: { listFxSettlements?: (p?: { limit?: number }) => Promise<FxSettlementLedgerEntry[]> } };
+        }
+      ).p2p?.db?.listFxSettlements;
+      if (typeof listFn === 'function') {
+        const rows = await listFn({ limit: 100 });
+        if (Array.isArray(rows) && rows.length > 0) {
+          this.fxSettlementHistory.set(rows);
+          this.storage.set(TelegramWorkerService.FX_LEDGER_STORAGE_KEY, rows);
+        }
+      }
+    } catch {
+      // Fallback to local history
+    }
+  }
+
+  setFxModality(modality: FxDeskModality): void {
+    this.fxModality.set(modality);
+    this.storage.set(TelegramWorkerService.FX_MODALITY_STORAGE_KEY, modality);
+  }
+
+  setFxIgtfPct(igtfPct: number): void {
+    const clamped = roundMoney(Math.max(0, Math.min(10, Number(igtfPct) || 0)), 2);
+    this.fxIgtfPct.set(clamped);
+    this.storage.set(TelegramWorkerService.FX_IGTF_STORAGE_KEY, clamped);
+  }
+
+  issueFxBoughtNonce(bankId: FxInterventionBankId, orderUsd: number): string {
+    const now = Date.now();
+    for (const [k, v] of this.pendingFxNonces.entries()) {
+      if (v.expiresAt <= now) this.pendingFxNonces.delete(k);
+    }
+    const bytes = new Uint8Array(6);
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      crypto.getRandomValues(bytes);
+    }
+    const nonce = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    this.pendingFxNonces.set(nonce, {
+      bankId,
+      orderUsd,
+      expiresAt: now + TelegramWorkerService.FX_NONCE_TTL_MS,
+    });
+    return nonce;
+  }
+
+  private validateAndConsumeFxBoughtNonce(
+    nonce: string | undefined,
+    bankId: FxInterventionBankId,
+    orderUsd: number,
+    dedupKey: string,
+  ): boolean {
+    if (this.consumedFxDedupKeys.has(dedupKey)) return false;
+    const profile = VENEZUELAN_FX_BANKS.find((b) => b.id === bankId);
+    if (!profile || orderUsd <= 0 || orderUsd > profile.maxTicketUsd * 4) return false;
+
+    if (nonce) {
+      const record = this.pendingFxNonces.get(nonce);
+      if (!record) return false;
+      if (
+        record.expiresAt <= Date.now() ||
+        record.bankId !== bankId ||
+        Math.abs(record.orderUsd - orderUsd) > 0.01
+      ) {
+        this.pendingFxNonces.delete(nonce);
+        return false;
+      }
+      this.pendingFxNonces.delete(nonce);
+    }
+
+    this.consumedFxDedupKeys.add(dedupKey);
+    return true;
+  }
+
+  private async clearTelegramInlineKeyboard(
+    token: string,
+    chatId: string | number,
+    messageId: number,
+  ): Promise<void> {
+    try {
+      await fetch(`https://api.telegram.org/bot${token}/editMessageReplyMarkup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          message_id: messageId,
+          reply_markup: { inline_keyboard: [] },
+        }),
+      });
+    } catch {
+      // Non-fatal UI cleanup
     }
   }
 
@@ -2765,31 +3008,34 @@ export class TelegramWorkerService implements OnDestroy {
     const cfg = this.config();
     if (!cfg.alertsEnabled || !cfg.botToken || !cfg.chatId) return;
 
-    const todayKey = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const todayKey = getVenezuelaDateKey();
     const lastSent = this.storage.get<string>(TelegramWorkerService.FX_MORNING_BELL_DATE_KEY);
     if (lastSent === todayKey) return;
+
+    const fxWin = evaluateVenezuelanFxWindow();
+    if (!fxWin.isWindowOpen) return;
 
     const rates = this.cotizave.ratesByMarket();
     const bcv = rates['bcv']?.mid ?? rates['oficial']?.mid ?? null;
     const depth = this.binance.marketDepth();
     const p2pSell =
-      depth?.bestBuyPrice ??
       depth?.bestSellPrice ??
+      depth?.bestBuyPrice ??
+      rates['binance']?.bid ??
       rates['binance']?.ask ??
       null;
 
     if (!bcv || bcv <= 0 || !p2pSell || p2pSell <= 0) return;
 
     const intel = getBcvMarketIntelligence(p2pSell, bcv);
-    const isWindowOpen =
-      intel.window.phase === 'INTERVENTION_ACTIVE' ||
-      intel.window.phase === 'PRE_INTERVENTION_COMPRESSION';
-    if (!isWindowOpen || intel.gap.gapPct === null || intel.gap.gapPct < 10) return;
+    if (intel.gap.gapPct === null || intel.gap.gapPct < 10) return;
 
     this.storage.set(TelegramWorkerService.FX_MORNING_BELL_DATE_KEY, todayKey);
     const plan = evaluateFxBankDeskPlan({
       bcvOfficialRateVes: bcv,
       p2pSellRateVes: p2pSell,
+      modality: this.fxModality(),
+      igtfPct: this.fxIgtfPct(),
       simulatedCapitalVes: this.accounts.treasurySummary().totalBalanceVes,
       accounts: this.accounts.accounts(),
       usages: this.accounts.usages(),
@@ -2805,17 +3051,31 @@ export class TelegramWorkerService implements OnDestroy {
   }
 
   /**
-   * Records a confirmed FX bank purchase into the FIFO operation ledger (p2p.operations),
-   * mirrors it to Electron SQLite when available, and refreshes AccountsService.
-   * Fails closed (returns null) if no valid BCV rate is available.
+   * Records a confirmed FX bank purchase into the FIFO operation ledger (`p2p.operations`),
+   * appends a hash-chained row to `fx_settlement_ledger` in SQLite, logs to `AuditLoggerService`,
+   * and splits debits cleanly across eligible `TRANSFERENCIA` accounts without double-counting fees
+   * or overdrafting any individual account.
    */
   settleFxBankPurchase(
     bankId: FxInterventionBankId,
     orderUsd: number,
     customBcvRate?: number,
-  ): { operation: Operation; summary: string } | null {
+    options?: {
+      accountId?: string | null;
+      modality?: FxDeskModality;
+      igtfPct?: number;
+      channel?: string;
+      idempotencyKey?: string;
+      allowUnlinkedSimulation?: boolean;
+    },
+  ): { operation: Operation; operations: Operation[]; summary: string } | null {
     const profile = VENEZUELAN_FX_BANKS.find((b) => b.id === bankId);
     if (!profile || !Number.isFinite(orderUsd) || orderUsd <= 0) return null;
+
+    const baseIdempKey = options?.idempotencyKey;
+    if (baseIdempKey && this.consumedFxDedupKeys.has(`settled:${baseIdempKey}`)) {
+      return null;
+    }
 
     const rates = this.cotizave.ratesByMarket();
     const rawBcv =
@@ -2829,49 +3089,263 @@ export class TelegramWorkerService implements OnDestroy {
     }
     const bcvRate = roundMoney(rawBcv, 2);
 
-    const overrideRailId = this.fxExitRailOverrides()[bankId];
+    const modality = options?.modality ?? this.fxModality();
+    const effectiveBankFeePct =
+      modality === FX_DESK_MODALITIES.MESA_CAMBIO_PACTO
+        ? Math.max(0.5, profile.bankFxFeePct)
+        : profile.bankFxFeePct;
+
+    const overrideRailId =
+      this.fxExitRailOverrides()[bankId] ??
+      (modality === FX_DESK_MODALITIES.TAQUILLA_EFECTIVO_OTC ? 'CASH_WITHDRAWAL_OTC' : undefined);
     const overrideRail = overrideRailId
       ? FX_EXIT_RAIL_OPTIONS.find((r) => r.id === overrideRailId)
       : undefined;
-    const exitFrictionPct = overrideRail ? overrideRail.defaultFrictionPct : profile.exitRailFrictionPct;
+    const defaultRailMeta = FX_EXIT_RAIL_OPTIONS.find((r) => r.id === profile.primaryExitRail);
+
+    const activeExitRail: FxExitRailType = overrideRail ? overrideRail.id : profile.primaryExitRail;
     const exitRailLabel = overrideRail ? overrideRail.label : profile.primaryExitRailLabel;
+    const railFeePct = overrideRail ? overrideRail.defaultFrictionPct : profile.exitRailFrictionPct;
+    const appliesIgtf = overrideRail
+      ? overrideRail.appliesIgtfByDefault
+      : (defaultRailMeta?.appliesIgtfByDefault ?? activeExitRail !== 'CASH_WITHDRAWAL_OTC');
+    const configuredIgtf = options?.igtfPct ?? this.fxIgtfPct();
+    const igtfPct = appliesIgtf ? roundMoney(Math.max(0, configuredIgtf), 2) : 0;
 
-    const principalVes = roundMoney(orderUsd * bcvRate, 2);
-    const bankFeeVes = roundMoney(principalVes * (profile.bankFxFeePct / 100), 2);
-    const totalDebitVes = roundMoney(principalVes + bankFeeVes, 2);
-    const netUsdt = roundMoney(orderUsd * (1 - exitFrictionPct / 100), 2);
+    const selection = selectPrimaryFxBankAccount(
+      profile,
+      this.accounts.accounts(),
+      this.accounts.usages(),
+    );
+    const usageMap = new Map(this.accounts.usages().map((u) => [u.account.id, u]));
 
-    const matchedAcc =
-      selectPrimaryFxBankAccount(profile, this.accounts.accounts(), this.accounts.usages())
-        .account ?? undefined;
+    const candidateAccounts = options?.accountId
+      ? selection.eligibleAccounts.filter((a) => a.id === options.accountId)
+      : selection.eligibleAccounts;
 
-    const op: Operation = {
-      id: `fx-${bankId.toLowerCase()}-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      type: 'buy',
-      pair: 'USDT',
-      vesAmount: totalDebitVes,
-      usdtAmount: netUsdt,
-      price: roundMoney(totalDebitVes / Math.max(0.01, netUsdt), 2),
-      merchantNote: `MESA_BCV:${profile.shortName}`,
-      fees: bankFeeVes,
-      notes: `Compra Mesa Cambiaria ${profile.name}: ${orderUsd} USD a tasa BCV ${bcvRate.toFixed(2)} Bs (${exitRailLabel} -> ${netUsdt} USDT netos)`,
-      errorFree: true,
-      bankAccountId: matchedAcc?.id,
-    };
-
-    const existing = this.storage.get<Operation[]>(OPS_KEY) ?? [];
-    this.storage.set(OPS_KEY, [op, ...existing]);
-    if (typeof window !== 'undefined') {
-      void (window as unknown as { p2p?: { db?: { saveOperationRecord?: (o: Operation) => Promise<boolean> } } }).p2p?.db?.saveOperationRecord?.(op);
+    // Block phantom unlinked FIFO inventory unless explicitly simulating
+    if (candidateAccounts.length === 0 && !options?.allowUnlinkedSimulation) {
+      return null;
     }
+
+    interface SettlementSlice {
+      accountId: string | null;
+      accountName: string | null;
+      sliceUsd: number;
+      principalVes: number;
+      bankFeeVes: number;
+      totalDebitVes: number;
+      igtfUsd: number;
+      railFeeUsd: number;
+      netUsdt: number;
+    }
+
+    const slices: SettlementSlice[] = [];
+    if (candidateAccounts.length > 0) {
+      let remainingUsd = roundMoney(orderUsd, 2);
+      for (const acc of candidateAccounts) {
+        if (remainingUsd <= 0) break;
+        const u = usageMap.get(acc.id);
+        const accBalance = Math.max(0, roundMoney(u ? u.currentBalanceVes : acc.initialBalanceVes, 2));
+        if (accBalance <= 0) continue;
+
+        const fullPrincipal = roundMoney(remainingUsd * bcvRate, 2);
+        const fullFee = roundMoney(fullPrincipal * (effectiveBankFeePct / 100), 2);
+        const fullDebit = roundMoney(fullPrincipal + fullFee, 2);
+
+        let sliceUsd = 0;
+        if (fullDebit <= accBalance) {
+          sliceUsd = remainingUsd;
+        } else {
+          const maxLot = computeAntiRejectionUsdLot(accBalance, bcvRate, profile, effectiveBankFeePct);
+          sliceUsd = Math.min(remainingUsd, maxLot.orderUsd);
+        }
+        if (sliceUsd <= 0) continue;
+
+        const principalVes = roundMoney(sliceUsd * bcvRate, 2);
+        const bankFeeVes = roundMoney(principalVes * (effectiveBankFeePct / 100), 2);
+        const totalDebitVes = roundMoney(principalVes + bankFeeVes, 2);
+        if (totalDebitVes > accBalance) continue;
+
+        const igtfUsd = roundMoney(sliceUsd * (igtfPct / 100), 2);
+        const railFeeUsd = roundMoney(sliceUsd * (railFeePct / 100), 2);
+        const netUsdt = roundMoney(Math.max(0.01, sliceUsd - igtfUsd - railFeeUsd), 2);
+
+        slices.push({
+          accountId: acc.id,
+          accountName: acc.bankName,
+          sliceUsd,
+          principalVes,
+          bankFeeVes,
+          totalDebitVes,
+          igtfUsd,
+          railFeeUsd,
+          netUsdt,
+        });
+        remainingUsd = roundMoney(Math.max(0, remainingUsd - sliceUsd), 2);
+      }
+
+      // Fail closed if eligible accounts could not cover the requested orderUsd
+      if (remainingUsd > 0.01 && !options?.allowUnlinkedSimulation) {
+        return null;
+      }
+    } else {
+      const principalVes = roundMoney(orderUsd * bcvRate, 2);
+      const bankFeeVes = roundMoney(principalVes * (effectiveBankFeePct / 100), 2);
+      const totalDebitVes = roundMoney(principalVes + bankFeeVes, 2);
+      const igtfUsd = roundMoney(orderUsd * (igtfPct / 100), 2);
+      const railFeeUsd = roundMoney(orderUsd * (railFeePct / 100), 2);
+      const netUsdt = roundMoney(Math.max(0.01, orderUsd - igtfUsd - railFeeUsd), 2);
+      slices.push({
+        accountId: null,
+        accountName: null,
+        sliceUsd: orderUsd,
+        principalVes,
+        bankFeeVes,
+        totalDebitVes,
+        igtfUsd,
+        railFeeUsd,
+        netUsdt,
+      });
+    }
+
+    if (slices.length === 0) return null;
+
+    if (baseIdempKey) {
+      this.consumedFxDedupKeys.add(`settled:${baseIdempKey}`);
+    }
+
+    const nowIso = new Date().toISOString();
+    const vetDateKey = getVenezuelaDateKey(new Date(nowIso));
+    const channel = options?.channel ?? 'DESKTOP_UI';
+    const createdOps: Operation[] = [];
+    const createdLedgerEntries: FxSettlementLedgerEntry[] = [];
+
+    for (let idx = 0; idx < slices.length; idx++) {
+      const s = slices[idx];
+      const opId = `fx-${bankId.toLowerCase()}-${Date.now()}-${idx}`;
+      const sliceIdemp = baseIdempKey ? `${baseIdempKey}:${idx}` : opId;
+
+      // CRITICAL FIX (B-01): `vesAmount` stores ONLY `principalVes`, while `fees` stores `bankFeeVes`!
+      // Both `computeAccountUsage` (`vesAmount + fees`) and `computeFifoAccounting` (`costBasis + fees`)
+      // add them together, so `totalDebitVes` is accounted for EXACTLY ONCE.
+      const op: Operation = {
+        id: opId,
+        timestamp: nowIso,
+        type: 'buy',
+        pair: 'USDT',
+        vesAmount: s.principalVes,
+        usdtAmount: s.netUsdt,
+        price: roundMoney(s.totalDebitVes / Math.max(0.01, s.netUsdt), 2),
+        merchantNote: `MESA_BCV:${profile.shortName}:USD=${s.sliceUsd}`,
+        fees: s.bankFeeVes,
+        notes: `Compra Mesa Cambiaria ${profile.name} (${modality}): ${s.sliceUsd} USD @ Bs ${bcvRate.toFixed(2)} | Fee ${effectiveBankFeePct}% (Bs ${s.bankFeeVes.toFixed(2)}) | IGTF ${igtfPct}% | Riel ${exitRailLabel} -> ${s.netUsdt} USDT`,
+        errorFree: true,
+        bankAccountId: s.accountId ?? undefined,
+      };
+      createdOps.push(op);
+
+      const ledgerEntry: FxSettlementLedgerEntry = {
+        id: opId,
+        idempotencyKey: sliceIdemp,
+        timestamp: nowIso,
+        vetDateKey,
+        bankId,
+        bankName: profile.name,
+        accountId: s.accountId,
+        accountName: s.accountName,
+        modality,
+        purchasedUsd: s.sliceUsd,
+        bcvRateVes: bcvRate,
+        principalVes: s.principalVes,
+        bankFeePct: effectiveBankFeePct,
+        bankFeeVes: s.bankFeeVes,
+        totalDebitVes: s.totalDebitVes,
+        exitRail: activeExitRail,
+        igtfPct,
+        igtfUsd: s.igtfUsd,
+        railFeePct,
+        railFeeUsd: s.railFeeUsd,
+        netUsdt: s.netUsdt,
+        channel,
+      };
+      createdLedgerEntries.push(ledgerEntry);
+
+      if (typeof window !== 'undefined') {
+        const dbBridge = (
+          window as unknown as {
+            p2p?: {
+              db?: {
+                saveOperationRecord?: (o: unknown) => Promise<boolean>;
+                saveFxSettlement?: (r: unknown) => Promise<{
+                  saved: boolean;
+                  prevHash: string;
+                  rowHash: string;
+                }>;
+              };
+            };
+          }
+        ).p2p?.db;
+        void dbBridge?.saveOperationRecord?.(op);
+        void dbBridge?.saveFxSettlement?.(ledgerEntry).then((res) => {
+          if (res?.saved) {
+            this.fxSettlementHistory.update((curr) =>
+              curr.map((item) =>
+                item.id === ledgerEntry.id
+                  ? { ...item, prevHash: res.prevHash, rowHash: res.rowHash }
+                  : item,
+              ),
+            );
+          }
+        });
+      }
+    }
+
+    const existingOps = this.storage.get<Operation[]>(OPS_KEY) ?? [];
+    this.storage.set(OPS_KEY, [...createdOps, ...existingOps]);
+
+    const nextHistory = [...createdLedgerEntries, ...this.fxSettlementHistory()].slice(0, 100);
+    this.fxSettlementHistory.set(nextHistory);
+    this.storage.set(TelegramWorkerService.FX_LEDGER_STORAGE_KEY, nextHistory);
+
+    const totalDebitAll = roundMoney(
+      slices.reduce((sum, s) => sum + s.totalDebitVes, 0),
+      2,
+    );
+    const totalNetUsdtAll = roundMoney(
+      slices.reduce((sum, s) => sum + s.netUsdt, 0),
+      2,
+    );
+    const totalBoughtUsd = roundMoney(
+      slices.reduce((sum, s) => sum + s.sliceUsd, 0),
+      2,
+    );
+
+    this.auditLogger?.log(
+      'DATA_MUTATION',
+      'FX_SETTLEMENT_BOOKED',
+      {
+        bankId,
+        modality,
+        purchasedUsd: totalBoughtUsd,
+        bcvRateVes: bcvRate,
+        totalDebitVes: totalDebitAll,
+        igtfPct,
+        netUsdt: totalNetUsdtAll,
+        accountsUsed: slices.map((s) => s.accountId ?? 'SIMULATED'),
+        channel,
+      },
+      'info',
+    );
+
     this.accounts.refreshLedger();
     void this.accounts.announceTreasuryToMain();
     this.markFxBankFluid(bankId);
 
     return {
-      operation: op,
-      summary: `${profile.shortName}: -Bs ${totalDebitVes.toFixed(2)} ➔ +${netUsdt.toFixed(2)} USDT netos`,
+      operation: createdOps[0],
+      operations: createdOps,
+      summary: `${profile.shortName}: $${totalBoughtUsd.toFixed(0)} USD (-Bs ${totalDebitAll.toFixed(2)}) ➔ +${totalNetUsdtAll.toFixed(2)} USDT netos`,
     };
   }
 
@@ -2892,7 +3366,9 @@ export class TelegramWorkerService implements OnDestroy {
       };
     }
     const msg = formatFxDeskTelegramMessage(plan, filterBankId);
-    const kb = buildFxDeskTelegramKeyboard(plan, filterBankId);
+    const kb = buildFxDeskTelegramKeyboard(plan, filterBankId, (bId, usd) =>
+      this.issueFxBoughtNonce(bId, usd),
+    );
     await this.sendTelegramMessage(token, chatId, msg, kb);
     return { ok: true };
   }

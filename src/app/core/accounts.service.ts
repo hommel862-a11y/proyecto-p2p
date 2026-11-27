@@ -9,9 +9,9 @@ import {
   type BankAccount,
   type AccountUsage,
   type TreasurySummary,
-  computeAccountUsage,
-  computeTreasurySummary,
-  getTodayOperations,
+  computeCumulativeAccountUsage,
+  computeCumulativeTreasurySummary,
+  getVenezuelaTodayOperations,
   computeVelocities,
   getRotationRecommendation,
   type AccountVelocityStatus,
@@ -290,17 +290,17 @@ export class AccountsService {
   });
 
   readonly todayOperations = computed<Operation[]>(() => {
-    return getTodayOperations(this.rawOperations());
+    return getVenezuelaTodayOperations(this.rawOperations());
   });
 
   readonly usages = computed<AccountUsage[]>(() => {
     const accs = this.accounts();
-    const ops = this.todayOperations();
-    return accs.map((acc) => computeAccountUsage(acc, ops));
+    const allOps = this.rawOperations();
+    return accs.map((acc) => computeCumulativeAccountUsage(acc, allOps));
   });
 
   readonly treasurySummary = computed<TreasurySummary>(() => {
-    return computeTreasurySummary(this.accounts(), this.todayOperations());
+    return computeCumulativeTreasurySummary(this.accounts(), this.rawOperations());
   });
 
   readonly nearLimitAccounts = computed<AccountUsage[]>(() => {

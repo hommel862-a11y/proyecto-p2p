@@ -1096,6 +1096,10 @@ export interface ElectronAPI {
     isAvailable(): Promise<boolean>;
     encrypt(plaintext: string): Promise<string>;
     decrypt(ciphertext: string): Promise<string>;
+    vaultSet(key: string, secret: string): Promise<boolean>;
+    vaultGet(key: string): Promise<string | null>;
+    vaultHas(key: string): Promise<boolean>;
+    vaultDelete(key: string): Promise<boolean>;
   };
   db: {
     saveOrder(order: unknown): Promise<boolean>;
@@ -1112,21 +1116,15 @@ export interface ElectronAPI {
       createdAt: number;
     }): Promise<boolean>;
     listAuditLogs(params?: { limit?: number; category?: string }): Promise<unknown[]>;
-    saveOperationRecord(record: {
-      id: string;
-      timestamp: string;
-      side: string;
-      fiatAmount: number;
-      cryptoAmount: number;
-      price: number;
-      bank: string;
-      reference?: string;
-      counterparty?: string;
-      status: string;
-      rawJson: string;
-      createdAt: number;
-    }): Promise<boolean>;
+    saveOperationRecord(record: unknown): Promise<boolean>;
     listOperationRecords(params?: { limit?: number }): Promise<unknown[]>;
+    saveFxSettlement(record: unknown): Promise<{
+      saved: boolean;
+      duplicate: boolean;
+      prevHash: string;
+      rowHash: string;
+    }>;
+    listFxSettlements(params?: { limit?: number }): Promise<unknown[]>;
     saveBankAccount(account: unknown): Promise<boolean>;
     getBankAccount(id: string): Promise<unknown>;
     listBankAccounts(filter?: { status?: string; bankCode?: string }): Promise<unknown[]>;

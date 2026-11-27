@@ -68,6 +68,11 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
       isAvailable: () => ipc('crypto:is-available') as Promise<boolean>,
       encrypt: (plaintext: string) => ipc('crypto:encrypt', plaintext) as Promise<string>,
       decrypt: (ciphertext: string) => ipc('crypto:decrypt', ciphertext) as Promise<string>,
+      vaultSet: (key: string, secret: string) =>
+        ipc('vault:set', { key, secret }) as Promise<boolean>,
+      vaultGet: (key: string) => ipc('vault:get', { key }) as Promise<string | null>,
+      vaultHas: (key: string) => ipc('vault:has', { key }) as Promise<boolean>,
+      vaultDelete: (key: string) => ipc('vault:delete', { key }) as Promise<boolean>,
     },
     db: {
       saveOrder: (order: unknown) => ipc('p2p:db-save-order', order) as Promise<boolean>,
@@ -80,10 +85,19 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
         }>,
       saveAuditLog: (record: any) => ipc('p2p:db-save-audit-log', record) as Promise<boolean>,
       listAuditLogs: (params?: any) => ipc('p2p:db-list-audit-logs', params) as Promise<unknown[]>,
-      saveOperationRecord: (record: any) =>
+      saveOperationRecord: (record: unknown) =>
         ipc('p2p:db-save-operation-record', record) as Promise<boolean>,
       listOperationRecords: (params?: any) =>
         ipc('p2p:db-list-operation-records', params) as Promise<unknown[]>,
+      saveFxSettlement: (record: unknown) =>
+        ipc('p2p:db-save-fx-settlement', record) as Promise<{
+          saved: boolean;
+          duplicate: boolean;
+          prevHash: string;
+          rowHash: string;
+        }>,
+      listFxSettlements: (params?: { limit?: number }) =>
+        ipc('p2p:db-list-fx-settlements', params) as Promise<unknown[]>,
       saveBankAccount: (account: unknown) =>
         ipc('p2p:db-save-bank-account', account) as Promise<boolean>,
       getBankAccount: (id: string) =>
@@ -300,6 +314,10 @@ export const ALLOWED_CHANNELS = [
   'crypto:is-available',
   'crypto:encrypt',
   'crypto:decrypt',
+  'vault:set',
+  'vault:get',
+  'vault:has',
+  'vault:delete',
   'p2p:db-save-order',
   'p2p:db-get-order',
   'p2p:db-list-active-orders',
@@ -308,6 +326,8 @@ export const ALLOWED_CHANNELS = [
   'p2p:db-list-audit-logs',
   'p2p:db-save-operation-record',
   'p2p:db-list-operation-records',
+  'p2p:db-save-fx-settlement',
+  'p2p:db-list-fx-settlements',
   'p2p:db-save-bank-account',
   'p2p:db-get-bank-account',
   'p2p:db-list-bank-accounts',

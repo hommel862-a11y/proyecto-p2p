@@ -58,6 +58,7 @@ import {
   calculateTreasuryYieldAllocation,
   type TreasuryAllocationPlan,
   evaluateFxBankDeskPlan,
+  evaluateVenezuelanFxWindow,
   type FxDeskEvaluationPlan,
 } from '@p2p/core';
 import { FormsModule } from '@angular/forms';
@@ -291,27 +292,30 @@ export class Dashboard implements OnInit, OnDestroy {
     return getBcvMarketIntelligence(parallel, bcv);
   });
 
-  /** Live 14-bank Mesa Cambiaria BCV execution plan synthesized into the Control Center. */
+  /** Live 14-bank Mesa Cambiaria BCV execution plan synthesized into the Control Center (fail-closed when feeds offline). */
   readonly fxDeskPlan = computed<FxDeskEvaluationPlan>(() => {
     const depth = this.binanceService.marketDepth();
     const rates = this.cotizaveService.ratesByMarket();
     const bcvOfficialRateVes =
-      rates['bcv']?.mid || rates['oficial']?.mid || this.mcpBcvRates()?.usd || this.manualBcvRate();
+      rates['bcv']?.mid ?? rates['oficial']?.mid ?? this.mcpBcvRates()?.usd ?? null;
     const p2pSellRateVes =
-      depth?.bestSellPrice ||
-      depth?.bestBuyPrice ||
-      rates['binance']?.ask ||
-      this.mcpParallelRates()?.rate ||
-      this.manualParallelRate();
+      depth?.bestSellPrice ??
+      depth?.bestBuyPrice ??
+      rates['binance']?.bid ??
+      rates['binance']?.ask ??
+      this.mcpParallelRates()?.rate ??
+      null;
     const totalBalanceVes = this.accountsService.treasurySummary().totalBalanceVes;
-    const simulatedCapitalVes = totalBalanceVes > 0 ? totalBalanceVes : 120000;
-    const bcvPhase = this.mcpBcvIntervention()?.phase || this.bcvIntelligence().window.phase;
+    const simulatedCapitalVes = totalBalanceVes > 0 ? totalBalanceVes : 0;
+    const fxWindow = evaluateVenezuelanFxWindow();
     const isBcvWindowOpen =
-      bcvPhase === 'INTERVENTION_ACTIVE' || bcvPhase === 'PRE_INTERVENTION_COMPRESSION';
+      this.mcpBcvIntervention()?.phase === 'INTERVENTION_ACTIVE' || fxWindow.isWindowOpen;
 
     return evaluateFxBankDeskPlan({
-      bcvOfficialRateVes,
-      p2pSellRateVes,
+      bcvOfficialRateVes: bcvOfficialRateVes && bcvOfficialRateVes > 0 ? bcvOfficialRateVes : null,
+      p2pSellRateVes: p2pSellRateVes && p2pSellRateVes > 0 ? p2pSellRateVes : null,
+      modality: this.telegramService.fxModality?.() ?? 'MENUDEO_BCV',
+      igtfPct: this.telegramService.fxIgtfPct?.() ?? 3.0,
       simulatedCapitalVes,
       capitalAllocationMode: 'DISTRIBUTE_TOTAL',
       accounts: this.accountsService.accounts(),

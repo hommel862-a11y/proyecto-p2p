@@ -41,9 +41,21 @@ export class SecureVaultService {
       try {
         const electron = (
           window as unknown as {
-            electron: { crypto: { encrypt: (plain: string) => Promise<string> } };
+            electron: {
+              crypto: {
+                encrypt: (plain: string) => Promise<string>;
+                vaultSet?: (k: string, s: string) => Promise<boolean>;
+              };
+            };
           }
         ).electron;
+        if (typeof electron.crypto.vaultSet === 'function') {
+          const saved = await electron.crypto.vaultSet(key, secret);
+          if (saved) {
+            this.storage.remove(VAULT_PREFIX + key);
+            return;
+          }
+        }
         const cipherB64 = await electron.crypto.encrypt(secret);
         this.storage.set(VAULT_PREFIX + key, cipherB64);
         return;
@@ -82,15 +94,32 @@ export class SecureVaultService {
     if (!key) return null;
 
     if (this.isElectronAvailable) {
-      const cipherB64 = this.storage.get<string>(VAULT_PREFIX + key);
-      if (!cipherB64) return null;
       try {
         const electron = (
           window as unknown as {
-            electron: { crypto: { decrypt: (cipher: string) => Promise<string> } };
+            electron: {
+              crypto: {
+                decrypt: (cipher: string) => Promise<string>;
+                vaultGet?: (k: string) => Promise<string | null>;
+                vaultSet?: (k: string, s: string) => Promise<boolean>;
+              };
+            };
           }
         ).electron;
-        return await electron.crypto.decrypt(cipherB64);
+        if (typeof electron.crypto.vaultGet === 'function') {
+          const fromVault = await electron.crypto.vaultGet(key);
+          if (fromVault) return fromVault;
+        }
+        const cipherB64 = this.storage.get<string>(VAULT_PREFIX + key);
+        if (!cipherB64) return null;
+        const legacyPlain = await electron.crypto.decrypt(cipherB64);
+        if (legacyPlain && typeof electron.crypto.vaultSet === 'function') {
+          const migrated = await electron.crypto.vaultSet(key, legacyPlain);
+          if (migrated) {
+            this.storage.remove(VAULT_PREFIX + key);
+          }
+        }
+        return legacyPlain;
       } catch (err) {
         console.error('[SecureVault] Electron decryption failed:', err);
         return null;
@@ -122,11 +151,39 @@ export class SecureVaultService {
   }
 
   async hasSecret(key: string): Promise<boolean> {
+    if (this.isElectronAvailable) {
+      try {
+        const vaultHas = (
+          window as unknown as {
+            electron?: { crypto?: { vaultHas?: (k: string) => Promise<boolean> } };
+          }
+        )?.electron?.crypto?.vaultHas;
+        if (typeof vaultHas === 'function' && (await vaultHas(key))) {
+          return true;
+        }
+      } catch {
+        // Fallback below
+      }
+    }
     if (this.storage.get<unknown>(VAULT_PREFIX + key) !== null) return true;
     return this.memoryFallback.has(key);
   }
 
   async removeSecret(key: string): Promise<void> {
+    if (this.isElectronAvailable) {
+      try {
+        const vaultDelete = (
+          window as unknown as {
+            electron?: { crypto?: { vaultDelete?: (k: string) => Promise<boolean> } };
+          }
+        )?.electron?.crypto?.vaultDelete;
+        if (typeof vaultDelete === 'function') {
+          await vaultDelete(key);
+        }
+      } catch {
+        // Ignore
+      }
+    }
     this.storage.remove(VAULT_PREFIX + key);
     this.memoryFallback.delete(key);
   }

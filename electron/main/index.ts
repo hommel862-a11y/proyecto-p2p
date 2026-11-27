@@ -2,7 +2,13 @@ import { app, BrowserWindow, globalShortcut, net, shell, Tray, Menu, nativeImage
 import path from 'node:path';
 import http from 'node:http';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { SECURE_WEB_PREFERENCES } from './window-config';
+import {
+  isAllowedExternalUrl,
+  validateOrchestratorMutationRequest,
+  validateTelegramFileDownloadParams,
+} from './security/bridge-guards';
 import {
   registerIpcHandlers,
   triggerKillswitch,
@@ -231,7 +237,7 @@ function startStaticServer(): Promise<number> {
       return;
     }
     try {
-      const data = await fetchCotizaveShared({ apiKey, endpoint: 'rates' });
+      const data = await fetchCotizaveShared({ apiKey, endpoint: 'rates' }, { persistKey: false });
       writeBridgeJson(req, res, 200, data, COTIZAVE_CORS[0], COTIZAVE_CORS[1]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Servidor Cotizave no accesible';
@@ -288,7 +294,8 @@ function startStaticServer(): Promise<number> {
     }
   }
 
-  const ORCHESTRATOR_CORS = ['GET, POST, OPTIONS', 'content-type'] as const;
+  const BRIDGE_SESSION_TOKEN = crypto.randomBytes(32).toString('hex');
+  const ORCHESTRATOR_CORS = ['GET, POST, OPTIONS', 'content-type, x-p2p-bridge-token'] as const;
 
   async function handleOrchestratorBridge(
     req: http.IncomingMessage,
@@ -296,6 +303,12 @@ function startStaticServer(): Promise<number> {
     endpoint: string,
   ): Promise<void> {
     if (req.method === 'OPTIONS') {
+      const origin = req.headers.origin;
+      if (origin && !BRIDGE_ALLOWED_ORIGINS.has(origin) && !origin.startsWith('chrome-extension://')) {
+        res.writeHead(403);
+        res.end();
+        return;
+      }
       applyBridgeCors(req, res, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
       res.writeHead(204);
       res.end();
@@ -305,6 +318,11 @@ function startStaticServer(): Promise<number> {
     const orchestrator = getOrchestrator();
 
     if (endpoint === 'status' && req.method === 'GET') {
+      const origin = req.headers.origin;
+      if (origin && !BRIDGE_ALLOWED_ORIGINS.has(origin) && !origin.startsWith('chrome-extension://')) {
+        writeBridgeJson(req, res, 403, { error: 'Forbidden origin' }, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
+        return;
+      }
       const treasury = getTreasurySnapshot();
       writeBridgeJson(
         req,
@@ -324,6 +342,23 @@ function startStaticServer(): Promise<number> {
 
     if (req.method !== 'POST') {
       writeBridgeJson(req, res, 405, { error: 'Method not allowed' }, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
+      return;
+    }
+
+    const guard = validateOrchestratorMutationRequest(
+      req.headers,
+      BRIDGE_ALLOWED_ORIGINS,
+      BRIDGE_SESSION_TOKEN,
+    );
+    if (!guard.allowed) {
+      writeBridgeJson(
+        req,
+        res,
+        guard.statusCode,
+        { error: guard.reason },
+        ORCHESTRATOR_CORS[0],
+        ORCHESTRATOR_CORS[1],
+      );
       return;
     }
 
@@ -429,7 +464,7 @@ function startStaticServer(): Promise<number> {
     writeBridgeJson(req, res, 404, { error: 'Unknown orchestrator endpoint' }, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
   }
 
-  const TELEGRAM_CORS = ['GET, OPTIONS', 'content-type'] as const;
+  const TELEGRAM_CORS = ['GET, OPTIONS', 'content-type, x-telegram-bot-token'] as const;
 
   async function handleTelegramBridge(
     req: http.IncomingMessage,
@@ -441,11 +476,28 @@ function startStaticServer(): Promise<number> {
       res.end();
       return;
     }
+    const origin = req.headers.origin;
+    if (origin && !BRIDGE_ALLOWED_ORIGINS.has(origin)) {
+      writeBridgeJson(req, res, 403, { error: 'Forbidden origin' }, TELEGRAM_CORS[0], TELEGRAM_CORS[1]);
+      return;
+    }
     const fullUrl = new URL(req.url ?? '/', 'http://127.0.0.1');
-    const token = fullUrl.searchParams.get('token');
-    const filePath = fullUrl.searchParams.get('file_path');
-    if (!token || !filePath) {
-      writeBridgeJson(req, res, 400, { error: 'Missing token or file_path' }, TELEGRAM_CORS[0], TELEGRAM_CORS[1]);
+    const headerToken = req.headers['x-telegram-bot-token'];
+    const token =
+      (Array.isArray(headerToken) ? headerToken[0] : headerToken) ||
+      fullUrl.searchParams.get('token');
+    const filePath =
+      fullUrl.searchParams.get('file_path') || fullUrl.searchParams.get('filePath');
+    const validation = validateTelegramFileDownloadParams(token, filePath);
+    if (!validation.valid || !token || !filePath) {
+      writeBridgeJson(
+        req,
+        res,
+        400,
+        { error: validation.reason ?? 'Missing token or file_path' },
+        TELEGRAM_CORS[0],
+        TELEGRAM_CORS[1],
+      );
       return;
     }
     try {
@@ -509,11 +561,11 @@ function startStaticServer(): Promise<number> {
      */
     const CSP = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdn.jsdelivr.net",
+      "script-src 'self' 'unsafe-inline' blob: https://cdn.jsdelivr.net",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self'",
-      "connect-src 'self' https://api.telegram.org https://p2p.binance.com https://api.cotizave.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com http://127.0.0.1:51857 http://localhost:51857 http://127.0.0.1:3030 http://localhost:3030 data: blob:",
+      "connect-src 'self' https://api.telegram.org https://generativelanguage.googleapis.com https://p2p.binance.com https://api.cotizave.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com http://127.0.0.1:51857 http://localhost:51857 http://127.0.0.1:3030 http://localhost:3030 data: blob:",
       "worker-src 'self' blob: https://cdn.jsdelivr.net",
       "object-src 'none'",
       "base-uri 'self'",
@@ -681,7 +733,7 @@ async function createWindow(): Promise<void> {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('https:') || url.startsWith('http:') || url.startsWith('tg:')) {
+    if (isAllowedExternalUrl(url)) {
       void shell.openExternal(url);
     }
     return { action: 'deny' };
@@ -690,12 +742,11 @@ async function createWindow(): Promise<void> {
   mainWindow.webContents.on('will-navigate', (event, url) => {
     const isLocalOrigin =
       url.startsWith('http://localhost:') || url.startsWith('http://127.0.0.1:');
-    if (
-      !isLocalOrigin &&
-      (url.startsWith('https:') || url.startsWith('http:') || url.startsWith('tg:'))
-    ) {
+    if (!isLocalOrigin) {
       event.preventDefault();
-      void shell.openExternal(url);
+      if (isAllowedExternalUrl(url)) {
+        void shell.openExternal(url);
+      }
     }
   });
 

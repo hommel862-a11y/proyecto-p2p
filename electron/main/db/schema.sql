@@ -171,6 +171,38 @@ CREATE TABLE IF NOT EXISTS bank_accounts (
 CREATE INDEX IF NOT EXISTS idx_bank_accounts_status ON bank_accounts(status);
 CREATE INDEX IF NOT EXISTS idx_bank_accounts_code ON bank_accounts(bank_code);
 
+-- Immutable Venezuelan FX Settlement Ledger (Append-Only SHA-256 Chain + Anti-Replay Nonce)
+CREATE TABLE IF NOT EXISTS fx_settlement_ledger (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  timestamp TEXT NOT NULL,
+  vet_date_key TEXT NOT NULL,
+  bank_id TEXT NOT NULL,
+  bank_name TEXT NOT NULL,
+  account_id TEXT,
+  account_name TEXT,
+  modality TEXT NOT NULL,
+  purchased_usd REAL NOT NULL,
+  bcv_rate_ves REAL NOT NULL,
+  principal_ves REAL NOT NULL,
+  bank_fee_pct REAL NOT NULL,
+  bank_fee_ves REAL NOT NULL,
+  total_debit_ves REAL NOT NULL,
+  exit_rail TEXT NOT NULL,
+  igtf_pct REAL NOT NULL DEFAULT 0,
+  igtf_usd REAL NOT NULL DEFAULT 0,
+  rail_fee_pct REAL NOT NULL DEFAULT 0,
+  rail_fee_usd REAL NOT NULL DEFAULT 0,
+  net_usdt REAL NOT NULL,
+  channel TEXT NOT NULL,
+  prev_hash TEXT NOT NULL,
+  row_hash TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_fx_ledger_vet_date ON fx_settlement_ledger(vet_date_key DESC);
+CREATE INDEX IF NOT EXISTS idx_fx_ledger_created ON fx_settlement_ledger(created_at DESC);
+
 -- ===========================================================================
 -- Decision Journal (append-only memory of what the engine decided, saw, and got)
 -- ===========================================================================
