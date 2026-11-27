@@ -33,6 +33,7 @@ import { OperationTimerBannerComponent } from './operation-timer-banner.componen
 import { InvoiceModalComponent } from './invoice-modal.component';
 import { SpatialTilt3dDirective } from '../../shared/ui/spatial-tilt-3d.directive';
 import { McpService } from '../../core/mcp.service';
+import { BinanceAccountProfileService } from '../../core/binance-account-profile.service';
 
 /** CSV header row (es-VE) for the operation-ledger export. */
 export const CSV_HEADER =
@@ -152,6 +153,7 @@ export class OperationLog {
   readonly accountsService = inject(AccountsService);
   readonly crmService = inject(CounterpartyService);
   readonly mcpService = inject(McpService);
+  readonly accountProfile = inject(BinanceAccountProfileService, { optional: true });
 
   readonly mcpLedgerSynced = signal<boolean>(true);
   readonly selectedBank = signal<string | null>(null);
@@ -1031,6 +1033,80 @@ export class OperationLog {
       }
     };
     reader.readAsText(file);
+  }
+
+  /**
+   * Synchronizes completed Binance P2P C2C orders directly from Electron SAPI vault with orderNumber deduplication.
+   */
+  async syncBinanceSapiOrders(): Promise<void> {
+    if (!this.accountProfile) return;
+    const synced = await this.accountProfile.syncC2cOrders({ rows: 100 });
+    const completed = synced.filter((o) => o.orderStatus === 'COMPLETED' && o.amount > 0);
+    if (completed.length === 0) {
+      if (!this.accountProfile.lastSyncError()) {
+        this.toast.info('No se encontraron órdenes COMPLETED nuevas en Binance SAPI.');
+      }
+      return;
+    }
+
+    const existingOps = this.operations();
+    const existingNotes = new Set<string>();
+    for (const op of existingOps) {
+      if (op.merchantNote) existingNotes.add(op.merchantNote);
+      if (op.notes) existingNotes.add(op.notes);
+      existingNotes.add(op.id);
+    }
+
+    const existingList = Array.from(existingNotes);
+    const importedOps: Operation[] = [];
+    let skipped = 0;
+
+    for (const order of completed) {
+      const isDup = existingList.some((txt) => order.orderNumber && txt.includes(order.orderNumber));
+      if (isDup) {
+        skipped++;
+        continue;
+      }
+
+      importedOps.push({
+        id: crypto.randomUUID(),
+        timestamp: new Date(order.createTime > 0 ? order.createTime : Date.now()).toISOString(),
+        type: order.tradeType === 'SELL' ? 'sell' : 'buy',
+        pair: order.asset === 'EUR' ? 'EUR' : 'USDT',
+        vesAmount: clampNonNegative(order.totalPrice),
+        usdtAmount: clampNonNegative(order.amount),
+        price: clampNonNegative(order.unitPrice),
+        fees: roundMoney(order.commission * order.unitPrice, 2),
+        merchantNote: order.counterpartyNickname
+          ? `${order.counterpartyNickname} (Orden #${order.orderNumber})`
+          : `Binance #${order.orderNumber}`,
+        notes: `Sincronizado SAPI Binance P2P — Orden: ${order.orderNumber}${order.advNo ? ` · Ad: ${order.advNo}` : ''}`,
+        errorFree: true,
+      });
+    }
+
+    if (importedOps.length > 0) {
+      const merged = [...existingOps, ...importedOps].sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+      );
+      this.operations.set(merged);
+      this.persist(merged);
+      this.toast.success(
+        `Sincronizadas ${importedOps.length} órdenes desde Binance SAPI (${skipped} duplicadas omitidas).`,
+        'Sync Binance SAPI',
+      );
+      this.audit.log(
+        'DATA_RESTORE',
+        'Sincronización Binance SAPI C2C',
+        { imported: importedOps.length, skipped },
+        'info',
+      );
+    } else {
+      this.toast.info(
+        `Todas las órdenes SAPI (${skipped}) ya estaban registradas en el libro mayor.`,
+        'Sin Novedades',
+      );
+    }
   }
 
   /**

@@ -722,4 +722,27 @@ describe('Electron preload bridge (secure IPC)', () => {
     ]);
     expect(listenChannels).toEqual(['p2p:dock-state-changed']);
   });
+
+  it('forwards binanceVault config and order sync methods cleanly', async () => {
+    const calls: { channel: string; args: unknown[] }[] = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      return Promise.resolve({});
+    });
+
+    await api.binanceVault.getStatus();
+    await api.binanceVault.saveConfig({ merchantLevel: 'GOLD', apiKey: 'k', apiSecret: 's' });
+    await api.binanceVault.clearConfig();
+    await api.binanceVault.syncOrders({ rows: 50 });
+
+    expect(calls).toEqual([
+      { channel: 'p2p:binance-config-get', args: [] },
+      {
+        channel: 'p2p:binance-config-save',
+        args: [{ merchantLevel: 'GOLD', apiKey: 'k', apiSecret: 's' }],
+      },
+      { channel: 'p2p:binance-config-clear', args: [] },
+      { channel: 'p2p:binance-sync-orders', args: [{ rows: 50 }] },
+    ]);
+  });
 });

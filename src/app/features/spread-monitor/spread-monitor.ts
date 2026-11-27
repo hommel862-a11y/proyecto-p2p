@@ -59,6 +59,7 @@ import { BybitP2pService } from '../../core/bybit-p2p.service';
 import { BinanceRepricerService } from '../../core/binance-repricer.service';
 import { McpAdPublisherService } from '../../core/mcp-ad-publisher.service';
 import { AdComposerService } from '../../core/ad-composer.service';
+import { BinanceAccountProfileService } from '../../core/binance-account-profile.service';
 import { BinanceExecutionBridgeService } from '../../core/binance-execution-bridge.service';
 import { HotkeysService } from '../../core/hotkeys.service';
 import { AccountsService } from '../../core/accounts.service';
@@ -158,6 +159,7 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   readonly mcpPublisher = inject(McpAdPublisherService);
   readonly adComposer = inject(AdComposerService);
   readonly executionBridge = inject(BinanceExecutionBridgeService, { optional: true });
+  readonly accountProfile = inject(BinanceAccountProfileService, { optional: true });
   readonly spotMarket = inject(SpotMarketService);
   protected readonly Math = Math;
 

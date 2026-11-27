@@ -5,6 +5,7 @@ import { normalizeCotizaveApiKey } from '@p2p/core';
 import { CotizaveService } from '../../core/cotizave.service';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { TelegramWorkerService } from '../../core/telegram-worker.service';
+import { BinanceAccountProfileService } from '../../core/binance-account-profile.service';
 import { ToastService } from '../../core/toast.service';
 import { StorageService } from '../../core/storage';
 
@@ -184,6 +185,138 @@ export const AI_MODELS_BY_PROVIDER: Record<string, AiModelOption[]> = {
               >
                 {{ binance.loading() ? 'Consultando...' : '⚡ Consultar Radar Binance' }}
               </button>
+            </div>
+
+            <div style="border-top: 1px solid var(--line); padding-top: 12px; margin-top: 6px; display: flex; flex-direction: column; gap: 10px;">
+              <div class="api-title-row">
+                <span class="api-badge" [class.badge-active]="binanceProfile.vaultStatus().hasCredentials">
+                  {{ binanceProfile.vaultStatus().hasCredentials ? '🔒 BÓVEDA CIFRADA' : '⚪ SIN CLAVES SAPI' }}
+                </span>
+                <strong>Nivel de Cuenta P2P &amp; Bóveda Merchant SAPI</strong>
+              </div>
+              <span class="api-desc">
+                @if (binanceProfile.isDesktopVaultAvailable()) {
+                  Claves HMAC-SHA256 y URL de Proxy se cifran localmente en SQLite + safeStorage (nunca se exponen en localStorage).
+                } @else {
+                  Modo web: solo se guarda el nivel Maker y chequeo KYC; las claves SAPI requieren Escritorio Electron.
+                }
+              </span>
+
+              <div class="api-input-group">
+                <label for="binance-merchant-tier">Nivel Maker / Merchant</label>
+                <select
+                  id="binance-merchant-tier"
+                  class="form-control"
+                  [value]="binanceProfile.merchantLevel()"
+                  (change)="onMerchantLevelChange($event)"
+                >
+                  <option value="STANDARD">STANDARD (Solo KYC · 0.25% · Portal Asistido)</option>
+                  <option value="BRONZE">BRONZE Merchant (0.20% · Escritura SAPI)</option>
+                  <option value="SILVER">SILVER Merchant (0.175% · Escritura SAPI)</option>
+                  <option value="GOLD">GOLD Merchant (0.125% · Escritura SAPI)</option>
+                </select>
+              </div>
+
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px;">
+                <div class="api-input-group">
+                  <label for="binance-api-key-input">Binance API Key</label>
+                  <input
+                    id="binance-api-key-input"
+                    type="password"
+                    [value]="binanceApiKeyInput()"
+                    (input)="binanceApiKeyInput.set($any($event.target).value)"
+                    [placeholder]="binanceProfile.vaultStatus().maskedApiKey || 'API Key HMAC-SHA256'"
+                    class="font-mono form-control"
+                  />
+                </div>
+                <div class="api-input-group">
+                  <label for="binance-api-secret-input">Binance API Secret</label>
+                  <input
+                    id="binance-api-secret-input"
+                    type="password"
+                    [value]="binanceApiSecretInput()"
+                    (input)="binanceApiSecretInput.set($any($event.target).value)"
+                    placeholder="Dejar vacío para conservar el actual"
+                    class="font-mono form-control"
+                  />
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px;">
+                <div class="api-input-group">
+                  <label for="binance-proxy-url-input">Proxy IP Estática SAPI (Opcional)</label>
+                  <input
+                    id="binance-proxy-url-input"
+                    type="password"
+                    [value]="binanceProxyUrlInput()"
+                    (input)="binanceProxyUrlInput.set($any($event.target).value)"
+                    [placeholder]="binanceProfile.vaultStatus().redactedProxyHost || 'https://user:pass@ip-fija:8443'"
+                    class="font-mono form-control"
+                  />
+                </div>
+                <div class="api-input-group">
+                  <label for="binance-age-days-input">Antigüedad Cuenta (días)</label>
+                  <input
+                    id="binance-age-days-input"
+                    type="number"
+                    min="0"
+                    [value]="binanceAccountAgeInput()"
+                    (input)="binanceAccountAgeInput.set($any($event.target).value)"
+                    placeholder="Ej. 90"
+                    class="font-mono form-control"
+                  />
+                </div>
+              </div>
+
+              <label class="toggle-label">
+                <input
+                  type="checkbox"
+                  [checked]="binanceProfile.vaultStatus().hasKycAnd2fa"
+                  (change)="onKyc2faToggle($event)"
+                />
+                <span>Cuenta con KYC Verificado + 2FA Activo</span>
+              </label>
+
+              <div class="api-actions-row">
+                <button type="button" class="btn-save" (click)="saveBinanceVault()">
+                  💾 Guardar Bóveda Binance
+                </button>
+                <button
+                  type="button"
+                  class="btn-test"
+                  (click)="auditBinanceKycAndSapi()"
+                  [disabled]="binanceProfile.syncing()"
+                >
+                  {{ binanceProfile.syncing() ? '⏳ Auditando...' : '🔍 Probar SAPI & Auditar 5 Candados KYC' }}
+                </button>
+                @if (binanceProfile.vaultStatus().hasCredentials || binanceProfile.vaultStatus().hasProxyUrl) {
+                  <button type="button" class="btn-icon-action" (click)="clearBinanceVault()">
+                    🗑️ Limpiar Claves
+                  </button>
+                }
+              </div>
+
+              @if (binanceProfile.syncedOrders().length > 0 || binanceProfile.lastSyncError()) {
+                <div class="api-desc" style="font-size: 0.72rem;">
+                  @if (binanceProfile.lastSyncError(); as syncErr) {
+                    <span style="color: #fca5a5;">⚠️ {{ syncErr }}</span>
+                  } @else {
+                    <span>
+                      Órdenes C2C leídas: <strong>{{ binanceProfile.syncedOrders().length }}</strong> ·
+                      Veredicto 5 Candados KYC:
+                      <strong>
+                        {{
+                          binanceProfile.kycEligibility().eligible === true
+                            ? '✅ APTO MAKER'
+                            : binanceProfile.kycEligibility().eligible === false
+                              ? '🛑 BLOQUEADO (' + binanceProfile.kycEligibility().failedGates.length + ')'
+                              : '🟡 PARCIAL'
+                        }}
+                      </strong>
+                    </span>
+                  }
+                </div>
+              }
             </div>
           </section>
 
@@ -606,11 +739,21 @@ export const AI_MODELS_BY_PROVIDER: Record<string, AiModelOption[]> = {
 export class ApiSettingsModalComponent {
   readonly cotizave = inject(CotizaveService);
   readonly binance = inject(BinanceP2pService);
+  readonly binanceProfile = inject(BinanceAccountProfileService);
   readonly telegram = inject(TelegramWorkerService);
   private readonly storage = inject(StorageService);
   private readonly toast = inject(ToastService);
 
   readonly modalClose = output<void>();
+
+  readonly binanceApiKeyInput = signal<string>('');
+  readonly binanceApiSecretInput = signal<string>('');
+  readonly binanceProxyUrlInput = signal<string>('');
+  readonly binanceAccountAgeInput = signal<string>(
+    this.binanceProfile.vaultStatus().accountAgeDaysOverride !== null
+      ? String(this.binanceProfile.vaultStatus().accountAgeDaysOverride)
+      : '',
+  );
 
   readonly showCotizaveKey = signal<boolean>(false);
   readonly cotizaveKeyInput = signal<string>(this.cotizave.apiKey());
@@ -726,6 +869,60 @@ export class ApiSettingsModalComponent {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Error al conectar con Binance P2P';
       this.toast.error(msg, 'Binance P2P');
+    }
+  }
+
+  async onMerchantLevelChange(event: Event): Promise<void> {
+    const level = (event.target as HTMLSelectElement).value as 'STANDARD' | 'BRONZE' | 'SILVER' | 'GOLD';
+    await this.binanceProfile.setMerchantLevel(level);
+  }
+
+  async onKyc2faToggle(event: Event): Promise<void> {
+    const checked = (event.target as HTMLInputElement).checked;
+    await this.binanceProfile.saveConfig({ hasKycAnd2fa: checked });
+  }
+
+  async saveBinanceVault(): Promise<void> {
+    const rawAge = this.binanceAccountAgeInput().trim();
+    const ageNum = rawAge.length > 0 ? Number(rawAge) : null;
+    try {
+      await this.binanceProfile.saveConfig({
+        ...(this.binanceApiKeyInput().trim() ? { apiKey: this.binanceApiKeyInput().trim() } : {}),
+        ...(this.binanceApiSecretInput().trim() ? { apiSecret: this.binanceApiSecretInput().trim() } : {}),
+        ...(this.binanceProxyUrlInput().trim() ? { merchantProxyUrl: this.binanceProxyUrlInput().trim() } : {}),
+        merchantLevel: this.binanceProfile.merchantLevel(),
+        accountAgeDaysOverride: ageNum !== null && Number.isFinite(ageNum) && ageNum >= 0 ? Math.trunc(ageNum) : null,
+      });
+      this.binanceApiKeyInput.set('');
+      this.binanceApiSecretInput.set('');
+      this.binanceProxyUrlInput.set('');
+      this.toast.success('Configuración Binance P2P guardada en bóveda.', 'Binance SAPI');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'No se pudo guardar en bóveda';
+      this.toast.error(msg, 'Binance SAPI');
+    }
+  }
+
+  async clearBinanceVault(): Promise<void> {
+    await this.binanceProfile.clearConfig();
+    this.binanceApiKeyInput.set('');
+    this.binanceApiSecretInput.set('');
+    this.binanceProxyUrlInput.set('');
+    this.binanceAccountAgeInput.set('');
+    this.toast.info('Credenciales Binance eliminadas de la bóveda.', 'Binance SAPI');
+  }
+
+  async auditBinanceKycAndSapi(): Promise<void> {
+    const orders = await this.binanceProfile.syncC2cOrders({
+      ...(this.binanceApiKeyInput().trim() ? { apiKey: this.binanceApiKeyInput().trim() } : {}),
+      ...(this.binanceApiSecretInput().trim() ? { apiSecret: this.binanceApiSecretInput().trim() } : {}),
+    });
+    if (orders.length > 0 || !this.binanceProfile.lastSyncError()) {
+      const elig = this.binanceProfile.kycEligibility();
+      this.toast.success(
+        `SAPI C2C verificado (${orders.length} órdenes). Estado KYC Maker: ${elig.eligible === true ? 'APTO' : elig.eligible === false ? 'BLOQUEADO' : 'PARCIAL'}.`,
+        'Auditoría Binance KYC',
+      );
     }
   }
 

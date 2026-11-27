@@ -6,6 +6,10 @@ import {
   ARM_WORKSPACES,
   type BinanceDockOpenRequest,
   type BinanceDockStateDto,
+  type BinanceSyncOrdersRequest,
+  type BinanceSyncedC2cOrderDto,
+  type BinanceVaultSaveRequest,
+  type BinanceVaultStatusDto,
   type P2PIpcChannels,
   type BinanceSearchParams,
   type BinanceC2cOrdersFetchRequest,
@@ -53,6 +57,12 @@ import {
 import { getMcpFullStatus, executeMcpToolTest } from '../mcp-bootstrap';
 import { AlphaWatcher } from '../alpha-watcher';
 import { BinanceOperatorDock, isAllowedBinanceDockUrl } from '../binance-operator-dock';
+import {
+  clearBinanceVaultConfig,
+  getBinanceVaultStatus,
+  saveBinanceVaultConfig,
+  syncBinanceC2cOrdersFromVault,
+} from '../binance-vault-config';
 import { ClipboardWatcherService } from '../services/clipboard-watcher';
 import { createNodeExecutor, resolveAppRoot, runBacktest } from '../services/backtest-runner';
 import {
@@ -2109,6 +2119,37 @@ export function registerIpcHandlers(): void {
       }
       await shell.openExternal(url);
       return { opened: true };
+    },
+  );
+
+  ipcMain.removeHandler('p2p:binance-config-get');
+  ipcMain.handle('p2p:binance-config-get', (): BinanceVaultStatusDto => {
+    return getBinanceVaultStatus(db);
+  });
+
+  ipcMain.removeHandler('p2p:binance-config-save');
+  ipcMain.handle(
+    'p2p:binance-config-save',
+    (_event: IpcMainInvokeEvent, req: BinanceVaultSaveRequest): BinanceVaultStatusDto => {
+      return saveBinanceVaultConfig(db, req);
+    },
+  );
+
+  ipcMain.removeHandler('p2p:binance-config-clear');
+  ipcMain.handle('p2p:binance-config-clear', (): BinanceVaultStatusDto => {
+    return clearBinanceVaultConfig(db);
+  });
+
+  ipcMain.removeHandler('p2p:binance-sync-orders');
+  ipcMain.handle(
+    'p2p:binance-sync-orders',
+    async (
+      _event: IpcMainInvokeEvent,
+      req?: BinanceSyncOrdersRequest,
+    ): Promise<BinanceSyncedC2cOrderDto[]> => {
+      return syncBinanceC2cOrdersFromVault(db, req, {
+        fetchImpl: (url, init) => net.fetch(url, init),
+      });
     },
   );
 }

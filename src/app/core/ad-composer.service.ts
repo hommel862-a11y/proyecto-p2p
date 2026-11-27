@@ -1,8 +1,10 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable, effect, inject, signal, computed } from '@angular/core';
 import { BinanceP2pService } from './binance-p2p.service';
 import { AccountsService } from './accounts.service';
 import { McpAdPublisherService } from './mcp-ad-publisher.service';
 import { ToastService } from './toast.service';
+import { BinanceAccountProfileService } from './binance-account-profile.service';
+import { BinanceExecutionBridgeService } from './binance-execution-bridge.service';
 import {
   composeAdDraft,
   BUILT_IN_TEMPLATES,
@@ -34,6 +36,8 @@ export class AdComposerService {
   private readonly accounts = inject(AccountsService);
   private readonly publisher = inject(McpAdPublisherService);
   private readonly toast = inject(ToastService);
+  private readonly accountProfile = inject(BinanceAccountProfileService, { optional: true });
+  private readonly executionBridge = inject(BinanceExecutionBridgeService, { optional: true });
 
   readonly side = signal<'BUY' | 'SELL'>('BUY');
   readonly strategy = signal<RepricerStrategy>('TOP_1');
@@ -44,6 +48,14 @@ export class AdComposerService {
   /** 0 = Usar 100% del cupo disponible en la cuenta bancaria seleccionada */
   readonly targetAssetAmountUsdt = signal<number>(0);
   readonly makerFeePct = signal<number>(0.25);
+
+  constructor() {
+    if (this.accountProfile) {
+      effect(() => {
+        this.makerFeePct.set(this.accountProfile!.makerFeePct());
+      });
+    }
+  }
   readonly breakEvenSellPrice = signal<number>(0);
   readonly maxBuyPrice = signal<number>(0);
   readonly preferredBank = signal<string | null>(null);
@@ -357,8 +369,12 @@ export class AdComposerService {
    * Opens Binance P2P advertisement posting page in browser.
    */
   openBinanceAdvPost(): void {
+    if (this.executionBridge) {
+      void this.executionBridge.openMerchantPortal('advPost');
+      return;
+    }
     if (typeof window !== 'undefined') {
-      window.open('https://p2p.binance.com/es-LA/advPost', '_blank');
+      window.open('https://p2p.binance.com/es-LA/advPost', '_blank', 'noopener,noreferrer');
     }
   }
 

@@ -2715,6 +2715,37 @@
             </div>
 
             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              @if (accountProfile; as profile) {
+                <select
+                  aria-label="Nivel Maker Binance"
+                  style="font-size: 0.72rem; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text);"
+                  [value]="profile.merchantLevel()"
+                  (change)="profile.setMerchantLevel($any($event.target).value); adComposer.composeDraft()"
+                >
+                  <option value="STANDARD">KYC 0.25%</option>
+                  <option value="BRONZE">Bronce 0.20%</option>
+                  <option value="SILVER">Plata 0.175%</option>
+                  <option value="GOLD">Oro 0.125%</option>
+                </select>
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  style="font-size: 0.72rem; padding: 4px 9px;"
+                  (click)="executionBridge?.openMerchantPortal('myads')"
+                  title="Editar tus anuncios activos en el Dock de Binance (myads)"
+                >
+                  ⚡ Mis Anuncios
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  style="font-size: 0.72rem; padding: 4px 9px;"
+                  (click)="executionBridge?.openMerchantPortal('advPost')"
+                  title="Publicar anuncio nuevo en el Dock de Binance (advPost)"
+                >
+                  ➕ Publicar Web
+                </button>
+              }
               <div class="pill-switch" style="display: flex; background: rgba(0,0,0,0.4); border-radius: 999px; padding: 2px; border: 1px solid var(--line);">
                 <button
                   type="button"
@@ -2750,6 +2781,38 @@
               </button>
             </div>
           </div>
+
+          @if (accountProfile; as profile) {
+            @if (profile.merchantLevel() === 'STANDARD') {
+              <div style="margin-bottom: 10px; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); background: rgba(0,0,0,0.22); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;">
+                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.72rem;">
+                  <strong style="color: var(--gold);">🛡️ 5 Candados KYC Maker:</strong>
+                  @for (gate of profile.kycEligibility().gates; track gate.id) {
+                    <span
+                      class="badge"
+                      [style.background]="gate.passed === true ? 'rgba(16,185,129,0.16)' : gate.passed === false ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.06)'"
+                      [style.color]="gate.passed === true ? '#6ee7b7' : gate.passed === false ? '#fca5a5' : 'var(--muted)'"
+                      [style.border]="'1px solid ' + (gate.passed === true ? 'rgba(16,185,129,0.35)' : gate.passed === false ? 'rgba(239,68,68,0.35)' : 'var(--line)')"
+                    >
+                      {{ gate.passed === true ? '✅' : gate.passed === false ? '🛑' : '⏳' }} {{ gate.label }}
+                      @if (gate.actual !== null) {
+                        ({{ gate.actual }})
+                      }
+                    </span>
+                  }
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  style="font-size: 0.7rem; padding: 3px 9px;"
+                  [disabled]="profile.syncing()"
+                  (click)="profile.syncC2cOrders()"
+                >
+                  {{ profile.syncing() ? '⏳ Leyendo SAPI...' : '🔄 Auditar SAPI' }}
+                </button>
+              </div>
+            }
+          }
 
           <!-- Barra de 4 Sub-Tabs del Ad Studio -->
           <div class="ad-studio-tabs" role="tablist" aria-label="Secciones del Estudio de Anuncios">

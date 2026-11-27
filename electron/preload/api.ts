@@ -16,6 +16,10 @@ import type {
   Finance360ExportPdfResult,
   BinanceDockOpenRequest,
   BinanceDockStateDto,
+  BinanceVaultStatusDto,
+  BinanceVaultSaveRequest,
+  BinanceSyncOrdersRequest,
+  BinanceSyncedC2cOrderDto,
 } from '../shared/types';
 // Type-only, so it is erased at compile time and cannot pull `node:sqlite` (or any
 // other main-process module) into the preload bundle. The reverse direction — the main
@@ -275,6 +279,14 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
         );
       },
     },
+    binanceVault: {
+      getStatus: () => ipc('p2p:binance-config-get') as Promise<BinanceVaultStatusDto>,
+      saveConfig: (req: BinanceVaultSaveRequest) =>
+        ipc('p2p:binance-config-save', req) as Promise<BinanceVaultStatusDto>,
+      clearConfig: () => ipc('p2p:binance-config-clear') as Promise<BinanceVaultStatusDto>,
+      syncOrders: (req?: BinanceSyncOrdersRequest) =>
+        ipc('p2p:binance-sync-orders', req) as Promise<BinanceSyncedC2cOrderDto[]>,
+    },
   };
 }
 
@@ -303,6 +315,7 @@ export const EXPOSED_API_KEYS = [
   'arm',
   'finance360',
   'binanceDock',
+  'binanceVault',
 ] as const;
 
 // The channels the bridge is permitted to forward. Anything else must be
@@ -407,6 +420,10 @@ export const ALLOWED_CHANNELS = [
   'p2p:dock-toggle',
   'p2p:dock-state',
   'p2p:open-external',
+  'p2p:binance-config-get',
+  'p2p:binance-config-save',
+  'p2p:binance-config-clear',
+  'p2p:binance-sync-orders',
 ] as const;
 
 // Allow-listed server-to-renderer push event channels

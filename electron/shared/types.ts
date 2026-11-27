@@ -565,6 +565,67 @@ export interface P2PIpcChannels {
     request: string;
     response: { opened: boolean };
   };
+  'p2p:binance-config-get': {
+    request: void;
+    response: BinanceVaultStatusDto;
+  };
+  'p2p:binance-config-save': {
+    request: BinanceVaultSaveRequest;
+    response: BinanceVaultStatusDto;
+  };
+  'p2p:binance-config-clear': {
+    request: void;
+    response: BinanceVaultStatusDto;
+  };
+  'p2p:binance-sync-orders': {
+    request: BinanceSyncOrdersRequest | undefined;
+    response: BinanceSyncedC2cOrderDto[];
+  };
+}
+
+export type BinanceMerchantLevelDto = 'STANDARD' | 'BRONZE' | 'SILVER' | 'GOLD';
+
+export interface BinanceVaultStatusDto {
+  hasCredentials: boolean;
+  maskedApiKey: string | null;
+  merchantLevel: BinanceMerchantLevelDto;
+  hasProxyUrl: boolean;
+  redactedProxyHost: string | null;
+  accountAgeDaysOverride: number | null;
+  hasKycAnd2fa: boolean;
+  secretStorageAvailable: boolean;
+}
+
+export interface BinanceVaultSaveRequest {
+  apiKey?: string;
+  apiSecret?: string;
+  merchantLevel?: BinanceMerchantLevelDto;
+  merchantProxyUrl?: string | null;
+  clearProxy?: boolean;
+  accountAgeDaysOverride?: number | null;
+  hasKycAnd2fa?: boolean;
+}
+
+export interface BinanceSyncOrdersRequest {
+  apiKey?: string;
+  apiSecret?: string;
+  rows?: number;
+}
+
+export interface BinanceSyncedC2cOrderDto {
+  orderNumber: string;
+  advNo: string;
+  tradeType: 'BUY' | 'SELL';
+  asset: string;
+  fiat: string;
+  amount: number;
+  totalPrice: number;
+  unitPrice: number;
+  commission: number;
+  orderStatus: string;
+  counterpartyNickname: string;
+  counterpartyUserNo?: string;
+  createTime: number;
 }
 
 export const F360_LEDGER_ENTRY_TYPES = {
@@ -1309,6 +1370,12 @@ export interface ElectronAPI {
     getState(): Promise<BinanceDockStateDto>;
     openExternal(url: string): Promise<{ opened: boolean }>;
     onStateChanged(listener: (state: BinanceDockStateDto) => void): () => void;
+  };
+  binanceVault: {
+    getStatus(): Promise<BinanceVaultStatusDto>;
+    saveConfig(req: BinanceVaultSaveRequest): Promise<BinanceVaultStatusDto>;
+    clearConfig(): Promise<BinanceVaultStatusDto>;
+    syncOrders(req?: BinanceSyncOrdersRequest): Promise<BinanceSyncedC2cOrderDto[]>;
   };
 }
 
