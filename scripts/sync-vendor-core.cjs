@@ -40,6 +40,8 @@ const VENDOR_NAMES = [
   'inventory-accounting',
   'operator-manager',
   'accounts',
+  'account-velocity',
+  'fx-bank-desk',
   'johnson-depth',
   'orderbook-microstructure',
   'binance-p2p',

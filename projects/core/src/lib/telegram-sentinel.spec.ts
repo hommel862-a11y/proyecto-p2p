@@ -1887,6 +1887,73 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       expect(emptyRes.params).toEqual({ bankId: 'BANCAMIGA' });
       expectParseableMarkdownV2(emptyRes.responseMarkdown);
     });
+
+    it('resolves multi-word "/mesa 100% Banco 50000", carries FX_BOUGHT nonces, uses activeExitRailLabel & blocks group leaks', () => {
+      const cienCmd = dispatchTelegramUpdate(
+        {
+          update_id: 9010,
+          message: {
+            message_id: 30,
+            from: { id: 123456 },
+            chat: { id: 123456, type: 'private' },
+            text: '/mesa 100% Banco 50000',
+            date: Date.now(),
+          },
+        },
+        123456,
+      );
+      expect(cienCmd.action).toBe('FX_DESK');
+      expect(cienCmd.params).toEqual({ bankId: 'CIEN_BANCO', capitalVes: 50000 });
+
+      const groupLeakAttempt = dispatchTelegramUpdate(
+        {
+          update_id: 9011,
+          message: {
+            message_id: 31,
+            from: { id: 123456 },
+            chat: { id: -100998877, type: 'supergroup' },
+            text: '/mesa',
+            date: Date.now(),
+          },
+        },
+        123456,
+      );
+      expect(groupLeakAttempt.authorized).toBe(false);
+
+      const plan = evaluateFxBankDeskPlan({
+        bcvOfficialRateVes: 62.45,
+        p2pSellRateVes: 84.2,
+        simulatedCapitalVes: 80000,
+        exitRailOverrides: { BANCAMIGA: 'CASH_WITHDRAWAL_OTC' },
+      });
+      const filteredMsg = formatFxDeskTelegramMessage(plan, 'BANCAMIGA');
+      const bancamigaTicket = plan.tickets.find((t) => t.bank.id === 'BANCAMIGA')!;
+      expect(filteredMsg).toContain('Retiro Taquilla Efectivo USD');
+      expect(filteredMsg).toContain(`Total Sugerido:* \`${bancamigaTicket.recommendedOrderUsd}`);
+      expectParseableMarkdownV2(filteredMsg);
+
+      const kb = buildFxDeskTelegramKeyboard(plan, 'BANCAMIGA', (b, u) => `sig_${b}_${u}`);
+      expect(kb.inline_keyboard[0][1].callback_data).toBe(
+        `FX_BOUGHT:BANCAMIGA:${bancamigaTicket.recommendedOrderUsd}:sig_BANCAMIGA_${bancamigaTicket.recommendedOrderUsd}`,
+      );
+
+      const noncedCb = dispatchTelegramUpdate(
+        {
+          update_id: 9012,
+          callback_query: {
+            id: 'cb-fx-nonce',
+            from: { id: 123456 },
+            data: 'FX_BOUGHT:BANCAMIGA:1200:sig_abc99',
+          },
+        },
+        123456,
+      );
+      expect(noncedCb.params).toEqual({
+        bankId: 'BANCAMIGA',
+        orderUsd: 1200,
+        nonce: 'sig_abc99',
+      });
+    });
   });
 });
 

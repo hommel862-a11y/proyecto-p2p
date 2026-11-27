@@ -43,6 +43,6 @@ El spec `electron/main/gemini-skills.spec.ts` verifica la integridad copia↔ori
 
 ## Estado de sincronizacion
 
-- Ultima verificacion: 2026-10-05 06:34 (local)
-- Fingerprint SHA-256 (contenido concatenado de los 25 archivos vendored): `1cedb02e0fbf199b9307e21f3ebb2e45a492f355edee06e5fd7b4b0a1c646b5c`
+- Ultima verificacion: 2026-11-26 20:32 (local)
+- Fingerprint SHA-256 (contenido concatenado de los 27 archivos vendored): `1704e153cf578b0e1206fe7d5f3d9116e0b8e6eb3a8d1386fd0200756e241e66`
 - Recordatorio: `npm run check:vendor` compara copia vs original; `npm run sync:vendor` re-copia.

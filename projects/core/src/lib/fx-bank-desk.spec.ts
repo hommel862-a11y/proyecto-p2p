@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
+  FX_DESK_MODALITIES,
   VENEZUELAN_FX_BANKS,
   computeAntiRejectionUsdLot,
   detectFxInterventionReceipt,
   evaluateFxBankDeskPlan,
+  evaluateVenezuelanFxWindow,
   matchAccountsForFxBank,
+  parseVenezuelanMoneyString,
   resolveFxInterventionBankId,
   selectPrimaryFxBankAccount,
 } from './fx-bank-desk';
@@ -375,5 +378,148 @@ describe('fx-bank-desk domain engine', () => {
     const mercantilIndex = plan.tickets.findIndex((t) => t.bank.id === 'MERCANTIL');
     expect(banescoIndex).toBeGreaterThanOrEqual(0);
     expect(mercantilIndex).toBeGreaterThan(banescoIndex);
+  });
+
+  it('models 3 Venezuelan FX modalities and applies 3% IGTF on digital exit rails but 0% on OTC cash', () => {
+    const menudeoIntl = evaluateFxBankDeskPlan({
+      bcvOfficialRateVes: 62.45,
+      p2pSellRateVes: 84.1,
+      simulatedCapitalVes: 100000,
+      modality: FX_DESK_MODALITIES.MENUDEO_BCV,
+      igtfPct: 3.0,
+    });
+    const otcCash = evaluateFxBankDeskPlan({
+      bcvOfficialRateVes: 62.45,
+      p2pSellRateVes: 84.1,
+      simulatedCapitalVes: 100000,
+      modality: FX_DESK_MODALITIES.TAQUILLA_EFECTIVO_OTC,
+      igtfPct: 3.0,
+    });
+    const pacto = evaluateFxBankDeskPlan({
+      bcvOfficialRateVes: 62.45,
+      p2pSellRateVes: 84.1,
+      simulatedCapitalVes: 100000,
+      modality: FX_DESK_MODALITIES.MESA_CAMBIO_PACTO,
+      igtfPct: 3.0,
+    });
+
+    const bMenudeo = menudeoIntl.tickets.find((t) => t.bank.id === 'BANCAMIGA')!;
+    const bOtc = otcCash.tickets.find((t) => t.bank.id === 'BANCAMIGA')!;
+    const bPacto = pacto.tickets.find((t) => t.bank.id === 'BDV')!;
+
+    expect(bMenudeo.igtfPct).toBe(3.0);
+    expect(bMenudeo.estimatedIgtfUsd).toBeGreaterThan(0);
+    expect(bOtc.activeExitRail).toBe('CASH_WITHDRAWAL_OTC');
+    expect(bOtc.igtfPct).toBe(0);
+    expect(bOtc.estimatedIgtfUsd).toBe(0);
+    expect(bPacto.effectiveBankFeePct).toBeGreaterThanOrEqual(0.5);
+  });
+
+  it('isolates multi-account balances per account without creating impossible single-account overdraft lots', () => {
+    const accounts: BankAccount[] = [
+      {
+        id: 'ban-a',
+        bankName: 'Banesco Jurídica A',
+        bankCode: 'BANESCO',
+        rail: 'TRANSFERENCIA',
+        accountNumberMasked: '0134-***4821',
+        dailyLimitVes: 200000,
+        initialBalanceVes: 800, // ~12.8 USD < $20 minLotUsd!
+      },
+      {
+        id: 'ban-b',
+        bankName: 'Banesco Natural B',
+        bankCode: 'BANESCO',
+        rail: 'TRANSFERENCIA',
+        accountNumberMasked: '0134-***9104',
+        dailyLimitVes: 200000,
+        initialBalanceVes: 800, // ~12.8 USD < $20 minLotUsd!
+      },
+    ];
+    const usages: AccountUsage[] = accounts.map((account) => ({
+      account,
+      spentTodayVes: 0,
+      receivedTodayVes: 0,
+      currentBalanceVes: account.initialBalanceVes,
+      consumedLimitPct: 0,
+      remainingLimitVes: account.dailyLimitVes,
+      isNearLimit: false,
+      isOverLimit: false,
+      spentThisMonthVes: 0,
+      consumedMonthlyLimitPct: 0,
+      isNearMonthlyLimit: false,
+      isOverMonthlyLimit: false,
+    }));
+
+    const subMinPlan = evaluateFxBankDeskPlan({
+      bcvOfficialRateVes: 62.5,
+      p2pSellRateVes: 84.0,
+      accounts,
+      usages,
+    });
+    const subMinBanesco = subMinPlan.tickets.find((t) => t.bank.id === 'BANESCO')!;
+    // Neither account can buy $20 minLotUsd individually, so order must be 0!
+    expect(subMinBanesco.recommendedOrderUsd).toBe(0);
+    expect(subMinBanesco.isViableOrder).toBe(false);
+
+    // Now fund both accounts above minLotUsd ($800 + $400 = $1,200 split cleanly across 2 allocations)
+    const fundedUsages: AccountUsage[] = [
+      { ...usages[0], currentBalanceVes: 51200 },
+      { ...usages[1], currentBalanceVes: 25900 },
+    ];
+    const splitPlan = evaluateFxBankDeskPlan({
+      bcvOfficialRateVes: 62.45,
+      p2pSellRateVes: 84.1,
+      accounts,
+      usages: fundedUsages,
+    });
+    const splitBanesco = splitPlan.tickets.find((t) => t.bank.id === 'BANESCO')!;
+    expect(splitBanesco.accountAllocations.length).toBe(2);
+    expect(splitBanesco.accountAllocations[0].totalDebitVes).toBeLessThanOrEqual(51200);
+    expect(splitBanesco.accountAllocations[1].totalDebitVes).toBeLessThanOrEqual(25900);
+    expect(splitBanesco.recommendedOrderUsd).toBe(
+      splitBanesco.accountAllocations[0].orderUsd + splitBanesco.accountAllocations[1].orderUsd,
+    );
+  });
+
+  it('does not clone leftover DISTRIBUTE_TOTAL pool onto unviable banks and honors useSimulatedCapital override', () => {
+    const smallPoolPlan = evaluateFxBankDeskPlan({
+      bcvOfficialRateVes: 62.5,
+      p2pSellRateVes: 84.0,
+      simulatedCapitalVes: 200, // Below every bank's minLotUsd ($10 = 625 Bs)
+      capitalAllocationMode: 'DISTRIBUTE_TOTAL',
+    });
+    expect(smallPoolPlan.tickets.every((t) => t.availableBalanceVes === 0)).toBe(true);
+  });
+
+  it('resolves "100% Banco" and generic "Banco" safely without colliding with BDV, and parses Venezuelan 1.000,00 OCR', () => {
+    expect(resolveFxInterventionBankId('100% Banco')).toBe('CIEN_BANCO');
+    expect(resolveFxInterventionBankId('Banco')).toBeNull();
+    expect(parseVenezuelanMoneyString('1.500,00')).toBe(1500);
+    expect(parseVenezuelanMoneyString('1.234.567,89')).toBeCloseTo(1234567.89, 2);
+
+    const ocr = detectFxInterventionReceipt(
+      'OPERACION CAMBIARIA MESA DE CAMBIO 100% BANCO MONTO PACTADO: USD 1.250,00 TASA BCV: Bs. 62,45',
+    );
+    expect(ocr.isFxPurchase).toBe(true);
+    expect(ocr.bankId).toBe('CIEN_BANCO');
+    expect(ocr.usdAmount).toBe(1250);
+    expect(ocr.bcvRateVes).toBeCloseTo(62.45, 2);
+  });
+
+  it('evaluates Venezuelan banking windows strictly in America/Caracas (Mon-Fri open, Sunday night closed)', () => {
+    // Sunday 21:00 VET (Monday 01:00 UTC) -> MUST BE CLOSED!
+    const sundayNight = evaluateVenezuelanFxWindow(new Date('2026-11-23T01:00:00.000Z'));
+    expect(sundayNight.isWindowOpen).toBe(false);
+
+    // Tuesday 10:00 VET (14:00 UTC) -> Retail Menudeo MUST BE OPEN!
+    const tuesdayMorning = evaluateVenezuelanFxWindow(new Date('2026-11-24T14:00:00.000Z'));
+    expect(tuesdayMorning.isWindowOpen).toBe(true);
+    expect(tuesdayMorning.regime).toBe('RETAIL_MENUDEO_OPEN');
+
+    // Thursday 09:30 VET (13:30 UTC) -> BCV Intervention Live!
+    const thursdayMorning = evaluateVenezuelanFxWindow(new Date('2026-11-26T13:30:00.000Z'));
+    expect(thursdayMorning.isWindowOpen).toBe(true);
+    expect(thursdayMorning.regime).toBe('BCV_INTERVENTION_LIVE');
   });
 });

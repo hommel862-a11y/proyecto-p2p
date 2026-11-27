@@ -103,6 +103,37 @@ export interface TreasurySummary {
   overMonthlyLimitCount: number;
 }
 
+const VET_OFFSET_MS = 4 * 3600 * 1000;
+
+/**
+ * Returns the canonical `YYYY-MM-DD` calendar date in `America/Caracas` (`UTC-04:00`, no DST).
+ * Prevents SUDEBAN daily caps and FX stats from resetting 4 hours early at 20:00 VET (00:00 UTC).
+ */
+export function getVenezuelaDateKey(date: Date = new Date()): string {
+  return new Date(date.getTime() - VET_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/**
+ * Returns the canonical `YYYY-MM` calendar month in `America/Caracas` (`UTC-04:00`).
+ */
+export function getVenezuelaMonthKey(date: Date = new Date()): string {
+  return getVenezuelaDateKey(date).slice(0, 7);
+}
+
+/**
+ * Normalizes an operation ISO timestamp (or `YYYY-MM-DD` string) into its `America/Caracas` `YYYY-MM-DD` date key.
+ */
+export function toVenezuelaDateKey(timestamp: string): string {
+  if (!timestamp) return '';
+  if (timestamp.includes('T')) {
+    const parsedMs = Date.parse(timestamp);
+    if (Number.isFinite(parsedMs)) {
+      return getVenezuelaDateKey(new Date(parsedMs));
+    }
+  }
+  return timestamp.slice(0, 10);
+}
+
 /**
  * Filter operations belonging to a specific calendar date (UTC or local prefix YYYY-MM-DD).
  */
@@ -111,6 +142,16 @@ export function getTodayOperations(
   todayDateKey = new Date().toISOString().slice(0, 10),
 ): Operation[] {
   return allOps.filter((o) => o.timestamp.startsWith(todayDateKey));
+}
+
+/**
+ * Filter operations belonging to a specific `America/Caracas` (`UTC-04:00`) calendar date.
+ */
+export function getVenezuelaTodayOperations(
+  allOps: readonly Operation[],
+  vetDateKey: string = getVenezuelaDateKey(),
+): Operation[] {
+  return allOps.filter((o) => toVenezuelaDateKey(o.timestamp) === vetDateKey);
 }
 
 /**
@@ -212,6 +253,145 @@ export function computeTreasurySummary(
   monthKey?: string,
 ): TreasurySummary {
   const accountsUsage = accounts.map((acc) => computeAccountUsage(acc, todayOps, monthKey));
+
+  let totalBalanceVes = 0;
+  let totalSpentTodayVes = 0;
+  let totalReceivedTodayVes = 0;
+  let totalSpentThisMonthVes = 0;
+  let nearLimitCount = 0;
+  let overLimitCount = 0;
+  let nearMonthlyLimitCount = 0;
+  let overMonthlyLimitCount = 0;
+
+  for (const u of accountsUsage) {
+    totalBalanceVes += u.currentBalanceVes;
+    totalSpentTodayVes += u.spentTodayVes;
+    totalReceivedTodayVes += u.receivedTodayVes;
+    totalSpentThisMonthVes += u.spentThisMonthVes;
+
+    if (u.isOverLimit) overLimitCount++;
+    else if (u.isNearLimit) nearLimitCount++;
+
+    if (u.isOverMonthlyLimit) overMonthlyLimitCount++;
+    else if (u.isNearMonthlyLimit) nearMonthlyLimitCount++;
+  }
+
+  return {
+    totalBalanceVes: roundMoney(totalBalanceVes, 2),
+    totalSpentTodayVes: roundMoney(totalSpentTodayVes, 2),
+    totalReceivedTodayVes: roundMoney(totalReceivedTodayVes, 2),
+    totalSpentThisMonthVes: roundMoney(totalSpentThisMonthVes, 2),
+    accountsUsage,
+    nearLimitCount,
+    overLimitCount,
+    nearMonthlyLimitCount,
+    overMonthlyLimitCount,
+  };
+}
+
+/**
+ * Institutional multi-day account usage calculator anchored to `America/Caracas` (`UTC-04:00`).
+ *
+ * Unlike `computeAccountUsage` (which expects pre-filtered `todayOps`), this function accepts
+ * the full ledger `allOps` so that:
+ * 1. `currentBalanceVes` reflects all historical inflows/outflows (never resets at midnight/20:00 VET),
+ * 2. `spentTodayVes` / `receivedTodayVes` count strictly operations on `vetDateKey` (Caracas day),
+ * 3. `spentThisMonthVes` sums all operations within `vetMonthKey` across the full month.
+ */
+export function computeCumulativeAccountUsage(
+  account: BankAccount,
+  allOps: readonly Operation[],
+  vetDateKey: string = getVenezuelaDateKey(),
+  vetMonthKey: string = vetDateKey.slice(0, 7),
+): AccountUsage {
+  let totalSpentAllTimeVes = 0;
+  let totalReceivedAllTimeVes = 0;
+  let spentTodayVes = 0;
+  let receivedTodayVes = 0;
+  let spentThisMonthVes = 0;
+
+  for (const op of allOps) {
+    const matchesAccount =
+      op.bankAccountId === account.id ||
+      (!op.bankAccountId &&
+        Boolean(op.merchantNote?.toLowerCase().includes(account.bankName.toLowerCase())));
+    if (!matchesAccount) continue;
+
+    const opVetDay = toVenezuelaDateKey(op.timestamp);
+    const isToday = opVetDay === vetDateKey;
+    const isThisMonth = opVetDay.startsWith(vetMonthKey);
+
+    if (op.type === 'buy') {
+      const totalOutflow = op.vesAmount + op.fees;
+      totalSpentAllTimeVes += totalOutflow;
+      if (isToday) {
+        spentTodayVes += totalOutflow;
+      }
+      if (isThisMonth) {
+        spentThisMonthVes += totalOutflow;
+      }
+    } else {
+      totalReceivedAllTimeVes += op.vesAmount;
+      if (isToday) {
+        receivedTodayVes += op.vesAmount;
+      }
+    }
+  }
+
+  const currentBalanceVes = roundMoney(
+    account.initialBalanceVes - totalSpentAllTimeVes + totalReceivedAllTimeVes,
+    2,
+  );
+  const dailyLimit = account.dailyLimitVes;
+  let dailyConsumedPct = 0;
+  let dailyRemainingVes = dailyLimit;
+
+  if (dailyLimit > 0) {
+    dailyConsumedPct = Math.round((spentTodayVes / dailyLimit) * 100);
+    dailyRemainingVes = Math.max(0, roundMoney(dailyLimit - spentTodayVes, 2));
+  }
+
+  const isOverLimitDaily = dailyLimit > 0 && spentTodayVes >= dailyLimit;
+  const isNearLimitDaily = dailyLimit > 0 && !isOverLimitDaily && dailyConsumedPct >= 80;
+
+  let monthlyConsumedPct = 0;
+  let isOverMonthlyLimit = false;
+  let isNearMonthlyLimit = false;
+  const monthlyLimit = account.monthlyLimitVes ?? 0;
+  if (monthlyLimit > 0) {
+    monthlyConsumedPct = Math.round((spentThisMonthVes / monthlyLimit) * 100);
+    isOverMonthlyLimit = spentThisMonthVes >= monthlyLimit;
+    isNearMonthlyLimit = !isOverMonthlyLimit && monthlyConsumedPct >= 80;
+  }
+
+  return {
+    account,
+    spentTodayVes: roundMoney(spentTodayVes, 2),
+    receivedTodayVes: roundMoney(receivedTodayVes, 2),
+    currentBalanceVes,
+    consumedLimitPct: dailyConsumedPct,
+    remainingLimitVes: dailyRemainingVes,
+    isNearLimit: isNearLimitDaily,
+    isOverLimit: isOverLimitDaily,
+    spentThisMonthVes: roundMoney(spentThisMonthVes, 2),
+    consumedMonthlyLimitPct: monthlyConsumedPct,
+    isNearMonthlyLimit,
+    isOverMonthlyLimit,
+  };
+}
+
+/**
+ * Computes institutional multi-day treasury summary anchored to `America/Caracas` (`UTC-04:00`).
+ */
+export function computeCumulativeTreasurySummary(
+  accounts: readonly BankAccount[],
+  allOps: readonly Operation[],
+  vetDateKey: string = getVenezuelaDateKey(),
+  vetMonthKey: string = vetDateKey.slice(0, 7),
+): TreasurySummary {
+  const accountsUsage = accounts.map((acc) =>
+    computeCumulativeAccountUsage(acc, allOps, vetDateKey, vetMonthKey),
+  );
 
   let totalBalanceVes = 0;
   let totalSpentTodayVes = 0;

@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeAccountUsage,
+  computeCumulativeAccountUsage,
+  computeCumulativeTreasurySummary,
   computeTreasurySummary,
+  getVenezuelaDateKey,
+  getVenezuelaTodayOperations,
   recommendAccountForTrade,
   type BankAccount,
 } from './accounts';
@@ -425,5 +429,90 @@ describe('Multi-account selection: targetBankCode and DISABLED status', () => {
     expect(summary.accountsUsage).toHaveLength(2);
     expect(summary.accountsUsage[1].account.status).toBe('DISABLED');
     expect(summary.totalBalanceVes).toBe(1000000); // 100000 + 900000
+  });
+
+  it('computes America/Caracas (UTC-4) date keys without resetting at 20:00 VET (00:00 UTC)', () => {
+    // 2026-11-26T02:30:00.000Z is 2026-11-25 22:30:00 VET (still Nov 25 in Caracas!)
+    const lateEveningVet = new Date('2026-11-26T02:30:00.000Z');
+    expect(getVenezuelaDateKey(lateEveningVet)).toBe('2026-11-25');
+
+    // 2026-11-26T04:05:00.000Z is 2026-11-26 00:05:00 VET (now Nov 26 in Caracas!)
+    const afterMidnightVet = new Date('2026-11-26T04:05:00.000Z');
+    expect(getVenezuelaDateKey(afterMidnightVet)).toBe('2026-11-26');
+
+    const ops: Operation[] = [
+      {
+        id: 'op-vet-late',
+        timestamp: '2026-11-26T02:15:00.000Z', // 22:15 VET on Nov 25
+        type: 'buy',
+        pair: 'USDT',
+        vesAmount: 10000,
+        usdtAmount: 150,
+        price: 66.67,
+        merchantNote: '',
+        fees: 25,
+        notes: '',
+        errorFree: true,
+        bankAccountId: 'acc-b1',
+      },
+    ];
+    expect(getVenezuelaTodayOperations(ops, '2026-11-25')).toHaveLength(1);
+    expect(getVenezuelaTodayOperations(ops, '2026-11-26')).toHaveLength(0);
+  });
+
+  it('preserves cumulative multi-day balances and 30-day monthly SUDEBAN caps across days', () => {
+    const acc: BankAccount = {
+      id: 'acc-cum-1',
+      bankName: 'Banesco Transferencia',
+      bankCode: 'BANESCO',
+      rail: 'TRANSFERENCIA',
+      accountNumberMasked: '0134-***4821',
+      dailyLimitVes: 100000,
+      monthlyLimitVes: 150000,
+      initialBalanceVes: 200000,
+    };
+    const allOps: Operation[] = [
+      {
+        id: 'op-prior-day',
+        timestamp: '2026-11-20T14:00:00.000Z', // Nov 20 VET
+        type: 'buy',
+        pair: 'USDT',
+        vesAmount: 90000,
+        usdtAmount: 1400,
+        price: 64.28,
+        merchantNote: '',
+        fees: 225,
+        notes: '',
+        errorFree: true,
+        bankAccountId: 'acc-cum-1',
+      },
+      {
+        id: 'op-today',
+        timestamp: '2026-11-26T14:00:00.000Z', // Nov 26 VET
+        type: 'buy',
+        pair: 'USDT',
+        vesAmount: 60000,
+        usdtAmount: 950,
+        price: 63.16,
+        merchantNote: '',
+        fees: 150,
+        notes: '',
+        errorFree: true,
+        bankAccountId: 'acc-cum-1',
+      },
+    ];
+
+    const usage = computeCumulativeAccountUsage(acc, allOps, '2026-11-26', '2026-11');
+    // Daily spent counts ONLY Nov 26 (60,150 Bs)
+    expect(usage.spentTodayVes).toBe(60150);
+    // Monthly spent counts Nov 20 + Nov 26 (90,225 + 60,150 = 150,375 Bs >= 150,000 limit!)
+    expect(usage.spentThisMonthVes).toBe(150375);
+    expect(usage.isOverMonthlyLimit).toBe(true);
+    // Current balance reflects BOTH days (200,000 - 150,375 = 49,625 Bs — never resets to 200k!)
+    expect(usage.currentBalanceVes).toBe(49625);
+
+    const summary = computeCumulativeTreasurySummary([acc], allOps, '2026-11-26', '2026-11');
+    expect(summary.totalBalanceVes).toBe(49625);
+    expect(summary.overMonthlyLimitCount).toBe(1);
   });
 });

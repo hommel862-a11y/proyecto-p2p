@@ -146,6 +146,7 @@ export interface FxDeskActionParams {
 export interface FxBoughtCallbackParams {
   bankId: FxInterventionBankId;
   orderUsd: number;
+  nonce?: string;
 }
 
 export interface FxEmptyCallbackParams {
@@ -1020,19 +1021,26 @@ export function formatFxDeskTelegramMessage(
         t.projectedNetProfitVes != null
           ? `+${t.projectedNetProfitVes.toFixed(2)} Bs`
           : 's/d';
+      const igtfTag = t.igtfPct > 0 ? ` \\+ IGTF \`${t.igtfPct.toFixed(1)}%\`` : ' · `0% IGTF`';
       return (
         `${sectorBadge} *${escapeMarkdownV2(t.bank.shortName)}* \\(${escapeMarkdownV2(stateBadge)}\\)\n` +
         `  • *Pedir Exacto:* \`${formatCodeSpan(String(t.recommendedOrderUsd))} USD\` \\(múltiplo \`${t.bank.lotStepUsd}\`\\)\n` +
-        `  • *Débito Total:* \`${formatCodeSpan(t.estimatedVesDebit.toFixed(2))} Bs\` \\(inc\\. fee \`${formatCodeSpan(String(t.bank.bankFxFeePct))}%\`\\)\n` +
-        `  • *Riel Salida:* _${escapeMarkdownV2(t.bank.primaryExitRailLabel)}_ \\(neto \`${t.netUsdtAfterExitRail.toFixed(2)} USDT\`\\)\n` +
+        `  • *Débito Total:* \`${formatCodeSpan(t.estimatedVesDebit.toFixed(2))} Bs\` \\(inc\\. fee \`${formatCodeSpan(String(t.effectiveBankFeePct))}%\`\\)\n` +
+        `  • *Riel Salida:* _${escapeMarkdownV2(t.activeExitRailLabel)}_${igtfTag} \\(neto \`${t.netUsdtAfterExitRail.toFixed(2)} USDT\`\\)\n` +
         `  • *Ganancia Neta:* \`${formatCodeSpan(profitStr)}\` \\(ROI \`${formatCodeSpan(roiStr)}\`\\)`
       );
     })
     .join('\n\n');
 
+  const scopedTotalUsd = filterBankId
+    ? candidates.reduce((s, t) => s + (t.isViableOrder ? t.recommendedOrderUsd : 0), 0)
+    : plan.totalRecommendedUsd;
+  const scopedProfitNumber = filterBankId
+    ? candidates.reduce((s, t) => s + (t.isViableOrder ? (t.projectedNetProfitVes ?? 0) : 0), 0)
+    : plan.totalProjectedNetProfitVes;
   const summaryProfit =
-    plan.totalProjectedNetProfitVes != null
-      ? `+${plan.totalProjectedNetProfitVes.toFixed(2)} Bs`
+    scopedProfitNumber != null
+      ? `+${scopedProfitNumber.toFixed(2)} Bs`
       : 's/d';
 
   return (
@@ -1040,7 +1048,7 @@ export function formatFxDeskTelegramMessage(
     `━━━━━━━━━━━━━━━━━━━━\n` +
     `${rows}\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
-    `💰 *Total Sugerido:* \`${formatCodeSpan(plan.totalRecommendedUsd.toFixed(0))} USD\` ➔ *Ganancia:* \`${formatCodeSpan(summaryProfit)}\`\n` +
+    `💰 *Total Sugerido:* \`${formatCodeSpan(scopedTotalUsd.toFixed(0))} USD\` ➔ *Ganancia:* \`${formatCodeSpan(summaryProfit)}\`\n` +
     `_${escapeMarkdownV2("Tocá un botón inferior para abrir el portal bancario o asentar tu compra en FIFO en 1 clic.")}_`
   );
 }
@@ -1048,10 +1056,12 @@ export function formatFxDeskTelegramMessage(
 /**
  * Builds the interactive inline keyboard for the FX Bank Desk alert/report.
  * Combines direct deep-links to bank portals with 1-click FIFO settlement & cooldown callbacks.
+ * Supports optional `nonceFactory` for single-use anti-replay settlement tokens.
  */
 export function buildFxDeskTelegramKeyboard(
   plan: FxDeskEvaluationPlan,
   filterBankId?: FxInterventionBankId,
+  nonceFactory?: (bankId: FxInterventionBankId, orderUsd: number) => string,
 ): TelegramInlineKeyboardMarkup {
   const candidates = filterBankId
     ? plan.tickets.filter((t) => t.bank.id === filterBankId)
@@ -1061,6 +1071,10 @@ export function buildFxDeskTelegramKeyboard(
 
   for (const t of candidates) {
     if (t.recommendedOrderUsd > 0) {
+      const nonce = nonceFactory ? nonceFactory(t.bank.id, t.recommendedOrderUsd) : '';
+      const cbData = nonce
+        ? `FX_BOUGHT:${t.bank.id}:${t.recommendedOrderUsd}:${nonce}`
+        : `FX_BOUGHT:${t.bank.id}:${t.recommendedOrderUsd}`;
       rows.push([
         {
           text: `🚀 Abrir ${t.bank.shortName}`,
@@ -1068,7 +1082,7 @@ export function buildFxDeskTelegramKeyboard(
         },
         {
           text: `✅ Pacté ${t.recommendedOrderUsd} (${t.bank.shortName})`,
-          callback_data: `FX_BOUGHT:${t.bank.id}:${t.recommendedOrderUsd}`,
+          callback_data: cbData,
         },
         {
           text: `🚫 Sin Cupo ${t.bank.shortName}`,
@@ -1224,10 +1238,22 @@ export function dispatchTelegramUpdate(
   update: TelegramInboundUpdate,
   authorizedChatId: number | string,
 ): DispatchResult {
-  const authId = Number(authorizedChatId);
+  const authStr = String(authorizedChatId ?? '').trim();
+  const authId = authStr.length > 0 ? Number(authStr) : Number.NaN;
 
   // 1. Message Handling
   if (update.message) {
+    // Block group/supergroup/channel execution to prevent leaking 14-bank balances or inline actions
+    const chatType = update.message.chat?.type;
+    if (chatType && chatType !== 'private') {
+      return {
+        authorized: false,
+        responseMarkdown: escapeMarkdownV2(
+          '⛔ SEGURIDAD OPSEC: Telegram Sentinel opera exclusivamente en chats privados directos.',
+        ),
+      };
+    }
+
     const fromId = update.message.from.id;
     const rawText = (update.message.text || update.message.caption || '').trim();
     const text = normalizeButtonCommand(rawText);
@@ -1589,27 +1615,36 @@ export function dispatchTelegramUpdate(
     }
 
     if (command.name === '/mesa' || command.name === '/divisas') {
-      const [first, second] = command.args;
       let bankId: FxInterventionBankId | undefined;
       let capitalVes: number | undefined;
-      if (first !== undefined) {
-        const asCap = parseFiniteNumber(first);
-        if (asCap !== undefined && asCap > 0) {
+      const bankWords: string[] = [];
+
+      for (const token of command.args) {
+        const asCap = parseFiniteNumber(token);
+        const isAbaCode = /^01\d{2}$/.test(token);
+        if (asCap !== undefined && asCap > 0 && !isAbaCode && token !== '100') {
           capitalVes = asCap;
         } else {
-          const resolved = resolveFxInterventionBankId(first);
-          if (resolved) bankId = resolved;
+          bankWords.push(token);
         }
       }
-      if (second !== undefined) {
-        const asCap = parseFiniteNumber(second);
-        if (asCap !== undefined && asCap > 0) {
-          capitalVes = asCap;
+
+      if (bankWords.length > 0) {
+        const joinedPhrase = bankWords.join(' ');
+        const resolvedJoined = resolveFxInterventionBankId(joinedPhrase);
+        if (resolvedJoined) {
+          bankId = resolvedJoined;
         } else {
-          const resolved = resolveFxInterventionBankId(second);
-          if (resolved) bankId = resolved;
+          for (const w of bankWords) {
+            const r = resolveFxInterventionBankId(w);
+            if (r) {
+              bankId = r;
+              break;
+            }
+          }
         }
       }
+
       const params: FxDeskActionParams = {};
       if (bankId !== undefined) params.bankId = bankId;
       if (capitalVes !== undefined) params.capitalVes = capitalVes;
@@ -1841,11 +1876,14 @@ export function dispatchTelegramUpdate(
       const parts = data.split(':');
       const bankId = resolveFxInterventionBankId(parts[1]);
       const orderUsd = parseFiniteNumber(parts[2]);
+      const nonce = parts[3]?.trim();
       if (bankId && orderUsd !== undefined && orderUsd > 0) {
+        const params: FxBoughtCallbackParams = { bankId, orderUsd };
+        if (nonce) params.nonce = nonce;
         return {
           authorized: true,
           action: 'FX_BOUGHT',
-          params: { bankId, orderUsd },
+          params,
           responseMarkdown:
             `✅ *PACTO CAMBIARIO REGISTRADO EN ${escapeMarkdownV2(bankId)}*\n\n` +
             `💵 *Monto:* \`${formatCodeSpan(orderUsd.toFixed(2))} USD\`\n` +

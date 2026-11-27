@@ -36,6 +36,37 @@ export type BankOwnershipSector = 'ESTADO' | 'PRIVADO';
 
 export type BankInterventionTier = 'TIER_1_LIDER' | 'TIER_2_COMERCIAL' | 'TIER_3_NICHO';
 
+export const FX_DESK_MODALITIES = {
+  MENUDEO_BCV: 'MENUDEO_BCV',
+  MESA_CAMBIO_PACTO: 'MESA_CAMBIO_PACTO',
+  TAQUILLA_EFECTIVO_OTC: 'TAQUILLA_EFECTIVO_OTC',
+} as const;
+
+export type FxDeskModality = (typeof FX_DESK_MODALITIES)[keyof typeof FX_DESK_MODALITIES];
+
+export const FX_WINDOW_REGIMES = {
+  BCV_INTERVENTION_LIVE: 'BCV_INTERVENTION_LIVE',
+  RETAIL_MENUDEO_OPEN: 'RETAIL_MENUDEO_OPEN',
+  AFTERNOON_PACTO_EXTENSION: 'AFTERNOON_PACTO_EXTENSION',
+  PRE_OPEN_PREP: 'PRE_OPEN_PREP',
+  CLOSED_OFF_HOURS: 'CLOSED_OFF_HOURS',
+} as const;
+
+export type FxWindowRegime = (typeof FX_WINDOW_REGIMES)[keyof typeof FX_WINDOW_REGIMES];
+
+export interface FxWindowEvaluation {
+  readonly isWindowOpen: boolean;
+  readonly regime: FxWindowRegime;
+  readonly label: string;
+  readonly vetDayOfWeek: number;
+  readonly vetHour: number;
+  readonly vetMinute: number;
+  readonly vetTimeFormatted: string;
+}
+
+/** Standard Venezuelan Impuesto a las Grandes Transacciones Financieras (3.00%) on foreign-currency electronic debits. */
+export const VEN_DEFAULT_IGTF_PCT = 3.0;
+
 export type FxExitRailType =
   | 'INTL_DEBIT_CARD'
   | 'INTERNAL_USD_P2P'
@@ -46,26 +77,30 @@ export interface FxExitRailOption {
   readonly label: string;
   readonly shortLabel: string;
   readonly defaultFrictionPct: number;
+  readonly appliesIgtfByDefault: boolean;
 }
 
 export const FX_EXIT_RAIL_OPTIONS: readonly FxExitRailOption[] = [
   {
     id: 'INTL_DEBIT_CARD',
     label: 'Tarjeta Mastercard/Visa Débito Internacional ➔ USDT',
-    shortLabel: '💳 Tarjeta Intl (1.5%)',
+    shortLabel: '💳 Tarjeta Intl (1.5% + IGTF)',
     defaultFrictionPct: 1.5,
+    appliesIgtfByDefault: true,
   },
   {
     id: 'INTERNAL_USD_P2P',
     label: 'Cuenta Verde / Transferencia Divisas ➔ P2P Interno',
-    shortLabel: '🔄 P2P Divisas (1.2%)',
+    shortLabel: '🔄 P2P Divisas (1.2% + IGTF)',
     defaultFrictionPct: 1.2,
+    appliesIgtfByDefault: true,
   },
   {
     id: 'CASH_WITHDRAWAL_OTC',
     label: 'Retiro Taquilla Efectivo USD ➔ OTC P2P',
-    shortLabel: '💵 Efectivo OTC (1.8%)',
+    shortLabel: '💵 Efectivo OTC (1.8% · 0% IGTF)',
     defaultFrictionPct: 1.8,
+    appliesIgtfByDefault: false,
   },
 ];
 
@@ -452,10 +487,25 @@ export const VENEZUELAN_FX_BANKS: readonly FxBankDeskProfile[] = [
   },
 ];
 
+export interface FxAccountTicketAllocation {
+  readonly accountId: string;
+  readonly accountName: string;
+  readonly accountNumberMasked: string;
+  readonly availableBalanceVes: number;
+  readonly remainingDailyLimitVes: number;
+  readonly orderUsd: number;
+  readonly principalVes: number;
+  readonly bankFeeVes: number;
+  readonly totalDebitVes: number;
+  readonly safetyBufferVes: number;
+}
+
 export interface FxBankOrderTicket {
   readonly bank: FxBankDeskProfile;
+  readonly modality: FxDeskModality;
   readonly linkedAccountId: string | null;
   readonly linkedAccountName: string | null;
+  readonly accountAllocations: readonly FxAccountTicketAllocation[];
   readonly availableBalanceVes: number;
   readonly remainingDailyLimitVes: number;
   readonly consumedDailyLimitPct: number;
@@ -465,20 +515,30 @@ export interface FxBankOrderTicket {
   readonly signalState: BankLiquiditySignalState;
   /** Exact rounded USD amount recommended to request in the bank portal so it does not reject. */
   readonly recommendedOrderUsd: number;
-  /** Estimated VES debited by the bank (principal + bankFxFeePct). */
+  /** Effective banking FX fee percentage applied for the selected modality (e.g. 0.25% Menudeo vs 0.50% Pacto). */
+  readonly effectiveBankFeePct: number;
+  /** Estimated VES debited by the bank (principal + effectiveBankFeePct, counted exactly once). */
   readonly estimatedVesDebit: number;
   /** Estimated bank commission in VES. */
   readonly estimatedBankFeeVes: number;
   /** VES buffer kept untouched in account to prevent intraday rate-shift bounce. */
   readonly reservedSafetyBufferVes: number;
-  /** Equivalent net USDT received after primary exit rail friction. */
+  /** Venezuelan IGTF percentage applied on the exit leg (3.0% on electronic FX rails, 0% on OTC cash). */
+  readonly igtfPct: number;
+  /** Estimated USD deducted by Venezuelan IGTF on the exit leg. */
+  readonly estimatedIgtfUsd: number;
+  /** Estimated USD deducted by exit rail gateway/OTC friction (excluding IGTF). */
+  readonly estimatedRailFeeUsd: number;
+  /** Combined exit friction percentage (igtfPct + activeExitRailFrictionPct). */
+  readonly totalExitFrictionPct: number;
+  /** Equivalent net USDT received after IGTF and primary exit rail friction. */
   readonly netUsdtAfterExitRail: number;
   readonly activeExitRail: FxExitRailType;
   readonly activeExitRailLabel: string;
   readonly activeExitRailFrictionPct: number;
   /** Projected VES returned when selling the net USDT on P2P at `p2pSellRateVes`. */
   readonly projectedP2pReturnVes: number | null;
-  /** Projected net profit in VES after all banking and exit rail frictions. */
+  /** Projected net profit in VES after all banking, IGTF, and exit rail frictions. */
   readonly projectedNetProfitVes: number | null;
   /** Projected net ROI percentage on this ticket. */
   readonly projectedNetRoiPct: number | null;
@@ -491,8 +551,14 @@ export interface FxBankOrderTicket {
 export interface FxDeskEvaluationInput {
   readonly bcvOfficialRateVes: number | null;
   readonly p2pSellRateVes: number | null;
-  /** Optional simulated VES capital per bank when no account is linked or when simulating a custom injection. */
+  /** Venezuelan FX desk execution modality (defaults to `MENUDEO_BCV`). */
+  readonly modality?: FxDeskModality;
+  /** Venezuelan IGTF tax percentage on digital foreign-currency exits (defaults to 3.0%; 0% on OTC cash). */
+  readonly igtfPct?: number;
+  /** Optional simulated VES capital per bank when no account is linked or when `useSimulatedCapital` is true. */
   readonly simulatedCapitalVes?: number;
+  /** Forces evaluation against `simulatedCapitalVes` even when real accounts are linked (pure What-If simulator). */
+  readonly useSimulatedCapital?: boolean;
   /** Whether `simulatedCapitalVes` applies per bank (default) or is distributed across banks as a single total pool. */
   readonly capitalAllocationMode?: FxCapitalAllocationMode;
   readonly accounts?: readonly BankAccount[];
@@ -595,12 +661,93 @@ export function selectPrimaryFxBankAccount(
 }
 
 /**
+ * Evaluates the live Venezuelan banking FX window in canonical `America/Caracas` (`UTC-04:00`).
+ * Never activates on Sunday nights, midnight, or weekends, and properly keeps Tuesday, Wednesday,
+ * and Friday retail banking hours (`08:30–13:00 VET`) open alongside Mon/Thu BCV intervention days.
+ */
+export function evaluateVenezuelanFxWindow(now: Date = new Date()): FxWindowEvaluation {
+  const vetShifted = new Date(now.getTime() - 4 * 3600 * 1000);
+  const vetDayOfWeek = vetShifted.getUTCDay(); // 0=Sun .. 6=Sat
+  const vetHour = vetShifted.getUTCHours();
+  const vetMinute = vetShifted.getUTCMinutes();
+  const minutesOfDay = vetHour * 60 + vetMinute;
+  const vetTimeFormatted = `${String(vetHour).padStart(2, '0')}:${String(vetMinute).padStart(2, '0')} VET`;
+
+  if (vetDayOfWeek === 0 || vetDayOfWeek === 6) {
+    return {
+      isWindowOpen: false,
+      regime: FX_WINDOW_REGIMES.CLOSED_OFF_HOURS,
+      label: `Fin de semana bancario (${vetTimeFormatted})`,
+      vetDayOfWeek,
+      vetHour,
+      vetMinute,
+      vetTimeFormatted,
+    };
+  }
+
+  // Morning prime window: 08:30 to 13:00 VET (510 to 780 mins)
+  if (minutesOfDay >= 510 && minutesOfDay <= 780) {
+    const isBcvDay = vetDayOfWeek === 1 || vetDayOfWeek === 4;
+    return {
+      isWindowOpen: true,
+      regime: isBcvDay
+        ? FX_WINDOW_REGIMES.BCV_INTERVENTION_LIVE
+        : FX_WINDOW_REGIMES.RETAIL_MENUDEO_OPEN,
+      label: isBcvDay
+        ? `Intervención BCV Activa · 08:30–13:00 (${vetTimeFormatted})`
+        : `Ventana Menudeo & Mesa Activa · 08:30–13:00 (${vetTimeFormatted})`,
+      vetDayOfWeek,
+      vetHour,
+      vetMinute,
+      vetTimeFormatted,
+    };
+  }
+
+  // Afternoon corporate pacto & reload extension: 13:01 to 15:30 VET (781 to 930 mins)
+  if (minutesOfDay > 780 && minutesOfDay <= 930) {
+    return {
+      isWindowOpen: true,
+      regime: FX_WINDOW_REGIMES.AFTERNOON_PACTO_EXTENSION,
+      label: `Extensión Vespertina Pacto/Recargas · 13:00–15:30 (${vetTimeFormatted})`,
+      vetDayOfWeek,
+      vetHour,
+      vetMinute,
+      vetTimeFormatted,
+    };
+  }
+
+  // Pre-open preparation: 07:30 to 08:29 VET (450 to 509 mins) -> NOT active yet!
+  if (minutesOfDay >= 450 && minutesOfDay < 510) {
+    return {
+      isWindowOpen: false,
+      regime: FX_WINDOW_REGIMES.PRE_OPEN_PREP,
+      label: `Pre-Apertura Bancaria · Abre 08:30 VET (${vetTimeFormatted})`,
+      vetDayOfWeek,
+      vetHour,
+      vetMinute,
+      vetTimeFormatted,
+    };
+  }
+
+  return {
+    isWindowOpen: false,
+    regime: FX_WINDOW_REGIMES.CLOSED_OFF_HOURS,
+    label: `Mesa Cerrada · Horario Hábil Lun–Vie 08:30 VET (${vetTimeFormatted})`,
+    vetDayOfWeek,
+    vetHour,
+    vetMinute,
+    vetTimeFormatted,
+  };
+}
+
+/**
  * Computes the exact anti-rejection USD order size for a given VES budget and bank rule profile.
  */
 export function computeAntiRejectionUsdLot(
   deployableVes: number,
   bcvRateVes: number,
   profile: FxBankDeskProfile,
+  overrideBankFeePct?: number,
 ): {
   orderUsd: number;
   principalVes: number;
@@ -612,7 +759,12 @@ export function computeAntiRejectionUsdLot(
     return { orderUsd: 0, principalVes: 0, bankFeeVes: 0, totalDebitVes: 0, safetyBufferVes: 0 };
   }
 
-  const totalMultiplier = 1 + (profile.bankFxFeePct + profile.rateSafetyBufferPct) / 100;
+  const feePct =
+    typeof overrideBankFeePct === 'number' && Number.isFinite(overrideBankFeePct) && overrideBankFeePct >= 0
+      ? overrideBankFeePct
+      : profile.bankFxFeePct;
+
+  const totalMultiplier = 1 + (feePct + profile.rateSafetyBufferPct) / 100;
   const effectiveVesPerUsd = bcvRateVes * totalMultiplier;
   const rawMaxUsd = deployableVes / effectiveVesPerUsd;
   const cappedUsd = Math.min(rawMaxUsd, profile.maxTicketUsd);
@@ -629,7 +781,7 @@ export function computeAntiRejectionUsdLot(
   }
 
   const principalVes = roundMoney(steppedUsd * bcvRateVes, 2);
-  const bankFeeVes = roundMoney(principalVes * (profile.bankFxFeePct / 100), 2);
+  const bankFeeVes = roundMoney(principalVes * (feePct / 100), 2);
   const totalDebitVes = roundMoney(principalVes + bankFeeVes, 2);
   const safetyBufferVes = roundMoney(Math.max(0, deployableVes - totalDebitVes), 2);
 
@@ -683,23 +835,33 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
   const fluidSet = new Set<FxInterventionBankId>(input.confirmedFluidBanks ?? []);
   const depletedSet = new Set<FxInterventionBankId>(input.depletedBanks ?? []);
   const p2pExitFeePct = input.p2pExitFeePct ?? 0.25;
+  const modality: FxDeskModality = input.modality ?? FX_DESK_MODALITIES.MENUDEO_BCV;
+  const configuredIgtfPct =
+    typeof input.igtfPct === 'number' && Number.isFinite(input.igtfPct) && input.igtfPct >= 0
+      ? roundMoney(input.igtfPct, 2)
+      : VEN_DEFAULT_IGTF_PCT;
   const simulatedCap =
     typeof input.simulatedCapitalVes === 'number' && input.simulatedCapitalVes > 0
       ? input.simulatedCapitalVes
       : 0;
+  const useSimulatedOverride = Boolean(input.useSimulatedCapital);
   const allocationMode: FxCapitalAllocationMode = input.capitalAllocationMode ?? 'PER_BANK';
 
   interface BankPrep {
     bank: FxBankDeskProfile;
+    eligibleAccounts: BankAccount[];
     primaryAcc: BankAccount | null;
     primaryUsage: AccountUsage | null;
     velocity: AccountVelocityStatus | undefined;
     realBalanceVes: number;
+    effectiveBankFeePct: number;
     sudebanHealth: 'OPTIMAL' | 'WARNING' | 'BLOCKED_LIMIT';
     signalState: BankLiquiditySignalState;
     activeExitRail: FxExitRailType;
     activeExitRailLabel: string;
     activeExitRailFrictionPct: number;
+    effectiveIgtfPct: number;
+    totalExitFrictionPct: number;
     remainingDailyLimitVes: number;
     consumedDailyLimitPct: number;
     todayTxCount: number;
@@ -709,16 +871,23 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
 
   const preps: BankPrep[] = VENEZUELAN_FX_BANKS.map((bank) => {
     const selection = selectPrimaryFxBankAccount(bank, accounts, usages);
-    const primaryAcc = selection.account;
-    const primaryUsage = selection.usage;
+    const primaryAcc = useSimulatedOverride ? null : selection.account;
+    const primaryUsage = useSimulatedOverride ? null : selection.usage;
+    const eligibleAccounts = useSimulatedOverride ? [] : selection.eligibleAccounts;
     const velocity = primaryAcc ? velocityMap.get(primaryAcc.id) : undefined;
 
     const realBalanceVes = roundMoney(
-      selection.eligibleUsages.length > 0
-        ? selection.eligibleUsages.reduce((s, u) => s + Math.max(0, u.currentBalanceVes), 0)
-        : selection.eligibleAccounts.reduce((s, a) => s + Math.max(0, a.initialBalanceVes), 0),
+      eligibleAccounts.reduce((sum, acc) => {
+        const u = usageMap.get(acc.id);
+        return sum + Math.max(0, u ? u.currentBalanceVes : acc.initialBalanceVes);
+      }, 0),
       2,
     );
+
+    const effectiveBankFeePct =
+      modality === FX_DESK_MODALITIES.MESA_CAMBIO_PACTO
+        ? Math.max(0.5, bank.bankFxFeePct)
+        : bank.bankFxFeePct;
 
     const consumedDailyLimitPct = primaryUsage ? primaryUsage.consumedLimitPct : 0;
     const todayTxCount = velocity?.todayTransactionCount ?? 0;
@@ -750,14 +919,29 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
     }
 
     const overrideRailId = input.exitRailOverrides?.[bank.id];
-    const overrideRail = overrideRailId
-      ? FX_EXIT_RAIL_OPTIONS.find((r) => r.id === overrideRailId)
+    const modalityForcedOtc =
+      !overrideRailId && modality === FX_DESK_MODALITIES.TAQUILLA_EFECTIVO_OTC
+        ? 'CASH_WITHDRAWAL_OTC'
+        : undefined;
+    const targetRailId = overrideRailId ?? modalityForcedOtc;
+    const overrideRail = targetRailId
+      ? FX_EXIT_RAIL_OPTIONS.find((r) => r.id === targetRailId)
       : undefined;
+    const defaultRailMeta = FX_EXIT_RAIL_OPTIONS.find((r) => r.id === bank.primaryExitRail);
+
     const activeExitRail = overrideRail ? overrideRail.id : bank.primaryExitRail;
     const activeExitRailLabel = overrideRail ? overrideRail.label : bank.primaryExitRailLabel;
     const activeExitRailFrictionPct = overrideRail
       ? overrideRail.defaultFrictionPct
       : bank.exitRailFrictionPct;
+    const appliesIgtf = overrideRail
+      ? overrideRail.appliesIgtfByDefault
+      : (defaultRailMeta?.appliesIgtfByDefault ?? activeExitRail !== 'CASH_WITHDRAWAL_OTC');
+    const effectiveIgtfPct = appliesIgtf ? configuredIgtfPct : 0;
+    const totalExitFrictionPct = Math.min(
+      99,
+      roundMoney(effectiveIgtfPct + activeExitRailFrictionPct, 2),
+    );
 
     const remainingDailyLimitVes = primaryUsage
       ? primaryUsage.account.dailyLimitVes > 0
@@ -775,7 +959,7 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
             : -500;
     const tierWeight =
       bank.tier === 'TIER_1_LIDER' ? 30 : bank.tier === 'TIER_2_COMERCIAL' ? 15 : 0;
-    const totalCostPct = bank.bankFxFeePct + activeExitRailFrictionPct;
+    const totalCostPct = effectiveBankFeePct + totalExitFrictionPct;
     const preAllocPriority =
       sudebanHealth === 'BLOCKED_LIMIT' || signalState === 'COOLDOWN_DEPLETED'
         ? -1000
@@ -783,15 +967,19 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
 
     return {
       bank,
+      eligibleAccounts,
       primaryAcc,
       primaryUsage,
       velocity,
       realBalanceVes,
+      effectiveBankFeePct,
       sudebanHealth,
       signalState,
       activeExitRail,
       activeExitRailLabel,
       activeExitRailFrictionPct,
+      effectiveIgtfPct,
+      totalExitFrictionPct,
       remainingDailyLimitVes,
       consumedDailyLimitPct,
       todayTxCount,
@@ -801,6 +989,7 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
   });
 
   // In DISTRIBUTE_TOTAL mode, greedily assign slices of `simulatedCap` to top-ranked eligible banks
+  // without cloning unviable sub-minimum balances or ignoring 0 Bs linked accounts.
   const distributedBudgetByBank = new Map<FxInterventionBankId, number>();
   if (allocationMode === 'DISTRIBUTE_TOTAL' && simulatedCap > 0) {
     let remainingPoolVes = simulatedCap;
@@ -814,21 +1003,45 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
         distributedBudgetByBank.set(prep.bank.id, 0);
         continue;
       }
+      // If real accounts exist and we are NOT in pure simulator mode, respect real account funding
+      if (!useSimulatedOverride && accounts.length > 0 && prep.primaryAcc !== null && prep.realBalanceVes <= 0) {
+        distributedBudgetByBank.set(prep.bank.id, 0);
+        continue;
+      }
+      const realCap =
+        !useSimulatedOverride && prep.primaryAcc !== null ? prep.realBalanceVes : remainingPoolVes;
       const dailyLimitCap =
         prep.primaryUsage && prep.primaryUsage.account.dailyLimitVes > 0
           ? prep.primaryUsage.remainingLimitVes
           : remainingPoolVes;
-      const bankBudget = roundMoney(Math.max(0, Math.min(remainingPoolVes, dailyLimitCap)), 2);
+      const bankBudget = roundMoney(
+        Math.max(0, Math.min(remainingPoolVes, dailyLimitCap, realCap)),
+        2,
+      );
 
       if (bcvRate !== null && bankBudget > 0) {
-        const probeLot = computeAntiRejectionUsdLot(bankBudget, bcvRate, prep.bank);
+        const probeLot = computeAntiRejectionUsdLot(
+          bankBudget,
+          bcvRate,
+          prep.bank,
+          prep.effectiveBankFeePct,
+        );
         if (probeLot.orderUsd >= prep.bank.minLotUsd && probeLot.totalDebitVes > 0) {
-          distributedBudgetByBank.set(prep.bank.id, bankBudget);
+          const neededWithBuffer = roundMoney(
+            Math.min(
+              bankBudget,
+              probeLot.principalVes *
+                (1 + (prep.effectiveBankFeePct + prep.bank.rateSafetyBufferPct) / 100) +
+                0.01,
+            ),
+            2,
+          );
+          distributedBudgetByBank.set(prep.bank.id, neededWithBuffer);
           remainingPoolVes = roundMoney(Math.max(0, remainingPoolVes - probeLot.totalDebitVes), 2);
           continue;
         }
       }
-      distributedBudgetByBank.set(prep.bank.id, bankBudget);
+      distributedBudgetByBank.set(prep.bank.id, 0);
     }
   }
 
@@ -841,27 +1054,33 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
   const tickets: FxBankOrderTicket[] = preps.map((prep) => {
     const {
       bank,
+      eligibleAccounts,
       primaryAcc,
       primaryUsage,
       realBalanceVes,
+      effectiveBankFeePct,
       sudebanHealth,
       signalState,
       activeExitRail,
       activeExitRailLabel,
       activeExitRailFrictionPct,
+      effectiveIgtfPct,
+      totalExitFrictionPct,
       consumedDailyLimitPct,
       todayTxCount,
       maxDailyTxCount,
     } = prep;
 
-    // Crucial fix: When a real linked account exists (`primaryAcc !== null`) in PER_BANK mode,
-    // honor its real balance even if 0 VES instead of falling back to `simulatedCap`.
+    // When real accounts are passed (`accounts.length > 0`) and `useSimulatedCapital` is false,
+    // linked accounts use their real balance and unlinked banks stay at 0 Bs unless `accounts.length === 0`.
     const availableBalanceVes = roundMoney(
       allocationMode === 'DISTRIBUTE_TOTAL'
         ? (distributedBudgetByBank.get(bank.id) ?? 0)
         : primaryAcc !== null
           ? realBalanceVes
-          : simulatedCap,
+          : accounts.length === 0 || useSimulatedOverride
+            ? simulatedCap
+            : 0,
       2,
     );
 
@@ -871,24 +1090,102 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
         : availableBalanceVes
       : availableBalanceVes;
 
-    const deployableForBank =
-      sudebanHealth === 'BLOCKED_LIMIT' || signalState === 'COOLDOWN_DEPLETED'
-        ? 0
-        : Math.min(
-            availableBalanceVes,
-            remainingDailyLimitVes > 0 || primaryUsage
-              ? Math.max(0, remainingDailyLimitVes)
-              : availableBalanceVes,
+    // Per-account isolation: compute discrete anti-rejection lots per eligible account
+    // so multiple accounts of the same bank NEVER sum sub-minimum balances or overdraft primaryAcc.
+    const accountAllocations: FxAccountTicketAllocation[] = [];
+    let lot = { orderUsd: 0, principalVes: 0, bankFeeVes: 0, totalDebitVes: 0, safetyBufferVes: 0 };
+
+    if (
+      bcvRate !== null &&
+      sudebanHealth !== 'BLOCKED_LIMIT' &&
+      signalState !== 'COOLDOWN_DEPLETED' &&
+      availableBalanceVes > 0
+    ) {
+      if (eligibleAccounts.length > 0) {
+        let remainingBankCapVes = availableBalanceVes;
+        for (const acc of eligibleAccounts) {
+          if (remainingBankCapVes <= 0) break;
+          const u = usageMap.get(acc.id);
+          const vel = velocityMap.get(acc.id);
+          const accBlocked =
+            (u?.isOverLimit ?? false) ||
+            (u?.isOverMonthlyLimit ?? false) ||
+            vel?.velocityHealth === 'SATURATED';
+          if (accBlocked) continue;
+
+          const accBalance = Math.max(0, roundMoney(u ? u.currentBalanceVes : acc.initialBalanceVes, 2));
+          const accRemDaily = u
+            ? acc.dailyLimitVes > 0
+              ? u.remainingLimitVes
+              : accBalance
+            : acc.dailyLimitVes > 0
+              ? acc.dailyLimitVes
+              : accBalance;
+          const accDeployable = Math.min(accBalance, Math.max(0, accRemDaily), remainingBankCapVes);
+          if (accDeployable <= 0) continue;
+
+          const accLot = computeAntiRejectionUsdLot(
+            accDeployable,
+            bcvRate,
+            bank,
+            effectiveBankFeePct,
           );
+          if (accLot.orderUsd >= bank.minLotUsd && accLot.totalDebitVes <= accBalance) {
+            accountAllocations.push({
+              accountId: acc.id,
+              accountName: acc.bankName,
+              accountNumberMasked: acc.accountNumberMasked,
+              availableBalanceVes: accBalance,
+              remainingDailyLimitVes: roundMoney(accRemDaily, 2),
+              orderUsd: accLot.orderUsd,
+              principalVes: accLot.principalVes,
+              bankFeeVes: accLot.bankFeeVes,
+              totalDebitVes: accLot.totalDebitVes,
+              safetyBufferVes: accLot.safetyBufferVes,
+            });
+            remainingBankCapVes = roundMoney(Math.max(0, remainingBankCapVes - accLot.totalDebitVes), 2);
+          }
+        }
 
-    const lot =
-      bcvRate !== null && deployableForBank > 0
-        ? computeAntiRejectionUsdLot(deployableForBank, bcvRate, bank)
-        : { orderUsd: 0, principalVes: 0, bankFeeVes: 0, totalDebitVes: 0, safetyBufferVes: 0 };
+        if (accountAllocations.length > 0) {
+          lot = {
+            orderUsd: accountAllocations.reduce((s, a) => s + a.orderUsd, 0),
+            principalVes: roundMoney(
+              accountAllocations.reduce((s, a) => s + a.principalVes, 0),
+              2,
+            ),
+            bankFeeVes: roundMoney(
+              accountAllocations.reduce((s, a) => s + a.bankFeeVes, 0),
+              2,
+            ),
+            totalDebitVes: roundMoney(
+              accountAllocations.reduce((s, a) => s + a.totalDebitVes, 0),
+              2,
+            ),
+            safetyBufferVes: roundMoney(
+              accountAllocations.reduce((s, a) => s + a.safetyBufferVes, 0),
+              2,
+            ),
+          };
+        }
+      } else {
+        const deployableForBank = Math.min(
+          availableBalanceVes,
+          remainingDailyLimitVes > 0 || primaryUsage
+            ? Math.max(0, remainingDailyLimitVes)
+            : availableBalanceVes,
+        );
+        lot = computeAntiRejectionUsdLot(deployableForBank, bcvRate, bank, effectiveBankFeePct);
+      }
+    }
 
+    const estimatedIgtfUsd =
+      lot.orderUsd > 0 ? roundMoney(lot.orderUsd * (effectiveIgtfPct / 100), 2) : 0;
+    const estimatedRailFeeUsd =
+      lot.orderUsd > 0 ? roundMoney(lot.orderUsd * (activeExitRailFrictionPct / 100), 2) : 0;
     const netUsdtAfterExitRail =
       lot.orderUsd > 0
-        ? roundMoney(lot.orderUsd * (1 - activeExitRailFrictionPct / 100), 2)
+        ? roundMoney(Math.max(0, lot.orderUsd - estimatedIgtfUsd - estimatedRailFeeUsd), 2)
         : 0;
 
     const projectedP2pReturnVes =
@@ -914,9 +1211,12 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
     } else if (sudebanHealth === 'BLOCKED_LIMIT') {
       blockReason = 'Límite diario/mensual o velocidad SUDEBAN al tope';
     } else if (availableBalanceVes <= 0) {
-      blockReason = 'Sin saldo VES asignado';
+      blockReason =
+        accounts.length > 0 && primaryAcc === null && !useSimulatedOverride
+          ? 'Sin cuenta TRANSFERENCIA vinculada'
+          : 'Sin saldo VES asignado';
     } else if (lot.orderUsd < bank.minLotUsd) {
-      blockReason = `Saldo insuficiente para lote mínimo de $${bank.minLotUsd} USD`;
+      blockReason = `Saldo individual insuficiente para lote mínimo de $${bank.minLotUsd} USD`;
     }
 
     const isViableOrder =
@@ -948,10 +1248,14 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
       }
     }
 
+    const effectivePrimaryAcc = accountAllocations[0] ?? null;
+
     return {
       bank,
-      linkedAccountId: primaryAcc?.id ?? null,
-      linkedAccountName: primaryAcc?.bankName ?? null,
+      modality,
+      linkedAccountId: effectivePrimaryAcc?.accountId ?? primaryAcc?.id ?? null,
+      linkedAccountName: effectivePrimaryAcc?.accountName ?? primaryAcc?.bankName ?? null,
+      accountAllocations,
       availableBalanceVes,
       remainingDailyLimitVes: roundMoney(remainingDailyLimitVes, 2),
       consumedDailyLimitPct: roundMoney(consumedDailyLimitPct, 1),
@@ -960,9 +1264,14 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
       sudebanHealth,
       signalState,
       recommendedOrderUsd: lot.orderUsd,
+      effectiveBankFeePct,
       estimatedVesDebit: lot.totalDebitVes,
       estimatedBankFeeVes: lot.bankFeeVes,
       reservedSafetyBufferVes: lot.safetyBufferVes,
+      igtfPct: effectiveIgtfPct,
+      estimatedIgtfUsd,
+      estimatedRailFeeUsd,
+      totalExitFrictionPct,
       netUsdtAfterExitRail,
       activeExitRail,
       activeExitRailLabel,
@@ -1002,25 +1311,112 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
 }
 
 /**
- * Resolves a user-provided bank string (e.g. "bdv", "bancamiga", "0102") to an FxInterventionBankId.
+ * Parses Venezuelan (`1.250,50`), US (`1,250.50`), and plain decimal (`62.45` / `62,45`) numeric strings.
+ * Prevents 1000x truncation on Venezuelan bank receipts formatted as `USD 1.000,00`.
+ */
+export function parseVenezuelanMoneyString(raw?: string | null): number | null {
+  if (!raw) return null;
+  const cleaned = raw.trim().replace(/\s+/g, '');
+  if (!cleaned) return null;
+
+  let normalized = cleaned;
+  const lastComma = cleaned.lastIndexOf(',');
+  const lastDot = cleaned.lastIndexOf('.');
+
+  if (lastComma > -1 && lastDot > -1) {
+    if (lastComma > lastDot) {
+      // Venezuelan / European: 1.250,50 -> 1250.50
+      normalized = cleaned.replace(/\./g, '').replace(',', '.');
+    } else {
+      // US / International: 1,250.50 -> 1250.50
+      normalized = cleaned.replace(/,/g, '');
+    }
+  } else if (lastComma > -1) {
+    // Only commas: check if thousands (1,000,000) vs decimal (62,45 or 1250,00)
+    if (/^\d{1,3}(?:,\d{3})+$/.test(cleaned) && !cleaned.endsWith(',00')) {
+      normalized = cleaned.replace(/,/g, '');
+    } else {
+      normalized = cleaned.replace(',', '.');
+    }
+  } else if (lastDot > -1) {
+    // Only dots: check if Venezuelan integer thousands (1.000 or 1.250.000)
+    if (/^\d{1,3}(?:\.\d{3})+$/.test(cleaned)) {
+      normalized = cleaned.replace(/\./g, '');
+    }
+  }
+
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+const GENERIC_BANK_STOP_WORDS = new Set([
+  'BANCO',
+  'UNIVERSAL',
+  'COMERCIAL',
+  'DIGITAL',
+  'DE',
+  'DEL',
+  'LA',
+  'LOS',
+  'EN',
+  'LINEA',
+  'LÍNEA',
+  'CA',
+  'C.A',
+  'C.A.',
+  'SACA',
+]);
+
+/**
+ * Resolves a user-provided bank string (e.g. "bdv", "100% Banco", "0102") to an FxInterventionBankId.
+ * Rejects generic stop-words like `"Banco"` so they never collide with `BANCO DE VENEZUELA (BDV)`.
  */
 export function resolveFxInterventionBankId(raw?: string | null): FxInterventionBankId | null {
   if (!raw) return null;
-  const clean = raw.trim().toUpperCase();
+  const clean = raw
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  if (!clean || GENERIC_BANK_STOP_WORDS.has(clean)) return null;
+
   for (const bank of VENEZUELAN_FX_BANKS) {
+    const shortNorm = bank.shortName
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    const fullNorm = bank.name
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
     if (
       bank.id === clean ||
       bank.abaCode === clean ||
-      bank.shortName.toUpperCase() === clean ||
-      bank.name.toUpperCase().includes(clean)
+      shortNorm === clean ||
+      fullNorm === clean
     ) {
       return bank.id;
     }
   }
-  if (clean.includes('VENEZUELA')) return 'BDV';
-  if (clean.includes('100')) return 'CIEN_BANCO';
-  if (clean.includes('FONDO') || clean.includes('COMUN')) return 'BFC';
-  if (clean.includes('TRABAJADORES') || clean.includes('BDT')) return 'BICENTENARIO';
+
+  // Ordered unambiguous aliases (100% checked before generic substrings)
+  if (clean.includes('100%') || clean.includes('100 %') || clean.includes('100X100') || clean === '100' || clean.includes('CIEN')) {
+    return 'CIEN_BANCO';
+  }
+  if (clean.includes('BANCAMIGA')) return 'BANCAMIGA';
+  if (clean.includes('BANESCO')) return 'BANESCO';
+  if (clean.includes('MERCANTIL') || clean.includes('MONY')) return 'MERCANTIL';
+  if (clean.includes('PROVINCIAL') || clean.includes('BBVA') || clean.includes('PROVINET')) return 'PROVINCIAL';
+  if (clean.includes('BNC') || clean.includes('NACIONAL DE CREDITO')) return 'BNC';
+  if (clean.includes('BANCARIBE')) return 'BANCARIBE';
+  if (clean.includes('BANPLUS')) return 'BANPLUS';
+  if (clean.includes('BICENTENARIO') || clean.includes('TRABAJADORES') || clean.includes('BDT')) return 'BICENTENARIO';
+  if (clean.includes('TESORO')) return 'TESORO';
+  if (clean.includes('EXTERIOR') || clean.includes('NEXO')) return 'EXTERIOR';
+  if (clean.includes('PLAZA')) return 'PLAZA';
+  if (clean.includes('BFC') || clean.includes('FONDO COMUN')) return 'BFC';
+  if (clean.includes('VENEZUELA') || clean.includes('BANVENEZ') || clean.includes('BDVENLINEA')) return 'BDV';
+
   return null;
 }
 
@@ -1057,7 +1453,9 @@ export function detectFxInterventionReceipt(
 
   let bankId = resolveFxInterventionBankId(bankHint);
   if (!bankId) {
-    if (upper.includes('BANCO DE VENEZUELA') || upper.includes('BDVENLINEA')) {
+    if (upper.includes('100%') || upper.includes('100X100')) {
+      bankId = 'CIEN_BANCO';
+    } else if (upper.includes('BANCO DE VENEZUELA') || upper.includes('BDVENLINEA')) {
       bankId = 'BDV';
     } else {
       for (const bank of VENEZUELAN_FX_BANKS) {
@@ -1072,20 +1470,18 @@ export function detectFxInterventionReceipt(
     }
   }
 
-  const usdMatch = text.match(/(?:USD|\$|US\$)\s*([0-9]+(?:[.,][0-9]{1,2})?)/i);
-  const usdAmount = usdMatch
-    ? Number.parseFloat(usdMatch[1].replace(',', '.'))
-    : null;
+  const usdMatch = text.match(/(?:USD|\$|US\$)\s*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,2})?|[0-9]+(?:[.,][0-9]{1,2})?)/i);
+  const usdAmount = usdMatch ? parseVenezuelanMoneyString(usdMatch[1]) : null;
 
-  const rateMatch = text.match(/(?:TASA|CAMBIO|BCV)\s*[:=]?\s*(?:BS\.?\s*)?([0-9]{2,3}[.,][0-9]{2,4})/i);
-  const bcvRateVes = rateMatch
-    ? Number.parseFloat(rateMatch[1].replace(',', '.'))
-    : null;
+  const rateMatch = text.match(
+    /(?:TASA(?:\s+DE\s+CAMBIO|\s+BCV)?|TIPO\s+DE\s+CAMBIO|BCV)\s*[:=]?\s*(?:BS\.?\s*)?([0-9]{2,4}[.,][0-9]{2,4})/i,
+  );
+  const bcvRateVes = rateMatch ? parseVenezuelanMoneyString(rateMatch[1]) : null;
 
   return {
     isFxPurchase: true,
     bankId,
-    usdAmount: usdAmount && Number.isFinite(usdAmount) && usdAmount > 0 ? usdAmount : null,
-    bcvRateVes: bcvRateVes && Number.isFinite(bcvRateVes) && bcvRateVes > 0 ? bcvRateVes : null,
+    usdAmount,
+    bcvRateVes,
   };
 }

@@ -158,14 +158,13 @@ export function getVenezuelaTimeParts(date: Date = new Date()): {
   hour: number;
   minute: number;
 } {
-  // Offset UTC-4 en milisegundos = -4 * 3600 * 1000
-  const utc = date.getTime() + date.getTimezoneOffset() * 60000;
-  const vetDate = new Date(utc - 4 * 3600000);
+  // Offset UTC-4 estricto usando getters UTC para independencia total del huso horario del host
+  const vetShifted = new Date(date.getTime() - 4 * 3600000);
 
   return {
-    day: vetDate.getDay(), // 0=Domingo, 1=Lunes, ..., 6=Sábado
-    hour: vetDate.getHours(),
-    minute: vetDate.getMinutes(),
+    day: vetShifted.getUTCDay(), // 0=Domingo, 1=Lunes, ..., 6=Sábado
+    hour: vetShifted.getUTCHours(),
+    minute: vetShifted.getUTCMinutes(),
   };
 }
 
