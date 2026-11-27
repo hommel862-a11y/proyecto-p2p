@@ -18,6 +18,8 @@ export interface Counterparty {
   id: string;
   /** Platform nickname / Binance P2P alias (e.g. "TraderPro_VZLA"). */
   alias: string;
+  /** Immutable Binance advertiser id (`advertiser.userNo`) that survives nickname changes. */
+  binanceUserNo?: string;
   /** Legal real name of the account holder (e.g. "Juan Carlos Pérez"). */
   realName: string;
   /** National document ID (e.g. "V-18452123"). */

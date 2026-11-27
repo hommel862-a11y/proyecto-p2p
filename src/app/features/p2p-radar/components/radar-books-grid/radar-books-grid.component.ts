@@ -32,6 +32,12 @@ export class RadarBooksGridComponent {
     readonly side: 'BUY' | 'SELL';
     readonly offer: CleanRadarOffer;
   }>();
+  readonly offerExecute = output<{
+    readonly bank: string;
+    readonly side: 'BUY' | 'SELL';
+    readonly offer: CleanRadarOffer;
+    readonly preferAdvertiser?: boolean;
+  }>();
 
   readonly presetOptions: readonly { id: BankPresetId; label: string }[] = [
     { id: 'TOP_VES', label: 'Top Líderes' },
@@ -55,5 +61,14 @@ export class RadarBooksGridComponent {
   restrictionTitle(offer: CleanRadarOffer): string {
     const reasons = offer.takerRestrictionReasons;
     return reasons && reasons.length > 0 ? reasons.join(' · ') : 'Anuncio con restricción taker adicional';
+  }
+
+  hasAdvertiserId(offer: CleanRadarOffer): boolean {
+    return typeof offer.advertiserNo === 'string' && offer.advertiserNo.length > 0 && offer.advertiserNo !== 'UNKNOWN';
+  }
+
+  onExecuteOffer(event: Event, bank: string, side: 'BUY' | 'SELL', offer: CleanRadarOffer, preferAdvertiser = false): void {
+    event.stopPropagation();
+    this.offerExecute.emit({ bank, side, offer, preferAdvertiser });
   }
 }

@@ -269,6 +269,16 @@
                       <span class="apple-competitor-chip font-mono" [title]="tier.bestCompetitorBuyMerchant">
                         👤 {{ tier.bestCompetitorBuyMerchant }}
                       </span>
+                      @if (tier.bestCompetitorBuyAdvNo || tier.bestCompetitorBuyAdvertiserNo) {
+                        <button
+                          type="button"
+                          class="l2-beat-btn"
+                          (click)="executeTierCompetitor(tier, 'BUY')"
+                          title="Ir al anuncio líder de compra"
+                        >
+                          ⚡ Ir
+                        </button>
+                      }
                     </div>
                   }
 
@@ -283,6 +293,16 @@
                       <span class="apple-competitor-chip font-mono" [title]="tier.bestCompetitorSellMerchant">
                         👤 {{ tier.bestCompetitorSellMerchant }}
                       </span>
+                      @if (tier.bestCompetitorSellAdvNo || tier.bestCompetitorSellAdvertiserNo) {
+                        <button
+                          type="button"
+                          class="l2-beat-btn beat-sell"
+                          (click)="executeTierCompetitor(tier, 'SELL')"
+                          title="Ir al anuncio líder de venta"
+                        >
+                          ⚡ Ir
+                        </button>
+                      }
                     </div>
                   }
 
@@ -1777,13 +1797,25 @@
                       ({{ snipe.priceDivergencePct | num }}% vs VWAP {{ snipe.fairMarketPrice | num }} Bs)
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    class="sniper-capture-btn"
-                    (click)="applySnipedAlert(snipe)"
-                  >
-                    ⚡ Capturar Precio
-                  </button>
+                  <div style="display: flex; gap: 6px; align-items: center;">
+                    <button
+                      type="button"
+                      class="sniper-capture-btn"
+                      (click)="applySnipedAlert(snipe)"
+                    >
+                      ⚡ Capturar Precio
+                    </button>
+                    @if (snipe.advId) {
+                      <button
+                        type="button"
+                        class="sniper-capture-btn"
+                        (click)="executeSnipedAlert(snipe)"
+                        title="Abrir anuncio en Binance P2P con autocopia"
+                      >
+                        🚀 Ir al Anuncio
+                      </button>
+                    }
+                  </div>
                 </div>
               }
             </div>
@@ -1836,14 +1868,19 @@
                         [style.--l2-depth.%]="l2OfferWidthPct(o, ob.buyOffers)"
                         role="button"
                         tabindex="0"
-                        (click)="selectOfferFromBook('BUY', o.price, false)"
-                        (keydown.enter)="selectOfferFromBook('BUY', o.price, false)"
+                        (click)="selectOfferFromBook('BUY', o.price, false, o)"
+                        (keydown.enter)="selectOfferFromBook('BUY', o.price, false, o)"
                       >
                         <span class="l2-depth-bar depth-bar-buy" aria-hidden="true"></span>
                         <div class="l2-offer-main">
                           <span class="l2-rank font-mono">#{{ idx + 1 }}</span>
                           <div class="l2-merchant-info">
-                            <span class="l2-merchant-name" [title]="o.merchantName">{{ o.merchantName }}</span>
+                            <span class="l2-merchant-name" [title]="o.merchantName">
+                              {{ o.merchantName }}
+                              @if (hasOfferTakerLock(o)) {
+                                <span title="Exige requisitos adicionales de Taker">🔒</span>
+                              }
+                            </span>
                             <span class="l2-merchant-stats font-mono">
                               {{ o.finishRatePct }}% · {{ o.orderCount }} órd · {{ o.minVes | num }}–{{ o.maxVes | num }} Bs
                             </span>
@@ -1854,7 +1891,25 @@
                           <button
                             type="button"
                             class="l2-beat-btn"
-                            (click)="$event.stopPropagation(); selectOfferFromBook('BUY', o.price, true)"
+                            (click)="$event.stopPropagation(); executeBookOffer('BUY', o, false)"
+                            title="Ir directo a este anuncio en Binance P2P"
+                          >
+                            ⚡
+                          </button>
+                          @if (o.advertiserNo) {
+                            <button
+                              type="button"
+                              class="l2-beat-btn"
+                              (click)="$event.stopPropagation(); executeBookOffer('BUY', o, true)"
+                              title="Ver perfil del anunciante en Binance"
+                            >
+                              👤
+                            </button>
+                          }
+                          <button
+                            type="button"
+                            class="l2-beat-btn"
+                            (click)="$event.stopPropagation(); selectOfferFromBook('BUY', o.price, true, o)"
                             title="Superar esta oferta por +0.01 Bs como Maker"
                           >
                             +0.01
@@ -1879,14 +1934,19 @@
                         [style.--l2-depth.%]="l2OfferWidthPct(o, ob.sellOffers)"
                         role="button"
                         tabindex="0"
-                        (click)="selectOfferFromBook('SELL', o.price, false)"
-                        (keydown.enter)="selectOfferFromBook('SELL', o.price, false)"
+                        (click)="selectOfferFromBook('SELL', o.price, false, o)"
+                        (keydown.enter)="selectOfferFromBook('SELL', o.price, false, o)"
                       >
                         <span class="l2-depth-bar depth-bar-sell" aria-hidden="true"></span>
                         <div class="l2-offer-main">
                           <span class="l2-rank font-mono">#{{ idx + 1 }}</span>
                           <div class="l2-merchant-info">
-                            <span class="l2-merchant-name" [title]="o.merchantName">{{ o.merchantName }}</span>
+                            <span class="l2-merchant-name" [title]="o.merchantName">
+                              {{ o.merchantName }}
+                              @if (hasOfferTakerLock(o)) {
+                                <span title="Exige requisitos adicionales de Taker">🔒</span>
+                              }
+                            </span>
                             <span class="l2-merchant-stats font-mono">
                               {{ o.finishRatePct }}% · {{ o.orderCount }} órd · {{ o.minVes | num }}–{{ o.maxVes | num }} Bs
                             </span>
@@ -1897,7 +1957,25 @@
                           <button
                             type="button"
                             class="l2-beat-btn beat-sell"
-                            (click)="$event.stopPropagation(); selectOfferFromBook('SELL', o.price, true)"
+                            (click)="$event.stopPropagation(); executeBookOffer('SELL', o, false)"
+                            title="Ir directo a este anuncio en Binance P2P"
+                          >
+                            ⚡
+                          </button>
+                          @if (o.advertiserNo) {
+                            <button
+                              type="button"
+                              class="l2-beat-btn beat-sell"
+                              (click)="$event.stopPropagation(); executeBookOffer('SELL', o, true)"
+                              title="Ver perfil del anunciante en Binance"
+                            >
+                              👤
+                            </button>
+                          }
+                          <button
+                            type="button"
+                            class="l2-beat-btn beat-sell"
+                            (click)="$event.stopPropagation(); selectOfferFromBook('SELL', o.price, true, o)"
                             title="Cotizar -0.01 Bs debajo de esta oferta como Maker"
                           >
                             -0.01

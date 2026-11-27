@@ -288,6 +288,31 @@ export class OperationLog {
     }
     const preset = this.timer.consumePendingPreset();
     if (preset) {
+      const matchedCp =
+        typeof this.crmService.findByBinanceIdentity === 'function'
+          ? this.crmService.findByBinanceIdentity(preset.advertiserNo, preset.merchantName)
+          : preset.merchantName
+            ? this.crmService.findByQuery(preset.merchantName)
+            : undefined;
+      const presetBankNorm = (preset.bank ?? '').trim().toLowerCase();
+      const matchedAccount = presetBankNorm
+        ? this.accountsService
+            .accounts()
+            .find(
+              (a) =>
+                a.status !== 'DISABLED' &&
+                (a.bankCode.toLowerCase() === presetBankNorm ||
+                  a.bankName.toLowerCase().includes(presetBankNorm) ||
+                  presetBankNorm.includes(a.bankCode.toLowerCase())),
+            )
+        : undefined;
+      const presetNotes = [
+        preset.advNo ? `Adv #${preset.advNo}` : '',
+        preset.advertiserNo ? `UID: ${preset.advertiserNo}` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+
       this.form.set({
         ...EMPTY_DRAFT,
         type: preset.type,
@@ -296,6 +321,10 @@ export class OperationLog {
         vesAmount: preset.vesAmount,
         usdtAmount: preset.usdtAmount,
         merchantNote: preset.merchantNote ?? '',
+        payerName: preset.merchantName ?? '',
+        counterpartyId: matchedCp?.id ?? '',
+        bankAccountId: matchedAccount?.id ?? '',
+        notes: presetNotes,
       });
     }
 

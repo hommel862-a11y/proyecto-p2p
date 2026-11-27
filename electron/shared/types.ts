@@ -1075,6 +1075,20 @@ export interface TreasurySnapshotDto {
 }
 
 // The narrow, typed surface the preload exposes on `window.electron`.
+export type BinanceDockMode = 'AD' | 'ADVERTISER' | 'MY_ADS' | 'ADV_POST';
+
+export interface BinanceDockOpenRequest {
+  url: string;
+  mode: BinanceDockMode;
+}
+
+export interface BinanceDockStateDto {
+  isOpen: boolean;
+  currentUrl: string | null;
+  widthPx: number;
+  mode: BinanceDockMode | null;
+}
+
 export interface ElectronAPI {
   getVersion(): Promise<string>;
   fetchBinanceP2p(params: BinanceSearchParams): Promise<unknown>;
@@ -1268,6 +1282,14 @@ export interface ElectronAPI {
     getGatewayConfig(): Promise<{ url: string; authToken: string }>;
   };
   finance360: Finance360ElectronBridge;
+  binanceDock?: {
+    open(req: BinanceDockOpenRequest): Promise<BinanceDockStateDto>;
+    close(): Promise<BinanceDockStateDto>;
+    toggle(req?: BinanceDockOpenRequest): Promise<BinanceDockStateDto>;
+    getState(): Promise<BinanceDockStateDto>;
+    openExternal(url: string): Promise<{ opened: boolean }>;
+    onStateChanged(listener: (state: BinanceDockStateDto) => void): () => void;
+  };
 }
 
 declare global {

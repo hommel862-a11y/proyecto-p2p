@@ -61,6 +61,27 @@ export class CounterpartyService {
     );
   }
 
+  /**
+   * Resolves a Binance advertiser prioritizing immutable `binanceUserNo` (`advertiser.userNo`)
+   * before falling back to nickname/realName query matching.
+   */
+  findByBinanceIdentity(
+    advertiserNo?: string | null,
+    nickName?: string | null,
+  ): Counterparty | undefined {
+    const rawId = typeof advertiserNo === 'string' ? advertiserNo.trim().toLowerCase() : '';
+    if (rawId && rawId !== 'unknown') {
+      const byUserNo = this.counterparties().find(
+        (c) => typeof c.binanceUserNo === 'string' && c.binanceUserNo.trim().toLowerCase() === rawId,
+      );
+      if (byUserNo) return byUserNo;
+    }
+    if (typeof nickName === 'string' && nickName.trim().length > 0) {
+      return this.findByQuery(nickName);
+    }
+    return undefined;
+  }
+
   addCounterparty(cp: Omit<Counterparty, 'id' | 'createdAt'>): Counterparty {
     const created: Counterparty = {
       ...cp,

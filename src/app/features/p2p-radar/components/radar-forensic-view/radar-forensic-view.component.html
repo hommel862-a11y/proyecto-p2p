@@ -23,6 +23,7 @@
               <th>Confianza</th>
               <th>Reacción</th>
               <th>Contraofertado</th>
+              <th>Acción</th>
             </tr>
           </thead>
           <tbody>
@@ -38,6 +39,18 @@
                 <td class="radar-mono">{{ item.bot.reactionTimeSecondsAverage | number:'1.1-1' }}s</td>
                 <td class="radar-mono">
                   {{ item.bot.recommendedCounterPrice !== null ? (item.bot.recommendedCounterPrice | number:'1.2-2') : '--' }}
+                </td>
+                <td>
+                  @if (hasAdvertiserId(item.bot.advertiserNo)) {
+                    <button
+                      type="button"
+                      class="radar-pill-btn"
+                      (click)="inspectBotProfile.emit(item)"
+                      title="Ver perfil del anunciante en Binance"
+                    >
+                      👤 Perfil
+                    </button>
+                  }
                 </td>
               </tr>
             }
@@ -69,6 +82,7 @@
               <th>Tasa</th>
               <th>Liquidez</th>
               <th>Motivos de Exclusión</th>
+              <th>Inspección</th>
             </tr>
           </thead>
           <tbody>
@@ -82,6 +96,30 @@
                   <div class="reasons-wrap">
                     @for (reason of row.offer.verdict.reasons; track reason) {
                       <span class="radar-status-pill tone-danger">{{ formatReason(reason) }}</span>
+                    }
+                  </div>
+                </td>
+                <td>
+                  <div style="display: flex; gap: 4px;">
+                    @if (row.offer.advNo) {
+                      <button
+                        type="button"
+                        class="radar-pill-btn"
+                        (click)="inspectRejectedOffer.emit({ row, preferAdvertiser: false })"
+                        title="Abrir anuncio en Binance"
+                      >
+                        🔗 Anuncio
+                      </button>
+                    }
+                    @if (hasAdvertiserId(row.offer.advertiserNo)) {
+                      <button
+                        type="button"
+                        class="radar-pill-btn"
+                        (click)="inspectRejectedOffer.emit({ row, preferAdvertiser: true })"
+                        title="Ver perfil del anunciante"
+                      >
+                        👤
+                      </button>
                     }
                   </div>
                 </td>

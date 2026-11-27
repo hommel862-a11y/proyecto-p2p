@@ -7,6 +7,7 @@ import type {
 } from '../../../../core/microstructure-engine.service';
 import type {
   MicrostructureApplyPriceEvent,
+  MicrostructureTakeOfferEvent,
   MicrostructureWhatIfPreview,
 } from './microstructure.types';
 
@@ -41,6 +42,7 @@ export class MicrostructureOrderbookLadderComponent {
   readonly whatIfPreview = input<MicrostructureWhatIfPreview | null>(null);
 
   readonly fixPrice = output<MicrostructureApplyPriceEvent>();
+  readonly takeOffer = output<MicrostructureTakeOfferEvent>();
   readonly hoverPreview = output<MicrostructureWhatIfPreview | null>();
 
   readonly sellRows = computed<readonly LadderDisplayRow[]>(() => {
@@ -155,5 +157,29 @@ export class MicrostructureOrderbookLadderComponent {
       advNo: row.item.offer.advNo,
       source: 'DOM_LADDER_FIJAR',
     });
+  }
+
+  onTakeRow(event: Event, row: LadderDisplayRow, preferAdvertiser = false): void {
+    event.stopPropagation();
+    this.takeOffer.emit({
+      offer: row.item.offer,
+      side: row.item.side,
+      preferAdvertiser,
+    });
+  }
+
+  hasAdvertiserId(row: LadderDisplayRow): boolean {
+    const id = row.item.offer.advertiserNo;
+    return typeof id === 'string' && id.trim().length > 0 && id !== 'UNKNOWN';
+  }
+
+  hasTakerLock(row: LadderDisplayRow): boolean {
+    const o = row.item.offer;
+    return (
+      (typeof o.buyerRegDaysLimit === 'number' && o.buyerRegDaysLimit > 0) ||
+      (typeof o.buyerBtcPositionLimit === 'number' && o.buyerBtcPositionLimit > 0) ||
+      (typeof o.buyerKycLimit === 'number' && o.buyerKycLimit > 0) ||
+      o.takerAdditionalKycRequired === true
+    );
   }
 }
