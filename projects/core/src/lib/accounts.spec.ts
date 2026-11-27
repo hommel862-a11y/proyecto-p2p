@@ -4,7 +4,9 @@ import {
   computeCumulativeAccountUsage,
   computeCumulativeTreasurySummary,
   computeTreasurySummary,
+  getTodayOperations,
   getVenezuelaDateKey,
+  getVenezuelaMonthKey,
   getVenezuelaTodayOperations,
   recommendAccountForTrade,
   type BankAccount,
@@ -12,15 +14,10 @@ import {
 import { type Operation } from './log';
 
 /**
- * `computeAccountUsage` deriva `monthKey` del reloj real (`new Date().toISOString()`)
- * y no acepta un reloj inyectado, así que los fixtures se anclan al mes UTC en curso
- * en lugar de a una fecha fija. Anclarlos a un mes concreto dejaba el spec rojo en
- * cada cambio de mes sin que nadie hubiera tocado la lógica de producción.
- *
- * Se captura una sola vez para que todos los fixtures compartan el mismo mes y la
- * relación "mes actual vs. mes anterior" sea siempre consistente dentro del archivo.
+ * `computeAccountUsage` deriva `monthKey` de `getVenezuelaMonthKey()` (reloj VET),
+ * así que los fixtures comparten el mes VET en curso y la relación mes actual vs. anterior.
  */
-const NOW_MONTH_KEY = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+const NOW_MONTH_KEY = getVenezuelaMonthKey(); // 'YYYY-MM'
 
 /** Marca de tiempo en UTC dentro de un mes dado, mismo criterio que `monthKey`. */
 function tsInMonth(monthKey: string, day: number, hour = 10): string {
@@ -514,5 +511,68 @@ describe('Multi-account selection: targetBankCode and DISABLED status', () => {
     const summary = computeCumulativeTreasurySummary([acc], allOps, '2026-11-26', '2026-11');
     expect(summary.totalBalanceVes).toBe(49625);
     expect(summary.overMonthlyLimitCount).toBe(1);
+  });
+
+  it('uses canonical America/Caracas in getTodayOperations and enforces 30-day rolling SUDEBAN window across month boundaries', () => {
+    const acc: BankAccount = {
+      id: 'acc-rolling-30',
+      bankName: 'BDV Transferencia',
+      bankCode: 'BDV',
+      rail: 'TRANSFERENCIA',
+      accountNumberMasked: '0102-***1111',
+      dailyLimitVes: 100000,
+      monthlyLimitVes: 20000,
+      initialBalanceVes: 100000,
+    };
+    const ops: Operation[] = [
+      {
+        id: 'op-expired-35d',
+        timestamp: '2026-10-20T14:00:00.000Z', // 37 days before Nov 26 -> excluded
+        type: 'buy',
+        pair: 'USDT',
+        vesAmount: 50000,
+        usdtAmount: 700,
+        price: 71.43,
+        merchantNote: '',
+        fees: 125,
+        notes: '',
+        errorFree: true,
+        bankAccountId: 'acc-rolling-30',
+      },
+      {
+        id: 'op-prev-month-27d',
+        timestamp: '2026-10-30T14:00:00.000Z', // Oct 30 VET -> 27 days before Nov 26 -> INCLUDED in 30d rolling cap
+        type: 'buy',
+        pair: 'USDT',
+        vesAmount: 10000,
+        usdtAmount: 150,
+        price: 66.67,
+        merchantNote: '',
+        fees: 25,
+        notes: '',
+        errorFree: true,
+        bankAccountId: 'acc-rolling-30',
+      },
+      {
+        id: 'op-nov26',
+        timestamp: '2026-11-26T14:00:00.000Z', // Nov 26 VET -> today
+        type: 'buy',
+        pair: 'USDT',
+        vesAmount: 10000,
+        usdtAmount: 150,
+        price: 66.67,
+        merchantNote: '',
+        fees: 25,
+        notes: '',
+        errorFree: true,
+        bankAccountId: 'acc-rolling-30',
+      },
+    ];
+
+    expect(getTodayOperations(ops, '2026-11-26').map((o) => o.id)).toEqual(['op-nov26']);
+    const usage = computeCumulativeAccountUsage(acc, ops, '2026-11-26');
+    expect(usage.spentTodayVes).toBe(10025);
+    expect(usage.spentThisMonthVes).toBe(20050); // Oct 30 + Nov 26 (rolling 30d), excluding Oct 20
+    expect(usage.isOverMonthlyLimit).toBe(true);
   });
 });

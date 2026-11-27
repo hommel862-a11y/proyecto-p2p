@@ -18,12 +18,12 @@
   --fx-line-strong: var(--line-strong);
   --fx-text: var(--text);
   --fx-muted: var(--muted);
-  --fx-gold: var(--gold);
-  --fx-accent: var(--accent);
-  --fx-accent-2: var(--accent-2);
-  --fx-warn: var(--warn);
-  --fx-danger: var(--danger);
-  --fx-violet: color-mix(in srgb, var(--accent-2) 54%, var(--danger) 46%);
+  --fx-gold: color-mix(in srgb, var(--gold) 85%, var(--text) 15%);
+  --fx-accent: color-mix(in srgb, var(--accent) 85%, var(--text) 15%);
+  --fx-accent-2: color-mix(in srgb, var(--accent-2) 78%, var(--text) 22%);
+  --fx-warn: color-mix(in srgb, var(--warn) 85%, var(--text) 15%);
+  --fx-danger: color-mix(in srgb, var(--danger) 76%, var(--text) 24%);
+  --fx-violet: color-mix(in srgb, color-mix(in srgb, var(--accent-2) 54%, var(--danger) 46%) 68%, var(--text) 32%);
   --fx-pill-active-bg: var(--text);
   --fx-pill-active-fg: var(--bg-0);
   --fx-radius: var(--radius);
@@ -35,6 +35,15 @@
   width: 100%;
   min-width: 0;
   color: var(--fx-text);
+}
+
+:host-context([data-theme='light']) {
+  --fx-gold: color-mix(in srgb, var(--gold) 54%, var(--text) 46%);
+  --fx-accent: color-mix(in srgb, var(--accent) 56%, var(--text) 44%);
+  --fx-accent-2: color-mix(in srgb, var(--accent-2) 54%, var(--text) 46%);
+  --fx-warn: color-mix(in srgb, var(--warn) 54%, var(--text) 46%);
+  --fx-danger: color-mix(in srgb, var(--danger) 58%, var(--text) 42%);
+  --fx-violet: color-mix(in srgb, color-mix(in srgb, var(--accent-2) 50%, var(--danger) 50%) 54%, var(--text) 46%);
 }
 
 .fx-tabular {
@@ -288,6 +297,18 @@
   white-space: nowrap;
   cursor: pointer;
 
+  &.is-compact {
+    min-height: 26px;
+    padding: 0 8px;
+  }
+
+  &.is-lot-copy {
+    min-height: 26px;
+    padding: 0 7px;
+    font-weight: 800;
+    color: var(--fx-text);
+  }
+
   &:hover:not(:disabled) {
     color: var(--fx-text);
     border-color: var(--fx-line-strong);
@@ -372,7 +393,9 @@
   .fx-pill-btn,
   .fx-btn-primary,
   .fx-row-btn,
-  .fx-ghost-btn {
+  .fx-ghost-btn,
+  .fx-ghost-btn.is-compact,
+  .fx-ghost-btn.is-lot-copy {
     min-height: 44px;
     padding: 0 14px;
   }

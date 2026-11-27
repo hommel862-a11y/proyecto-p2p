@@ -106,6 +106,11 @@ import type {
         outline: 2px solid var(--fx-accent-2);
         outline-offset: 2px;
       }
+      .inspector-compact-btn {
+        min-height: 24px;
+        padding: 0 8px;
+        font-size: 0.68rem;
+      }
       .tips-list {
         margin: 0;
         padding-left: 16px;
@@ -144,7 +149,8 @@ import type {
       }
       @media (max-width: 768px) {
         .rail-select,
-        .btn-settle {
+        .btn-settle,
+        .inspector-compact-btn {
           min-height: 44px;
         }
       }
@@ -183,8 +189,7 @@ import type {
               <span>Aislamiento por Cuenta (TRANSFERENCIA)</span>
               <button
                 type="button"
-                class="fx-ghost-btn"
-                style="min-height: 24px; padding: 0 8px; font-size: 0.68rem"
+                class="fx-ghost-btn inspector-compact-btn"
                 (click)="calibrateAccount.emit(t.bank)"
               >
                 {{ t.linkedAccountId ? 'Calibrar Saldo' : '+ Vincular Cuenta' }}

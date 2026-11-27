@@ -135,13 +135,22 @@ export function toVenezuelaDateKey(timestamp: string): string {
 }
 
 /**
- * Filter operations belonging to a specific calendar date (UTC or local prefix YYYY-MM-DD).
+ * Parses an `America/Caracas` `YYYY-MM-DD` key into UTC midnight epoch milliseconds for exact day-diff arithmetic.
+ */
+function parseVetDayUtcMs(isoDateKey: string): number {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec((isoDateKey ?? '').trim());
+  if (!match) return Number.NaN;
+  return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+/**
+ * Filter operations belonging to a specific canonical `America/Caracas` (`UTC-04:00`) calendar date.
  */
 export function getTodayOperations(
   allOps: readonly Operation[],
-  todayDateKey = new Date().toISOString().slice(0, 10),
+  todayDateKey: string = getVenezuelaDateKey(),
 ): Operation[] {
-  return allOps.filter((o) => o.timestamp.startsWith(todayDateKey));
+  return allOps.filter((o) => toVenezuelaDateKey(o.timestamp) === todayDateKey);
 }
 
 /**
@@ -151,26 +160,17 @@ export function getVenezuelaTodayOperations(
   allOps: readonly Operation[],
   vetDateKey: string = getVenezuelaDateKey(),
 ): Operation[] {
-  return allOps.filter((o) => toVenezuelaDateKey(o.timestamp) === vetDateKey);
+  return getTodayOperations(allOps, vetDateKey);
 }
 
 /**
- * Compute the live daily limit usage and balance for a single bank account.
- * Expects `todayOps` to contain only today's operations (caller responsibility).
- * Also computes monthly usage when `account.monthlyLimitVes` is set, filtering by
- * `monthKey` ('YYYY-MM') internally.
- *
- * `monthKey` defaults to the wall clock, so existing two-argument call sites keep
- * working unchanged — but it is injectable, which matters more than the default:
- * a month boundary is the one thing a test cannot otherwise pin. The previous
- * shape read `new Date()` internally, so a monthly-limit test could only ever
- * assert "this month vs. last month" relative to whenever CI happened to run.
- * Same contract as `getTodayOperations(allOps, todayDateKey)` above.
+ * Compute the live daily limit usage and balance for a single bank account,
+ * anchored to canonical `America/Caracas` (`UTC-04:00`) calendar boundaries.
  */
 export function computeAccountUsage(
   account: BankAccount,
   todayOps: readonly Operation[],
-  monthKey: string = new Date().toISOString().slice(0, 7), // 'YYYY-MM'
+  monthKey: string = getVenezuelaMonthKey(), // 'YYYY-MM'
 ): AccountUsage {
 
   let spentTodayVes = 0;
@@ -187,8 +187,8 @@ export function computeAccountUsage(
 
     if (op.type === 'buy') {
       spentTodayVes += op.vesAmount + op.fees;
-      // Monthly: count only current-month buy ops
-      if (op.timestamp.startsWith(monthKey)) {
+      // Monthly: count only current-month buy ops in canonical America/Caracas (UTC-04:00)
+      if (toVenezuelaDateKey(op.timestamp).startsWith(monthKey)) {
         spentThisMonthVes += op.vesAmount + op.fees;
       }
     } else {
@@ -296,19 +296,20 @@ export function computeTreasurySummary(
  * the full ledger `allOps` so that:
  * 1. `currentBalanceVes` reflects all historical inflows/outflows (never resets at midnight/20:00 VET),
  * 2. `spentTodayVes` / `receivedTodayVes` count strictly operations on `vetDateKey` (Caracas day),
- * 3. `spentThisMonthVes` sums all operations within `vetMonthKey` across the full month.
+ * 3. `spentThisMonthVes` sums all operations within the rolling 30-day SUDEBAN window ending at `vetDateKey`.
  */
 export function computeCumulativeAccountUsage(
   account: BankAccount,
   allOps: readonly Operation[],
   vetDateKey: string = getVenezuelaDateKey(),
-  vetMonthKey: string = vetDateKey.slice(0, 7),
+  _vetMonthKey: string = vetDateKey.slice(0, 7),
 ): AccountUsage {
   let totalSpentAllTimeVes = 0;
   let totalReceivedAllTimeVes = 0;
   let spentTodayVes = 0;
   let receivedTodayVes = 0;
   let spentThisMonthVes = 0;
+  const refDayMs = parseVetDayUtcMs(vetDateKey);
 
   for (const op of allOps) {
     const matchesAccount =
@@ -319,7 +320,13 @@ export function computeCumulativeAccountUsage(
 
     const opVetDay = toVenezuelaDateKey(op.timestamp);
     const isToday = opVetDay === vetDateKey;
-    const isThisMonth = opVetDay.startsWith(vetMonthKey);
+    const opDayMs = parseVetDayUtcMs(opVetDay);
+    const diffDays =
+      Number.isFinite(refDayMs) && Number.isFinite(opDayMs)
+        ? Math.round((refDayMs - opDayMs) / 86_400_000)
+        : -1;
+    const isWithinRolling30Days =
+      diffDays >= 0 ? diffDays < 30 : opVetDay.startsWith(_vetMonthKey);
 
     if (op.type === 'buy') {
       const totalOutflow = op.vesAmount + op.fees;
@@ -327,7 +334,7 @@ export function computeCumulativeAccountUsage(
       if (isToday) {
         spentTodayVes += totalOutflow;
       }
-      if (isThisMonth) {
+      if (isWithinRolling30Days) {
         spentThisMonthVes += totalOutflow;
       }
     } else {

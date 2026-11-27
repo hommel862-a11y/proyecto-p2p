@@ -104,8 +104,7 @@
         </span>
         <button
           type="button"
-          class="fx-ghost-btn"
-          style="min-height: 26px; padding: 0 8px"
+          class="fx-ghost-btn is-compact"
           [disabled]="isRefreshingFeeds()"
           (click)="refreshLiveFeeds()"
           [title]="bcvProvenanceLabel() + ' · ' + feedFreshnessLabel()"
@@ -426,8 +425,7 @@
                   @if (ticket.recommendedOrderUsd > 0) {
                     <button
                       type="button"
-                      class="fx-ghost-btn"
-                      style="padding: 0 7px; min-height: 26px; font-weight: 800; color: var(--fx-text)"
+                      class="fx-ghost-btn is-lot-copy"
                       (click)="$event.stopPropagation(); copyOrderLotUsd(ticket)"
                       title="Copiar monto entero exacto al portapapeles"
                     >
