@@ -242,7 +242,7 @@ describe('p2p:fetch-cotizave — puente COTIZAVE_API_KEY y persistencia segura',
       invokeCotizave({ apiKey: '  X-API-Key: "cz_pasted_key" \u200B ', endpoint: 'rates' }),
     ).rejects.toThrow(/Cotizave HTTP Error 401: \[invalid_api_key\]/);
 
-    expect(process.env['COTIZAVE_API_KEY']).toBe('cz_pasted_key');
+    expect(process.env['COTIZAVE_API_KEY']).toBeUndefined();
     const [, init] = vi.mocked(net.fetch).mock.calls[0];
     expect((init?.headers as Record<string, string>)['X-API-Key']).toBe('cz_pasted_key');
   });
