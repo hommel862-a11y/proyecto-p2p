@@ -908,4 +908,41 @@ export const F360AuditOverdueAndRunwayInputSchema = z.object({
 });
 export type F360AuditOverdueAndRunwayInput = z.infer<typeof F360AuditOverdueAndRunwayInputSchema>;
 
+// ==========================================
+// MESA CAMBIARIA BCV v2.0 INSTITUTIONAL TOOL
+// ==========================================
+
+export const EvaluateFxDeskPlanInputSchema = z.object({
+  // Fail-closed: never invent BCV rate, P2P sell rate, or treasury capital
+  bcvOfficialRateVes: z.number().positive().optional(),
+  p2pSellRateVes: z.number().positive().optional(),
+  capitalVes: z.number().positive().optional(),
+  modality: z
+    .enum(['MENUDEO_BCV', 'MESA_CAMBIO_PACTO', 'TAQUILLA_EFECTIVO_OTC'])
+    .default('MENUDEO_BCV'),
+  igtfPct: z.number().min(0).max(20).default(3),
+  allocationMode: z.enum(['PER_BANK', 'DISTRIBUTE_TOTAL']).default('DISTRIBUTE_TOTAL'),
+  bankFilter: z.string().optional(),
+  confirmedFluidBanks: z.array(z.string()).default([]),
+  depletedBanks: z.array(z.string()).default([]),
+  p2pExitFeePct: z.number().min(0).max(10).default(0.25),
+  evaluationTimestampIso: z.string().optional(),
+  accounts: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        bankCode: z.string().min(1),
+        bankName: z.string().min(1),
+        accountNumberMasked: z.string().optional(),
+        availableBalanceVes: z.number().min(0),
+        remainingDailyLimitVes: z.number().min(0).optional(),
+        isOverMonthlyLimit: z.boolean().default(false),
+        paymentRail: z.enum(['TRANSFERENCIA', 'PAGO_MOVIL', 'AMBOS']).default('TRANSFERENCIA'),
+      }),
+    )
+    .optional(),
+});
+export type EvaluateFxDeskPlanInput = z.infer<typeof EvaluateFxDeskPlanInputSchema>;
+
+
 

@@ -12,6 +12,7 @@ import { getParallelRatesTool } from './get_parallel_rates.js';
 import { calculateRateGapTool } from './calculate_rate_gap.js';
 import { checkBcvInterventionWindowTool } from './check_bcv_intervention_window.js';
 import { autofillTradeReferenceTool } from './autofill_trade_reference.js';
+import { evaluateFxDeskPlanTool } from './evaluate_fx_desk_plan.js';
 // Phase 3: Crypto Market Data & Microstructure
 import { getBinanceP2POrderbookTool } from './get_binance_p2p_orderbook.js';
 import { detectUsdtDepegTool } from './detect_usdt_depeg.js';
@@ -83,6 +84,7 @@ export const ALL_MCP_TOOLS = [
   calculateRateGapTool,
   checkBcvInterventionWindowTool,
   autofillTradeReferenceTool,
+  evaluateFxDeskPlanTool,
   // Phase 3
   getBinanceP2POrderbookTool,
   detectUsdtDepegTool,
@@ -155,6 +157,7 @@ export const MCP_TOOLS_BY_SERVER: Record<string, typeof ALL_MCP_TOOLS> = {
     predictBcvMacroRegimeTool,
     optimizeTreasuryIdleYieldTool,
     executeBrowserOperatorTaskTool,
+    evaluateFxDeskPlanTool,
     f360GetTreasurySummaryTool,
     f360AnalyzeCasheaCapacityTool,
     f360SimulateCasheaAllyMarginTool,
@@ -192,6 +195,7 @@ export const MCP_TOOLS_BY_SERVER: Record<string, typeof ALL_MCP_TOOLS> = {
     checkBankOperationalStatusTool,
     auditPaymentProofOcrTool,
     executeBrowserOperatorTaskTool,
+    evaluateFxDeskPlanTool,
   ],
   'p2p-dispute-dossier': [compileDisputeDossierTool],
   'p2p-sudeban-radar': [evaluateAccountSaturationTool],
@@ -217,6 +221,7 @@ export const MCP_TOOLS_BY_SERVER: Record<string, typeof ALL_MCP_TOOLS> = {
     checkBcvInterventionWindowTool,
     autofillTradeReferenceTool,
     predictBcvMacroRegimeTool,
+    evaluateFxDeskPlanTool,
   ],
   'p2p-google-workspace': [gdriveBackupReceiptTool, gsheetsSyncTradeTool, gdriveSyncDbBackupTool],
   'p2p-counterparty-mesh': [
@@ -247,6 +252,7 @@ export {
   calculateRateGapTool,
   checkBcvInterventionWindowTool,
   autofillTradeReferenceTool,
+  evaluateFxDeskPlanTool,
   // Phase 3
   getBinanceP2POrderbookTool,
   detectUsdtDepegTool,

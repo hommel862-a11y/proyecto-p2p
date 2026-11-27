@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import crypto from 'node:crypto';
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 const IS_TEST_IMPORT =
@@ -47,7 +48,7 @@ import {
   predictTwoHourVolatility,
   computeTickVelocity,
   type BinanceP2pMarketDepth,
-  type BinanceOfferSummary,
+  type BinanceP2pRawItem,
   type BacktestReportResult,
   type BacktestRequestParams,
   type MacroIntelSnapshot,
@@ -63,6 +64,18 @@ import {
   type StrategyPlanTelegramCard,
   formatStrategyPlanTelegramMessage,
   buildPlanApprovalKeyboard,
+  evaluateFxBankDeskPlan,
+  evaluateVenezuelanFxWindow,
+  formatFxDeskTelegramMessage,
+  buildFxDeskTelegramKeyboard,
+  VENEZUELAN_FX_BANKS,
+  FX_EXIT_RAIL_OPTIONS,
+  VEN_DEFAULT_IGTF_PCT,
+  roundMoney,
+  type FxDeskActionParams,
+  type FxBoughtCallbackParams,
+  type FxEmptyCallbackParams,
+  type FxInterventionBankId,
   type TelegramInboundUpdate,
   type TelegramInlineKeyboardMarkup,
   type TelegramReplyKeyboardMarkup,
@@ -85,7 +98,16 @@ const ALPHA_SCAN_INTERVAL_SEC = Number(process.env['ALPHA_SCAN_INTERVAL_SEC']) |
 const MIN_NET_SPREAD_PCT = Number(process.env['MIN_NET_SPREAD_PCT']) || 1.0;
 const HTTP_PORT = Number(process.env['PORT']) || 3000;
 const ELECTRON_BRIDGE_URL = process.env['ELECTRON_BRIDGE_URL']?.trim() || 'http://127.0.0.1:51857';
+const ELECTRON_BRIDGE_TOKEN = process.env['ELECTRON_BRIDGE_TOKEN']?.trim() || '';
 const INBOUND_GATEWAY_URL = process.env['INBOUND_GATEWAY_URL']?.trim() || 'http://inbound-gateway:3030';
+
+function buildElectronBridgeHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (ELECTRON_BRIDGE_TOKEN) {
+    headers['X-P2P-Bridge-Token'] = ELECTRON_BRIDGE_TOKEN;
+  }
+  return headers;
+}
 
 const COPILOT_SYSTEM_PROMPT = `Sos el Copiloto Estratega de Arbitraje P2P Institucional (P2P Decisor).
 Tu rol es asistir a operadores profesionales de mesa de cambio con análisis cuantitativo riguroso, microestructura de mercado, arbitraje P2P (VES/USDT), triangulaciones, tasas BCV e identificación de riesgos.
@@ -113,7 +135,7 @@ async function callElectronChat(prompt: string, history?: any[]): Promise<{ text
   try {
     const res = await fetch(`${ELECTRON_BRIDGE_URL}/api/orchestrator/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildElectronBridgeHeaders(),
       body: JSON.stringify({ prompt, history }),
       signal: AbortSignal.timeout(30000),
     });
@@ -128,7 +150,7 @@ async function callElectronPlan(capitalUsdt?: number, bank?: string): Promise<{ 
   try {
     const res = await fetch(`${ELECTRON_BRIDGE_URL}/api/orchestrator/plan`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildElectronBridgeHeaders(),
       body: JSON.stringify({ capitalUsdt, bank }),
       signal: AbortSignal.timeout(30000),
     });
@@ -143,7 +165,7 @@ async function callElectronExecutePlan(planId: string): Promise<{ success: boole
   try {
     const res = await fetch(`${ELECTRON_BRIDGE_URL}/api/orchestrator/execute-plan`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildElectronBridgeHeaders(),
       body: JSON.stringify({ planId }),
       signal: AbortSignal.timeout(15000),
     });
@@ -158,7 +180,7 @@ async function callElectronKillswitch(action: 'trigger' | 'reset', reason?: stri
   try {
     const res = await fetch(`${ELECTRON_BRIDGE_URL}/api/orchestrator/killswitch`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildElectronBridgeHeaders(),
       body: JSON.stringify({ action, reason }),
       signal: AbortSignal.timeout(3000),
     });
@@ -211,7 +233,9 @@ const repricerEngine = new RepricerEngine({
   breakEvenSellPrice: Number(process.env['AUTOREPRICE_BREAKEVEN_PRICE']) || 0,
 });
 const aiProxy = new CloudAiProxyService();
-const syncStore = new EncryptedSyncStore();
+const syncStore = new EncryptedSyncStore(
+  IS_TEST_IMPORT ? path.join(os.tmpdir(), `p2p-daemon-test-sync-${process.pid}.json`) : undefined,
+);
 
 // Live Data Fetchers
 async function fetchBinanceSide(
@@ -219,7 +243,7 @@ async function fetchBinanceSide(
   asset = 'USDT',
   fiat = 'VES',
   payTypes: string[] = [],
-): Promise<BinanceOfferSummary[]> {
+): Promise<BinanceP2pRawItem[]> {
   try {
     const res = await fetch('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
       method: 'POST',
@@ -241,30 +265,9 @@ async function fetchBinanceSide(
       console.warn(`[Daemon] Binance HTTP ${res.status} al consultar ${tradeType}`);
       return [];
     }
-    const json = (await res.json()) as { data?: Array<{ adv: Record<string, unknown>; advertiser: Record<string, unknown> }> };
+    const json = (await res.json()) as { data?: BinanceP2pRawItem[] };
     if (!json.data || !Array.isArray(json.data)) return [];
-
-    return json.data.map((item) => {
-      const adv = item.adv;
-      const advr = item.advertiser;
-      return {
-        advNo: String(adv['advNo'] || ''),
-        price: Number(adv['price']) || 0,
-        surplusAmount: Number(adv['surplusAmount']) || 0,
-        minSingleTransAmount: Number(adv['minSingleTransAmount']) || 0,
-        maxSingleTransAmount: Number(adv['maxSingleTransAmount']) || 0,
-        tradeType,
-        asset,
-        fiatUnit: fiat,
-        payMethods: Array.isArray(adv['tradeMethods'])
-          ? adv['tradeMethods'].map((m: any) => m.tradeMethodName || m.identifier)
-          : [],
-        merchantName: String(advr['nickName'] || 'Anónimo'),
-        merchantOrders: Number(advr['monthOrderCount']) || 0,
-        merchantFinishRate: (Number(advr['monthFinishRate']) || 0) * 100,
-        isMerchant: advr['userType'] === 'merchant',
-      };
-    });
+    return json.data;
   } catch (err) {
     console.error(`[Daemon] Error fetching Binance ${tradeType}:`, err);
     return [];
@@ -284,12 +287,13 @@ async function fetchLiveMarketDepth(): Promise<BinanceP2pMarketDepth | null> {
   }
 }
 
-async function fetchCotizaveRates(): Promise<any | null> {
-  if (!COTIZAVE_API_KEY) return null;
+async function fetchCotizaveRates(apiKeyOverride?: string): Promise<any | null> {
+  const apiKey = apiKeyOverride?.trim() || COTIZAVE_API_KEY;
+  if (!apiKey) return null;
   try {
     const res = await fetch('https://api.cotizave.com/v1/fx/rates', {
       headers: {
-        'X-API-Key': COTIZAVE_API_KEY,
+        'X-API-Key': apiKey,
         Accept: 'application/json',
       },
     });
@@ -358,6 +362,131 @@ async function answerCallbackQuery(token: string, callbackQueryId: string, text?
   } catch {
     return false;
   }
+}
+
+async function clearTelegramInlineKeyboard(
+  token: string,
+  chatId: string | number,
+  messageId: number,
+): Promise<boolean> {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/editMessageReplyMarkup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: { inline_keyboard: [] },
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+// ─── Mesa Cambiaria BCV Anti-Replay Nonces & 30m Cooldown State ───
+
+const DAEMON_FX_NONCE_TTL_MS = 15 * 60 * 1000;
+const DAEMON_FX_DEPLETED_TTL_MS = 30 * 60 * 1000;
+const DAEMON_FX_HMAC_SECRET = crypto.randomBytes(32);
+
+interface PendingDaemonFxNonce {
+  readonly bankId: FxInterventionBankId;
+  readonly orderUsd: number;
+  readonly mac: string;
+  readonly expiresAtMs: number;
+}
+
+const pendingDaemonFxNonces = new Map<string, PendingDaemonFxNonce>();
+const consumedDaemonFxKeys = new Set<string>();
+const daemonFxDepletedUntilMs = new Map<FxInterventionBankId, number>();
+
+export function issueDaemonFxBoughtNonce(bankId: FxInterventionBankId, orderUsd: number): string {
+  const now = Date.now();
+  for (const [k, v] of pendingDaemonFxNonces.entries()) {
+    if (v.expiresAtMs <= now) {
+      pendingDaemonFxNonces.delete(k);
+    }
+  }
+  const normalizedUsd = roundMoney(orderUsd, 2);
+  const nonce = crypto.randomBytes(6).toString('hex');
+  const mac = crypto
+    .createHmac('sha256', DAEMON_FX_HMAC_SECRET)
+    .update(`${nonce}:${bankId}:${normalizedUsd}`)
+    .digest('hex');
+  pendingDaemonFxNonces.set(nonce, {
+    bankId,
+    orderUsd: normalizedUsd,
+    mac,
+    expiresAtMs: now + DAEMON_FX_NONCE_TTL_MS,
+  });
+  return nonce;
+}
+
+export function validateAndConsumeDaemonFxBoughtNonce(
+  nonce: string | undefined,
+  bankId: FxInterventionBankId,
+  orderUsd: number,
+  dedupKey: string,
+): boolean {
+  if (!nonce || consumedDaemonFxKeys.has(dedupKey) || consumedDaemonFxKeys.has(`nonce:${nonce}`)) {
+    return false;
+  }
+  const entry = pendingDaemonFxNonces.get(nonce);
+  if (!entry) return false;
+
+  const now = Date.now();
+  if (entry.expiresAtMs <= now) {
+    pendingDaemonFxNonces.delete(nonce);
+    return false;
+  }
+
+  const normalizedUsd = roundMoney(orderUsd, 2);
+  if (entry.bankId !== bankId || Math.abs(entry.orderUsd - normalizedUsd) > 0.01) {
+    return false;
+  }
+
+  const expectedMac = crypto
+    .createHmac('sha256', DAEMON_FX_HMAC_SECRET)
+    .update(`${nonce}:${bankId}:${normalizedUsd}`)
+    .digest('hex');
+  const a = Buffer.from(entry.mac, 'hex');
+  const b = Buffer.from(expectedMac, 'hex');
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return false;
+  }
+
+  pendingDaemonFxNonces.delete(nonce);
+  consumedDaemonFxKeys.add(dedupKey);
+  consumedDaemonFxKeys.add(`nonce:${nonce}`);
+  if (consumedDaemonFxKeys.size > 500) {
+    const oldest = consumedDaemonFxKeys.values().next().value;
+    if (oldest) consumedDaemonFxKeys.delete(oldest);
+  }
+  return true;
+}
+
+export function markDaemonFxBankDepleted(bankId: FxInterventionBankId, nowMs = Date.now()): void {
+  daemonFxDepletedUntilMs.set(bankId, nowMs + DAEMON_FX_DEPLETED_TTL_MS);
+}
+
+export function getActiveDaemonFxDepletedBanks(nowMs = Date.now()): FxInterventionBankId[] {
+  const active: FxInterventionBankId[] = [];
+  for (const [bankId, untilMs] of daemonFxDepletedUntilMs.entries()) {
+    if (untilMs > nowMs) {
+      active.push(bankId);
+    } else {
+      daemonFxDepletedUntilMs.delete(bankId);
+    }
+  }
+  return active;
+}
+
+export function resetDaemonFxStateForTesting(): void {
+  pendingDaemonFxNonces.clear();
+  consumedDaemonFxKeys.clear();
+  daemonFxDepletedUntilMs.clear();
 }
 
 // ─── HTTP Bearer Auth & Finanzas 360 Telegram Command Routing ───
@@ -601,7 +730,7 @@ export async function handleFinance360TelegramCommand(
     if (statusRes.ok) {
       const forwardRes = await fetchFn(`${bridgeUrl}/api/f360/telegram-command`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildElectronBridgeHeaders(),
         body: JSON.stringify({
           command: parsed.command,
           rawText: rawText.trim(),
@@ -667,15 +796,51 @@ if (!IS_TEST_IMPORT) {
 }
 
 // Message Processing
-async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
+export interface HandleDaemonUpdateOverrides {
+  readonly botToken?: string;
+  readonly authorizedChatId?: string;
+  readonly cotizaveApiKey?: string;
+}
+
+export async function handleUpdate(
+  update: TelegramInboundUpdate,
+  overrides?: HandleDaemonUpdateOverrides,
+): Promise<void> {
+  const activeToken = overrides?.botToken ?? BOT_TOKEN;
+  const activeAuthChatId = overrides?.authorizedChatId ?? AUTHORIZED_CHAT_ID;
+  const activeCotizaveKey = overrides?.cotizaveApiKey ?? COTIZAVE_API_KEY;
+
   const chat = update.message?.chat || update.callback_query?.message?.chat;
-  const chatId = chat?.id || AUTHORIZED_CHAT_ID;
+  const chatId = chat?.id || activeAuthChatId;
   if (!chatId) return;
 
-  const dispatch = dispatchTelegramUpdate(update, AUTHORIZED_CHAT_ID);
+  // Security guard: mutating FX_BOUGHT callbacks are strictly forbidden in group/supergroup/channel chats
+  const rawCallbackData = update.callback_query?.data || '';
+  const inboundChatType = chat && 'type' in chat ? chat.type : undefined;
+  if (
+    rawCallbackData.startsWith('FX_BOUGHT:') &&
+    inboundChatType &&
+    inboundChatType !== 'private'
+  ) {
+    if (update.callback_query?.id) {
+      await answerCallbackQuery(
+        activeToken,
+        update.callback_query.id,
+        'Operación bloqueada en grupos: usá chat privado 1:1',
+      );
+    }
+    await sendTelegramMessage(
+      activeToken,
+      chatId,
+      `🚫 *SEGURIDAD MESA CAMBIARIA:* Los asientos \`FX\\_BOUGHT\` están prohibidos en grupos o canales\\. Ejecutá \`/mesa\` desde tu chat privado autorizado\\.`,
+    );
+    return;
+  }
+
+  const dispatch = dispatchTelegramUpdate(update, activeAuthChatId);
 
   if (!dispatch.authorized) {
-    await sendTelegramMessage(BOT_TOKEN, chatId, dispatch.responseMarkdown);
+    await sendTelegramMessage(activeToken, chatId, dispatch.responseMarkdown);
     console.warn(`[Daemon] Intento de acceso no autorizado desde Chat ID ${chatId}`);
     return;
   }
@@ -1229,6 +1394,182 @@ Si algún dato no aparece, usa null o cadena vacía. Devuelve ÚNICAMENTE el JSO
         chatId,
         `❌ *PLAN ${escapeMarkdownV2(planId || 'PROPUESTO')} DESCARTADO POR EL OPERADOR*\n\nNinguna orden fue despachada\\.`,
       );
+      break;
+    }
+
+    case 'FX_DESK': {
+      const params = (dispatch.params as FxDeskActionParams | undefined) ?? {};
+      const [depth, bcvRates] = await Promise.all([
+        fetchLiveMarketDepth(),
+        fetchCotizaveRates(activeCotizaveKey),
+      ]);
+      const rawBcv =
+        bcvRates?.rates?.bcv?.mid ??
+        bcvRates?.rates?.oficial?.mid ??
+        bcvRates?.rates?.bcv?.price ??
+        null;
+      const rawP2pSell =
+        depth?.bestSellPrice ??
+        depth?.bestBuyPrice ??
+        bcvRates?.rates?.binance?.bid ??
+        bcvRates?.rates?.parallel?.mid ??
+        null;
+      const bcv = typeof rawBcv === 'number' && rawBcv > 0 ? rawBcv : null;
+      const p2pSell = typeof rawP2pSell === 'number' && rawP2pSell > 0 ? rawP2pSell : null;
+      const fxWin = evaluateVenezuelanFxWindow();
+
+      const plan = evaluateFxBankDeskPlan({
+        bcvOfficialRateVes: bcv,
+        p2pSellRateVes: p2pSell,
+        modality: 'MENUDEO_BCV',
+        igtfPct: VEN_DEFAULT_IGTF_PCT,
+        simulatedCapitalVes: params.capitalVes ?? 100000,
+        useSimulatedCapital: true,
+        capitalAllocationMode: params.bankId ? 'PER_BANK' : 'DISTRIBUTE_TOTAL',
+        depletedBanks: getActiveDaemonFxDepletedBanks(),
+        isBcvWindowOpen: fxWin.isWindowOpen,
+      });
+
+      const msg = formatFxDeskTelegramMessage(plan, params.bankId);
+      const kb = buildFxDeskTelegramKeyboard(plan, params.bankId, (bId, usd) =>
+        issueDaemonFxBoughtNonce(bId, usd),
+      );
+      await sendTelegramMessage(activeToken, chatId, msg, kb);
+      break;
+    }
+
+    case 'FX_BOUGHT': {
+      const params = dispatch.params as FxBoughtCallbackParams | undefined;
+      if (!params?.bankId || !params.orderUsd) {
+        if (update.callback_query?.id) {
+          await answerCallbackQuery(activeToken, update.callback_query.id, 'Datos incompletos');
+        }
+        await sendTelegramMessage(activeToken, chatId, dispatch.responseMarkdown);
+        break;
+      }
+
+      const cbMsgId = update.callback_query?.message?.message_id;
+      const dedupKey = params.nonce
+        ? `vps-nonce:${params.nonce}`
+        : `vps-msg:${cbMsgId ?? 'na'}:${params.bankId}:${params.orderUsd}`;
+
+      if (
+        !validateAndConsumeDaemonFxBoughtNonce(
+          params.nonce,
+          params.bankId,
+          params.orderUsd,
+          dedupKey,
+        )
+      ) {
+        if (update.callback_query?.id) {
+          await answerCallbackQuery(
+            activeToken,
+            update.callback_query.id,
+            'Pacto ya procesado o expirado (Anti-Doble Gasto)',
+          );
+        }
+        if (cbMsgId) {
+          await clearTelegramInlineKeyboard(activeToken, chatId, cbMsgId);
+        }
+        break;
+      }
+
+      const bcvRates = await fetchCotizaveRates(activeCotizaveKey);
+      const rawBcv =
+        bcvRates?.rates?.bcv?.mid ??
+        bcvRates?.rates?.oficial?.mid ??
+        bcvRates?.rates?.bcv?.price ??
+        null;
+      const bcvRate = typeof rawBcv === 'number' && rawBcv > 0 ? roundMoney(rawBcv, 2) : null;
+      const bankProfile = VENEZUELAN_FX_BANKS.find((b) => b.id === params.bankId);
+
+      if (!bcvRate || !bankProfile) {
+        if (update.callback_query?.id) {
+          await answerCallbackQuery(
+            activeToken,
+            update.callback_query.id,
+            'Bloqueado: tasa BCV en vivo no disponible',
+          );
+        }
+        await sendTelegramMessage(
+          activeToken,
+          chatId,
+          `⚠️ *Asiento bloqueado \\(Fail\\-Closed\\):* No se obtuvo tasa oficial BCV en vivo para liquidar \`${escapeMarkdownV2(params.orderUsd.toFixed(2))} USD\` en *${escapeMarkdownV2(params.bankId)}*\\.`,
+        );
+        break;
+      }
+
+      const principalVes = roundMoney(params.orderUsd * bcvRate, 2);
+      const bankFeeVes = roundMoney(principalVes * (bankProfile.bankFxFeePct / 100), 2);
+      const totalDebitVes = roundMoney(principalVes + bankFeeVes, 2);
+      const railMeta = FX_EXIT_RAIL_OPTIONS.find((r) => r.id === bankProfile.primaryExitRail);
+      const effectiveIgtfPct =
+        railMeta?.appliesIgtfByDefault ?? bankProfile.primaryExitRail !== 'CASH_WITHDRAWAL_OTC'
+          ? VEN_DEFAULT_IGTF_PCT
+          : 0;
+      const totalFrictionPct = roundMoney(effectiveIgtfPct + bankProfile.exitRailFrictionPct, 2);
+      const netUsdt = roundMoney(params.orderUsd * (1 - totalFrictionPct / 100), 2);
+
+      // Persist signed sync record in VPS SyncHub so desktop terminal reconciles it
+      const recordId = `FX-VPS-${Date.now().toString(36).toUpperCase()}`;
+      const payloadJson = JSON.stringify({
+        id: recordId,
+        bankId: bankProfile.id,
+        purchasedUsd: params.orderUsd,
+        netUsdt,
+        bcvRateVes: bcvRate,
+        principalVes,
+        bankFeeVes,
+        totalDebitVes,
+        igtfPct: effectiveIgtfPct,
+        exitRail: bankProfile.primaryExitRail,
+        idempotencyKey: dedupKey,
+        timestamp: new Date().toISOString(),
+      });
+      syncStore.push({
+        deviceId: 'vps-telegram-daemon',
+        records: [
+          {
+            id: recordId,
+            entityType: 'operation',
+            ciphertext: Buffer.from(payloadJson, 'utf8').toString('base64'),
+            iv: crypto.randomBytes(12).toString('base64'),
+            updatedAt: Date.now(),
+            version: 1,
+            deleted: false,
+            deviceId: 'vps-telegram-daemon',
+          },
+        ],
+      });
+
+      if (cbMsgId) {
+        await clearTelegramInlineKeyboard(activeToken, chatId, cbMsgId);
+      }
+      if (update.callback_query?.id) {
+        await answerCallbackQuery(activeToken, update.callback_query.id, 'Pacto registrado (1x Fee)');
+      }
+      const summaryLine = `${bankProfile.shortName} · $${params.orderUsd.toFixed(2)} USD (Neto ${netUsdt.toFixed(2)} USDT) · Débito Total ${totalDebitVes.toFixed(2)} Bs (Principal ${principalVes.toFixed(2)} + Com. ${bankFeeVes.toFixed(2)} Bs)`;
+      await sendTelegramMessage(
+        activeToken,
+        chatId,
+        `${dispatch.responseMarkdown}\n\n📊 *Asiento 1x Fee \\(VPS Sync\\):* \`${escapeMarkdownV2(summaryLine)}\``,
+      );
+      break;
+    }
+
+    case 'FX_EMPTY': {
+      const params = dispatch.params as FxEmptyCallbackParams | undefined;
+      if (params?.bankId) {
+        markDaemonFxBankDepleted(params.bankId);
+      }
+      if (update.callback_query?.id) {
+        await answerCallbackQuery(
+          activeToken,
+          update.callback_query.id,
+          'Banco en enfriamiento por 30m',
+        );
+      }
+      await sendTelegramMessage(activeToken, chatId, dispatch.responseMarkdown);
       break;
     }
 
