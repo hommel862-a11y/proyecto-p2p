@@ -62,7 +62,7 @@ export function validateOrchestratorMutationRequest(
   expectedBridgeToken: string,
 ): OrchestratorMutationGuardResult {
   const origin = normalizeHeader(headers['origin']);
-  if (origin && !allowedOrigins.has(origin) && !origin.startsWith('chrome-extension://')) {
+  if (origin && !allowedOrigins.has(origin)) {
     return {
       allowed: false,
       statusCode: 403,
@@ -89,14 +89,12 @@ export function validateOrchestratorMutationRequest(
   }
 
   const providedToken = normalizeHeader(headers['x-p2p-bridge-token']);
-  if (providedToken) {
-    if (!timingSafeMatch(providedToken, expectedBridgeToken)) {
-      return {
-        allowed: false,
-        statusCode: 401,
-        reason: 'Invalid X-P2P-Bridge-Token',
-      };
-    }
+  if (!expectedBridgeToken || !providedToken || !timingSafeMatch(providedToken, expectedBridgeToken)) {
+    return {
+      allowed: false,
+      statusCode: 401,
+      reason: 'Missing or invalid X-P2P-Bridge-Token',
+    };
   }
 
   return { allowed: true, statusCode: 200, reason: 'OK' };
@@ -137,7 +135,9 @@ export function validateTelegramFileDownloadParams(
 export function isAllowedExternalUrl(rawUrl?: string | null): boolean {
   if (!rawUrl) return false;
   const trimmed = rawUrl.trim();
-  if (trimmed.startsWith('tg://')) return true;
+  if (/^tg:\/\/resolve\?domain=[A-Za-z0-9_]{3,64}(?:&[A-Za-z0-9_=%+-]+)?$/i.test(trimmed)) {
+    return true;
+  }
 
   try {
     const parsed = new URL(trimmed);

@@ -102,27 +102,41 @@ describe('Electron preload bridge (secure IPC)', () => {
     expect((res as { quote: { rate: number } }).quote.rate).toBe(4380);
   });
 
-  it('forwards crypto methods to the allow-listed crypto:* channels', async () => {
+  it('forwards crypto & vault methods and blocks crypto:decrypt oracle exposure', async () => {
     const calls: { channel: string; args: unknown[] }[] = [];
     const api = createP2PApi((channel, ...args) => {
       calls.push({ channel, args });
       if (channel === 'crypto:is-available') return Promise.resolve(true);
       if (channel === 'crypto:encrypt') return Promise.resolve('encrypted_base64');
-      if (channel === 'crypto:decrypt') return Promise.resolve('plaintext_secret');
+      if (channel === 'vault:set') return Promise.resolve(true);
+      if (channel === 'vault:get') return Promise.resolve('vault_secret');
+      if (channel === 'vault:has') return Promise.resolve(true);
+      if (channel === 'vault:delete') return Promise.resolve(true);
       return Promise.resolve(null);
     });
 
     const isAvail = await api.crypto.isAvailable();
     const encrypted = await api.crypto.encrypt('my_api_key');
-    const decrypted = await api.crypto.decrypt('encrypted_base64');
+    const stored = await api.crypto.vaultSet?.('gemini_api_key', 'AIza-secret');
+    const fetched = await api.crypto.vaultGet?.('gemini_api_key');
+    const has = await api.crypto.vaultHas?.('gemini_api_key');
+    const deleted = await api.crypto.vaultDelete?.('gemini_api_key');
 
+    expect((api.crypto as Record<string, unknown>)['decrypt']).toBeUndefined();
+    expect(ALLOWED_CHANNELS as readonly string[]).not.toContain('crypto:decrypt');
     expect(isAvail).toBe(true);
     expect(encrypted).toBe('encrypted_base64');
-    expect(decrypted).toBe('plaintext_secret');
+    expect(stored).toBe(true);
+    expect(fetched).toBe('vault_secret');
+    expect(has).toBe(true);
+    expect(deleted).toBe(true);
     expect(calls).toEqual([
       { channel: 'crypto:is-available', args: [] },
       { channel: 'crypto:encrypt', args: ['my_api_key'] },
-      { channel: 'crypto:decrypt', args: ['encrypted_base64'] },
+      { channel: 'vault:set', args: [{ key: 'gemini_api_key', secret: 'AIza-secret' }] },
+      { channel: 'vault:get', args: [{ key: 'gemini_api_key' }] },
+      { channel: 'vault:has', args: [{ key: 'gemini_api_key' }] },
+      { channel: 'vault:delete', args: [{ key: 'gemini_api_key' }] },
     ]);
   });
 

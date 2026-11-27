@@ -294,7 +294,8 @@ function startStaticServer(): Promise<number> {
     }
   }
 
-  const BRIDGE_SESSION_TOKEN = crypto.randomBytes(32).toString('hex');
+  const BRIDGE_SESSION_TOKEN =
+    process.env['ELECTRON_BRIDGE_TOKEN']?.trim() || crypto.randomBytes(32).toString('hex');
   const ORCHESTRATOR_CORS = ['GET, POST, OPTIONS', 'content-type, x-p2p-bridge-token'] as const;
 
   async function handleOrchestratorBridge(
@@ -304,7 +305,7 @@ function startStaticServer(): Promise<number> {
   ): Promise<void> {
     if (req.method === 'OPTIONS') {
       const origin = req.headers.origin;
-      if (origin && !BRIDGE_ALLOWED_ORIGINS.has(origin) && !origin.startsWith('chrome-extension://')) {
+      if (origin && !BRIDGE_ALLOWED_ORIGINS.has(origin)) {
         res.writeHead(403);
         res.end();
         return;
@@ -319,7 +320,7 @@ function startStaticServer(): Promise<number> {
 
     if (endpoint === 'status' && req.method === 'GET') {
       const origin = req.headers.origin;
-      if (origin && !BRIDGE_ALLOWED_ORIGINS.has(origin) && !origin.startsWith('chrome-extension://')) {
+      if (origin && !BRIDGE_ALLOWED_ORIGINS.has(origin)) {
         writeBridgeJson(req, res, 403, { error: 'Forbidden origin' }, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
         return;
       }
@@ -483,9 +484,7 @@ function startStaticServer(): Promise<number> {
     }
     const fullUrl = new URL(req.url ?? '/', 'http://127.0.0.1');
     const headerToken = req.headers['x-telegram-bot-token'];
-    const token =
-      (Array.isArray(headerToken) ? headerToken[0] : headerToken) ||
-      fullUrl.searchParams.get('token');
+    const token = Array.isArray(headerToken) ? headerToken[0] : headerToken;
     const filePath =
       fullUrl.searchParams.get('file_path') || fullUrl.searchParams.get('filePath');
     const validation = validateTelegramFileDownloadParams(token, filePath);

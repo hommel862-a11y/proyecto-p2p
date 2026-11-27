@@ -5,6 +5,7 @@ import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { TelegramWorkerService } from '../../core/telegram-worker.service';
 import { ToastService } from '../../core/toast.service';
 import { StorageService } from '../../core/storage';
+import { SecureVaultService } from '../../core/secure-vault.service';
 import { signal } from '@angular/core';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
@@ -50,7 +51,27 @@ describe('ApiSettingsModalComponent', () => {
     remove: vi.fn(),
   };
 
+  const vaultMap = new Map<string, string>();
+  const mockVault = {
+    getSecret: vi.fn(async (k: string) => vaultMap.get(k) ?? null),
+    storeSecret: vi.fn(async (k: string, s: string) => {
+      vaultMap.set(k, s);
+    }),
+    hasSecret: vi.fn(async (k: string) => vaultMap.has(k)),
+    removeSecret: vi.fn(async (k: string) => {
+      vaultMap.delete(k);
+    }),
+  };
+
   beforeEach(async () => {
+    vaultMap.clear();
+    mockStorage.get.mockReset().mockReturnValue('');
+    mockStorage.set.mockClear();
+    mockStorage.remove.mockClear();
+    mockVault.getSecret.mockClear();
+    mockVault.storeSecret.mockClear();
+    mockVault.hasSecret.mockClear();
+    mockVault.removeSecret.mockClear();
     mockCotizave.apiKey.set('');
     mockCotizave.loading.set(false);
     mockCotizave.error.set(null);
@@ -68,6 +89,7 @@ describe('ApiSettingsModalComponent', () => {
         { provide: TelegramWorkerService, useValue: mockTelegram },
         { provide: ToastService, useValue: mockToast },
         { provide: StorageService, useValue: mockStorage },
+        { provide: SecureVaultService, useValue: mockVault },
       ],
     }).compileComponents();
 
@@ -153,10 +175,12 @@ describe('ApiSettingsModalComponent', () => {
     expect(mockBinance.setUsePublicProxy).toHaveBeenCalledWith(true);
   });
 
-  it('should save Google Gemini API key to storage', async () => {
+  it('should store Google Gemini API key exclusively in SecureVaultService without plaintext storage', async () => {
     component.geminiKeyInput.set('AIzaSyTest123');
     await component.saveGemini();
-    expect(mockStorage.set).toHaveBeenCalledWith('p2p.gemini.apiKey', 'AIzaSyTest123');
+    expect(mockVault.storeSecret).toHaveBeenCalledWith('gemini_api_key', 'AIzaSyTest123');
+    expect(mockStorage.set).not.toHaveBeenCalledWith('p2p.gemini.apiKey', expect.anything());
+    expect(mockStorage.set).not.toHaveBeenCalledWith('p2p.ai.key.gemini', expect.anything());
     expect(mockToast.success).toHaveBeenCalledWith('Clave de Google Gemini guardada.', 'Gemini AI');
   });
 });

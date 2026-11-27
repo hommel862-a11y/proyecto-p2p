@@ -1,4 +1,4 @@
-import { Component, inject, signal, output, computed, effect } from '@angular/core';
+import { Component, inject, signal, output, computed, effect, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { normalizeCotizaveApiKey } from '@p2p/core';
@@ -7,6 +7,7 @@ import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { TelegramWorkerService } from '../../core/telegram-worker.service';
 import { ToastService } from '../../core/toast.service';
 import { StorageService } from '../../core/storage';
+import { SecureVaultService } from '../../core/secure-vault.service';
 
 export interface AiModelOption {
   id: string;
@@ -603,11 +604,12 @@ export const AI_MODELS_BY_PROVIDER: Record<string, AiModelOption[]> = {
     `,
   ],
 })
-export class ApiSettingsModalComponent {
+export class ApiSettingsModalComponent implements OnInit {
   readonly cotizave = inject(CotizaveService);
   readonly binance = inject(BinanceP2pService);
   readonly telegram = inject(TelegramWorkerService);
   private readonly storage = inject(StorageService);
+  private readonly vault = inject(SecureVaultService);
   private readonly toast = inject(ToastService);
 
   readonly modalClose = output<void>();
@@ -625,6 +627,38 @@ export class ApiSettingsModalComponent {
         this.cotizaveKeyInput.set(hydratedKey);
       }
     });
+  }
+
+  ngOnInit(): void {
+    void this.loadActiveProviderKeyFromVault();
+  }
+
+  private vaultKeyForProvider(provider: string): string {
+    return provider === 'gemini' ? 'gemini_api_key' : `ai_key_${provider}`;
+  }
+
+  private async loadActiveProviderKeyFromVault(): Promise<void> {
+    const provider = this.selectedAiProvider();
+    const vaultKey = this.vaultKeyForProvider(provider);
+    let secret = (await this.vault.getSecret(vaultKey))?.trim() ?? '';
+
+    const legacyKeys =
+      provider === 'gemini'
+        ? ['p2p.gemini.apiKey', 'p2p.ai.key.gemini']
+        : [`p2p.ai.key.${provider}`];
+    for (const legacyKey of legacyKeys) {
+      const legacyVal = (this.storage.get<string>(legacyKey) ?? '').trim();
+      if (legacyVal) {
+        if (!secret) {
+          secret = legacyVal;
+          await this.vault.storeSecret(vaultKey, legacyVal).catch(() => {});
+        }
+        this.storage.remove(legacyKey);
+      }
+    }
+
+    this.geminiKeyInput.set(secret);
+    this.vaultKeyPresent.set(Boolean(secret));
   }
 
   readonly selectedAiProvider = signal<string>(
@@ -649,21 +683,16 @@ export class ApiSettingsModalComponent {
   });
 
   readonly showGeminiKey = signal<boolean>(false);
-  readonly geminiKeyInput = signal<string>(
-    this.storage.get<string>(`p2p.ai.key.${this.storage.get<string>('p2p.ai.provider') || 'gemini'}`) ||
-      this.storage.get<string>('p2p.gemini.apiKey') ||
-      '',
+  readonly geminiKeyInput = signal<string>('');
+  readonly vaultKeyPresent = signal<boolean>(false);
+  readonly hasGeminiKey = computed<boolean>(() =>
+    this.selectedAiProvider() === 'gemini'
+      ? Boolean(this.geminiKeyInput().trim() || this.vaultKeyPresent())
+      : false,
   );
-  readonly hasGeminiKey = computed<boolean>(() => !!this.storage.get<string>('p2p.gemini.apiKey'));
-  readonly hasActiveAiKey = computed<boolean>(() => {
-    const key = this.geminiKeyInput().trim();
-    if (key) return true;
-    const provider = this.selectedAiProvider();
-    return Boolean(
-      this.storage.get<string>(`p2p.ai.key.${provider}`) ||
-        (provider === 'gemini' && this.storage.get<string>('p2p.gemini.apiKey')),
-    );
-  });
+  readonly hasActiveAiKey = computed<boolean>(
+    () => Boolean(this.geminiKeyInput().trim() || this.vaultKeyPresent()),
+  );
   readonly isTestingGemini = signal<boolean>(false);
 
   onCotizaveInput(event: Event): void {
@@ -768,10 +797,9 @@ export class ApiSettingsModalComponent {
     const provider = target.value;
     this.selectedAiProvider.set(provider);
     this.storage.set('p2p.ai.provider', provider);
-    const existingKey =
-      this.storage.get<string>(`p2p.ai.key.${provider}`) ||
-      (provider === 'gemini' ? this.storage.get<string>('p2p.gemini.apiKey') || '' : '');
-    this.geminiKeyInput.set(existingKey);
+    this.geminiKeyInput.set('');
+    this.vaultKeyPresent.set(false);
+    void this.loadActiveProviderKeyFromVault();
 
     const available = AI_MODELS_BY_PROVIDER[provider] || [];
     const defaultModel = available[0]?.id || 'gemini-3.7-flash';
@@ -786,7 +814,6 @@ export class ApiSettingsModalComponent {
         void electronCopilot.setProviderConfig({
           provider,
           model: savedModel,
-          apiKey: existingKey || undefined,
         });
       }
     }
@@ -881,13 +908,21 @@ export class ApiSettingsModalComponent {
     const provider = this.selectedAiProvider();
     const key = this.geminiKeyInput().trim();
     const model = this.getEffectiveModel();
+    const vaultKey = this.vaultKeyForProvider(provider);
+
     this.storage.set('p2p.ai.provider', provider);
-    this.storage.set(`p2p.ai.key.${provider}`, key);
     this.storage.set('p2p.ai.model', model);
     this.storage.set(`p2p.ai.model.${provider}`, model);
+    // Remove any legacy plaintext keys from StorageService
+    this.storage.remove('p2p.gemini.apiKey');
+    this.storage.remove(`p2p.ai.key.${provider}`);
 
-    if (provider === 'gemini') {
-      this.storage.set('p2p.gemini.apiKey', key);
+    if (key) {
+      await this.vault.storeSecret(vaultKey, key);
+      this.vaultKeyPresent.set(true);
+    } else {
+      await this.vault.removeSecret(vaultKey);
+      this.vaultKeyPresent.set(false);
     }
 
     if (typeof window !== 'undefined') {
@@ -913,10 +948,9 @@ export class ApiSettingsModalComponent {
   async testGemini(): Promise<void> {
     const provider = this.selectedAiProvider();
     const model = this.getEffectiveModel();
+    const vaultKey = this.vaultKeyForProvider(provider);
     const key =
-      this.geminiKeyInput().trim() ||
-      this.storage.get<string>(`p2p.ai.key.${provider}`) ||
-      (provider === 'gemini' ? this.storage.get<string>('p2p.gemini.apiKey') : '');
+      this.geminiKeyInput().trim() || ((await this.vault.getSecret(vaultKey))?.trim() ?? '');
 
     if (!key) {
       this.toast.warn(`Ingresá una API Key para ${this.getProviderDisplayName()}.`, 'Cerebro IA');

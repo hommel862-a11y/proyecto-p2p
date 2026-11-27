@@ -110,18 +110,9 @@ export class SecureVaultService {
           const fromVault = await electron.crypto.vaultGet(key);
           if (fromVault) return fromVault;
         }
-        const cipherB64 = this.storage.get<string>(VAULT_PREFIX + key);
-        if (!cipherB64) return null;
-        const legacyPlain = await electron.crypto.decrypt(cipherB64);
-        if (legacyPlain && typeof electron.crypto.vaultSet === 'function') {
-          const migrated = await electron.crypto.vaultSet(key, legacyPlain);
-          if (migrated) {
-            this.storage.remove(VAULT_PREFIX + key);
-          }
-        }
-        return legacyPlain;
+        return null;
       } catch (err) {
-        console.error('[SecureVault] Electron decryption failed:', err);
+        console.error('[SecureVault] Electron vault retrieval failed:', err);
         return null;
       }
     }

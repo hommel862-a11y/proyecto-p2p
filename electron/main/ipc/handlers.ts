@@ -1020,19 +1020,6 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.removeHandler('crypto:decrypt');
-  ipcMain.handle('crypto:decrypt', (event: IpcMainInvokeEvent, ciphertext: string): string => {
-    if (!isTrustedRendererOrigin(event.senderFrame?.url)) {
-      throw new Error('Untrusted renderer frame rejected by DPAPI guard');
-    }
-    if (!safeStorage.isEncryptionAvailable()) {
-      throw new Error('safeStorage encryption is not available on this platform');
-    }
-    if (typeof ciphertext !== 'string' || ciphertext.length > 16384) {
-      throw new Error('Invalid ciphertext length');
-    }
-    const buffer = Buffer.from(ciphertext, 'base64');
-    return safeStorage.decryptString(buffer);
-  });
 
   ipcMain.removeHandler('vault:set');
   ipcMain.handle(

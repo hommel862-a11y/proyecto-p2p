@@ -67,7 +67,6 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
     crypto: {
       isAvailable: () => ipc('crypto:is-available') as Promise<boolean>,
       encrypt: (plaintext: string) => ipc('crypto:encrypt', plaintext) as Promise<string>,
-      decrypt: (ciphertext: string) => ipc('crypto:decrypt', ciphertext) as Promise<string>,
       vaultSet: (key: string, secret: string) =>
         ipc('vault:set', { key, secret }) as Promise<boolean>,
       vaultGet: (key: string) => ipc('vault:get', { key }) as Promise<string | null>,
@@ -313,7 +312,6 @@ export const ALLOWED_CHANNELS = [
   'p2p:backtest-run',
   'crypto:is-available',
   'crypto:encrypt',
-  'crypto:decrypt',
   'vault:set',
   'vault:get',
   'vault:has',

@@ -183,12 +183,39 @@ describe('Sprint 2 — FX Settlement SQLite Ledger & Electron Security Shield', 
     expect(badToken.allowed).toBe(false);
     expect(badToken.statusCode).toBe(401);
 
-    // 4. Legitimate same-origin JSON request
+    // 4. Missing X-P2P-Bridge-Token MUST be rejected (401), never optional
+    const missingToken = validateOrchestratorMutationRequest(
+      {
+        origin: 'http://127.0.0.1:51857',
+        'sec-fetch-site': 'same-origin',
+        'content-type': 'application/json',
+      },
+      allowedOrigins,
+      sessionToken,
+    );
+    expect(missingToken.allowed).toBe(false);
+    expect(missingToken.statusCode).toBe(401);
+
+    // 5. Arbitrary chrome-extension:// origins MUST be rejected (403)
+    const extOrigin = validateOrchestratorMutationRequest(
+      {
+        origin: 'chrome-extension://malicious-ext-id',
+        'content-type': 'application/json',
+        'x-p2p-bridge-token': sessionToken,
+      },
+      allowedOrigins,
+      sessionToken,
+    );
+    expect(extOrigin.allowed).toBe(false);
+    expect(extOrigin.statusCode).toBe(403);
+
+    // 6. Legitimate same-origin JSON request WITH valid X-P2P-Bridge-Token
     const validSameOrigin = validateOrchestratorMutationRequest(
       {
         origin: 'http://127.0.0.1:51857',
         'sec-fetch-site': 'same-origin',
         'content-type': 'application/json; charset=utf-8',
+        'x-p2p-bridge-token': sessionToken,
       },
       allowedOrigins,
       sessionToken,
@@ -213,6 +240,8 @@ describe('Sprint 2 — FX Settlement SQLite Ledger & Electron Security Shield', 
     expect(isAllowedExternalUrl('https://bdvenlinea.banvenez.com/')).toBe(true);
     expect(isAllowedExternalUrl('https://www.100x100banco.com/')).toBe(true);
     expect(isAllowedExternalUrl('https://t.me/my_sentinel_bot')).toBe(true);
+    expect(isAllowedExternalUrl('tg://resolve?domain=my_sentinel_bot')).toBe(true);
+    expect(isAllowedExternalUrl('tg://unsafe-arbitrary-action')).toBe(false);
     expect(isAllowedExternalUrl('https://evil-malware.ru/steal')).toBe(false);
     expect(isAllowedExternalUrl('http://bdvenlinea.banvenez.com/')).toBe(false); // HTTP cleartext blocked!
   });

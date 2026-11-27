@@ -335,10 +335,6 @@ export interface P2PIpcChannels {
     request: string;
     response: string;
   };
-  'crypto:decrypt': {
-    request: string;
-    response: string;
-  };
   'p2p:db-save-order': {
     request: unknown;
     response: boolean;
