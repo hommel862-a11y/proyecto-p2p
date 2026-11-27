@@ -1,541 +1,527 @@
 <div class="fx-desk-shell">
-  <!-- BARRA DE NAVEGACIÓN RÁPIDA Y RESUMEN DIARIO -->
-  <nav class="fx-quick-nav-bar" aria-label="Navegación rápida desde Mesa Cambiaria BCV">
-    <div class="fx-quick-nav-links">
-      <a routerLink="/dashboard" class="fx-nav-pill">← Centro de Control</a>
-      <a routerLink="/spread" class="fx-nav-pill">📊 Monitor Spread</a>
-      <a routerLink="/log" class="fx-nav-pill">📑 Libro FIFO</a>
+  <!-- NAVEGACIÓN RÁPIDA Y CONTROLES UTILITARIOS -->
+  <nav class="fx-top-utility-bar" aria-label="Navegación rápida desde Mesa Cambiaria BCV">
+    <div class="fx-utility-links">
+      <a routerLink="/dashboard" class="fx-pill-btn">← Centro de Control</a>
+      <a routerLink="/spread" class="fx-pill-btn">📊 Monitor Spread</a>
+      <a routerLink="/log" class="fx-pill-btn">📑 Libro FIFO</a>
     </div>
-    <div class="fx-daily-settled-pill font-mono" title="Total comprado hoy mediante Mesa Cambiaria BCV">
-      <span>✓ Pactado Hoy en Banca:</span>
-      <strong>${{ totalSettledToday().totalUsd | number: '1.2-2' }} USD</strong>
-      <small>({{ totalSettledToday().opsCount }} ops)</small>
+
+    <div class="fx-utility-actions">
+      <button
+        type="button"
+        class="fx-pill-btn"
+        [class.is-active]="simulatorMode()"
+        (click)="showSimDrawer.set(!showSimDrawer())"
+      >
+        🧪 {{ simulatorMode() ? 'Simulador Activo' : 'Simulador / Tasas' }}
+      </button>
+
+      <button
+        type="button"
+        class="fx-pill-btn"
+        [attr.aria-pressed]="soundEnabled()"
+        [attr.aria-label]="soundEnabled() ? 'Silenciar alertas de sonido' : 'Activar alertas de sonido'"
+        (click)="toggleSound()"
+      >
+        {{ soundEnabled() ? '🔊 Audio ON' : '🔇 Silencio' }}
+      </button>
+
+      <button
+        type="button"
+        class="fx-pill-btn"
+        [disabled]="isSendingTelegram()"
+        (click)="pushPlanToTelegram()"
+      >
+        📲 {{ isSendingTelegram() ? 'Enviando...' : 'Telegram /mesa' }}
+      </button>
     </div>
   </nav>
 
-  <!-- ZONA 1: CINTA COMPACTA DE PULSO MACRO & CONTROL DE TELEGRAM -->
-  <header class="fx-hero-banner">
-    <div class="hero-left">
-      <div class="hero-title-row">
-        <h1 class="hero-title">Mesa BCV · 14 Bancos</h1>
-        <span class="window-pill" [class.window-active]="isWindowActive()">
-          <span class="pulse-dot"></span>
-          {{ isWindowActive() ? 'VENTANA ACTIVA' : 'VIGILANCIA' }}
-        </span>
-      </div>
-      <div class="hero-badge-row">
-        <span class="provenance-chip font-mono" [title]="'Fuente BCV: ' + bcvProvenanceLabel()">
-          {{ bcvProvenanceLabel() }} · {{ feedFreshnessLabel() }}
-        </span>
-        <button
-          type="button"
-          class="btn-refresh-feeds"
-          [disabled]="isRefreshingFeeds()"
-          (click)="refreshLiveFeeds()"
-        >
-          {{ isRefreshingFeeds() ? '⏳ Sync...' : '🔄 Refrescar' }}
-        </button>
-      </div>
-    </div>
+  <!-- CAPA 1 (LIQUID GLASS): FLOATING FUNCTIONAL COMMAND DOCK -->
+  <header class="fx-liquid-glass fx-command-dock">
+    <div class="dock-left">
+      <span
+        class="fx-status-chip"
+        [class.is-fluid]="isWindowActive()"
+        [class.is-open]="!isWindowActive()"
+      >
+        <span class="pulse-dot"></span>
+        {{ fxWindow().label }}
+      </span>
 
-    <div class="hero-metrics-ribbon">
-      <div class="metric-box">
-        <span class="metric-label">TASA OFICIAL BCV</span>
-        @if (liveBcvRate() !== null) {
-          <strong class="metric-value font-mono">{{ liveBcvRate() | number: '1.2-2' }} <small>Bs/USD</small></strong>
-        } @else {
-          <strong class="metric-value unavailable font-mono">Sin dato en vivo</strong>
+      <div class="fx-seg-capsule" role="group" aria-label="Modalidad cambiaria venezolana">
+        @for (mod of modalityOptions; track mod.id) {
+          <button
+            type="button"
+            class="fx-seg-btn"
+            [class.is-active]="telegram.fxModality() === mod.id"
+            (click)="setModality(mod.id)"
+          >
+            {{ mod.label }}
+          </button>
         }
       </div>
 
-      <div class="metric-divider"></div>
-
-      <div class="metric-box">
-        <span class="metric-label">LIQUIDACIÓN P2P</span>
-        @if (liveP2pRate() !== null) {
-          <strong class="metric-value accent font-mono">{{ liveP2pRate() | number: '1.2-2' }} <small>Bs/USDT</small></strong>
-        } @else {
-          <strong class="metric-value unavailable font-mono">Sin dato en vivo</strong>
-        }
-      </div>
-
-      <div class="metric-divider"></div>
-
-      <div class="metric-box highlight-gold">
-        <span class="metric-label">BRECHA BRUTA (GAP)</span>
-        @if (evaluationPlan().grossGapPct !== null) {
-          <strong class="metric-value gold font-mono">
-            +{{ evaluationPlan().grossGapPct | number: '1.2-2' }}%
-            <small>(+{{ evaluationPlan().grossGapVes | number: '1.2-2' }} Bs)</small>
-          </strong>
-        } @else {
-          <strong class="metric-value unavailable font-mono">n/d</strong>
-        }
-      </div>
-    </div>
-
-    <div class="hero-actions">
       <button
         type="button"
-        class="btn-telegram-push"
-        [disabled]="isSendingTelegram()"
-        (click)="pushPlanToTelegram()"
-        title="Enviar alerta interactiva con botones de compra y confirmación FIFO a tu teléfono"
+        class="fx-pill-btn"
+        [class.is-active]="telegram.fxIgtfPct() > 0"
+        (click)="toggleIgtfExemption()"
+        title="Alternar aplicación del 3% IGTF en rieles digitales de moneda extranjera"
       >
-        <span>📲 {{ isSendingTelegram() ? 'Enviando...' : 'Despachar Alerta a Telegram' }}</span>
+        IGTF {{ telegram.fxIgtfPct() | number: '1.1-1' }}%
       </button>
+    </div>
+
+    <div class="dock-right">
+      <div class="fx-rate-ribbon fx-mono">
+        <span>
+          <small>BCV:</small>
+          @if (liveBcvRate() !== null) {
+            <strong>Bs. {{ liveBcvRate() | number: '1.2-2' }}</strong>
+          } @else {
+            <strong class="muted-val">s/d</strong>
+          }
+        </span>
+        <span class="ribbon-sep">|</span>
+        <span>
+          <small>P2P Bid:</small>
+          @if (liveP2pRate() !== null) {
+            <strong class="accent-val">Bs. {{ liveP2pRate() | number: '1.2-2' }}</strong>
+          } @else {
+            <strong class="muted-val">s/d</strong>
+          }
+        </span>
+        <span class="ribbon-sep">|</span>
+        <span>
+          <small>Brecha:</small>
+          @if (evaluationPlan().grossGapPct !== null) {
+            <strong class="gold-val">+{{ evaluationPlan().grossGapPct | number: '1.2-2' }}%</strong>
+          } @else {
+            <strong class="muted-val">n/d</strong>
+          }
+        </span>
+        <button
+          type="button"
+          class="fx-ghost-btn"
+          style="min-height: 26px; padding: 0 8px"
+          [disabled]="isRefreshingFeeds()"
+          (click)="refreshLiveFeeds()"
+          [title]="bcvProvenanceLabel() + ' · ' + feedFreshnessLabel()"
+        >
+          {{ isRefreshingFeeds() ? '⏳' : '🔄' }}
+        </button>
+      </div>
 
       @if (liveBcvRate() === null || liveP2pRate() === null) {
-        <button
-          type="button"
-          class="btn-contingency"
-          (click)="applyDemoRatesIfOffline()"
-          title="Cargar tasas de referencia manuales para simular mientras conectas las APIs"
-        >
-          ⚡ Activar Tasas de Contingencia
+        <button type="button" class="fx-pill-btn" (click)="applyDemoRatesIfOffline()">
+          ⚡ Contingencia
         </button>
-      } @else if (manualBcvOverride() !== null || manualP2pOverride() !== null) {
-        <button
-          type="button"
-          class="btn-contingency"
-          (click)="clearManualOverrides()"
-        >
-          🔄 Volver a Feed en Vivo
+      } @else if (hasManualRates()) {
+        <button type="button" class="fx-pill-btn" (click)="clearManualOverrides()">
+          🔄 Feed Real
         </button>
       }
+
+      <button type="button" class="fx-btn-primary" (click)="startMorningBurstRound()">
+        ⚡ Ráfaga ({{ viableTicketsCount() }})
+      </button>
     </div>
   </header>
 
-  <!-- ZONA 2: SIMULADOR COMPACTO DE PRESUPUESTO Y CASCADA DE RETORNO -->
-  <section class="simulator-section" aria-label="Simulador de Inyección y Retorno Neto">
-    <div class="sim-controls-card">
-      <div class="sim-header">
-        <span class="section-eyebrow">⚡ SIMULADOR DE PRESUPUESTO</span>
-        <div class="sim-header-actions">
-          <div class="mode-toggle-group" role="group" aria-label="Modo de asignación de capital">
+  <!-- GAVETA OPCIONAL DE SIMULADOR WHAT-IF Y TASAS MANUALES -->
+  @if (showSimDrawer() || simulatorMode() || showRateOverrides() || hasManualRates()) {
+    <section class="fx-content-card fx-sim-drawer" aria-label="Simulador What-If y Tasas de Contingencia">
+      <div class="sim-drawer-row">
+        <div class="sim-group">
+          <button
+            type="button"
+            class="fx-pill-btn"
+            [class.is-active]="simulatorMode()"
+            (click)="toggleSimulatorMode()"
+          >
+            {{ simulatorMode() ? '● Modo Simulador What-If ON' : '○ Usar Tesorería Real Vinculada' }}
+          </button>
+
+          <div class="fx-seg-capsule" role="group" aria-label="Modo de distribución de capital">
             <button
               type="button"
-              class="btn-mode-toggle"
-              [class.active]="capitalAllocationMode() === 'PER_BANK'"
+              class="fx-seg-btn"
+              [class.is-active]="capitalAllocationMode() === 'PER_BANK'"
               (click)="setCapitalAllocationMode('PER_BANK')"
             >
               Por Banco
             </button>
             <button
               type="button"
-              class="btn-mode-toggle"
-              [class.active]="capitalAllocationMode() === 'DISTRIBUTE_TOTAL'"
+              class="fx-seg-btn"
+              [class.is-active]="capitalAllocationMode() === 'DISTRIBUTE_TOTAL'"
               (click)="setCapitalAllocationMode('DISTRIBUTE_TOTAL')"
             >
-              Repartir Total
+              Pool Distribuido
             </button>
           </div>
-          <button type="button" class="btn-sync-treasury" (click)="useTotalTreasuryBalance()">
-            🏦 Mi Saldo ({{ accountsService.treasurySummary().totalBalanceVes | number: '1.0-0' }} Bs)
-          </button>
-          <button
-            type="button"
-            class="btn-rate-toggle"
-            [class.active]="showRateOverrides() || hasManualRates()"
-            [attr.aria-expanded]="showRateOverrides() || hasManualRates()"
-            (click)="showRateOverrides.set(!showRateOverrides())"
-            title="Ajustar manualmente tasas BCV o P2P para simular escenarios"
-          >
-            ⚙️ Tasas{{ hasManualRates() ? ' •' : '' }}
-          </button>
-        </div>
-      </div>
-
-      <div class="sim-budget-row">
-        <div class="slider-input-group font-mono">
-          <span class="currency-prefix">Bs.</span>
-          <input
-            type="number"
-            min="1000"
-            step="5000"
-            [ngModel]="simulatedCapitalVes()"
-            (ngModelChange)="simulatedCapitalVes.set(+$event || 0)"
-            class="capital-number-input"
-            aria-label="Monto en Bolívares a simular"
-          />
         </div>
 
-        <div class="sim-preset-chips" role="group" aria-label="Montos rápidos en Bolívares">
+        <div class="sim-group fx-mono">
+          <label class="sim-input-wrap">
+            <span>Capital Bs:</span>
+            <input
+              type="number"
+              min="1000"
+              step="5000"
+              [ngModel]="simulatedCapitalVes()"
+              (ngModelChange)="simulatedCapitalVes.set(+$event || 0)"
+              class="sim-num-input"
+              aria-label="Monto en Bolívares para simular o calibrar"
+            />
+          </label>
+
           @for (preset of capitalPresetsVes; track preset) {
             <button
               type="button"
-              class="sim-preset-chip font-mono"
-              [class.active]="simulatedCapitalVes() === preset"
-              (click)="simulatedCapitalVes.set(preset)"
+              class="fx-ghost-btn"
+              [class.is-active]="simulatedCapitalVes() === preset"
+              (click)="simulatedCapitalVes.set(preset); simulatorMode.set(true)"
             >
               {{ preset / 1000 }}k
             </button>
           }
-        </div>
-      </div>
 
-      @if (showRateOverrides() || hasManualRates()) {
-        <div class="manual-rates-bar">
-          <label class="rate-override-field">
-            <span>BCV (Bs):</span>
+          <button type="button" class="fx-pill-btn" (click)="useTotalTreasuryBalance()">
+            🏦 Mi Liquidez ({{ accountsService.treasurySummary().totalBalanceVes | number: '1.0-0' }} Bs)
+          </button>
+        </div>
+
+        <div class="sim-group fx-mono">
+          <label class="sim-input-wrap">
+            <span>BCV Override:</span>
             <input
               type="number"
-              step="0.01"
+              step="0.05"
               placeholder="Auto"
               [ngModel]="manualBcvOverride()"
               (ngModelChange)="manualBcvOverride.set($event ? +$event : null)"
-              class="mini-rate-input font-mono"
+              class="sim-num-input small"
             />
           </label>
-          <label class="rate-override-field">
-            <span>P2P (Bs):</span>
+          <label class="sim-input-wrap">
+            <span>P2P Bid Override:</span>
             <input
               type="number"
-              step="0.01"
+              step="0.05"
               placeholder="Auto"
               [ngModel]="manualP2pOverride()"
               (ngModelChange)="manualP2pOverride.set($event ? +$event : null)"
-              class="mini-rate-input font-mono"
+              class="sim-num-input small"
             />
           </label>
-          @if (hasManualRates()) {
-            <button type="button" class="btn-reset-rates" (click)="clearManualOverrides()">
-              Auto
-            </button>
-          }
         </div>
-      }
-    </div>
-
-    <!-- CASCADA COMPACTA DE 3 KPIS: COMPRA -> BÓVEDA -> GANANCIA -->
-    <div class="waterfall-cards">
-      <div class="wf-step">
-        <span class="wf-step-num">1 · COMPRA BCV</span>
-        <strong class="wf-step-val font-mono">${{ evaluationPlan().totalRecommendedUsd | number: '1.0-0' }} USD</strong>
-        <span class="wf-step-sub font-mono">
-          {{ evaluationPlan().totalDeployableVes | number: '1.0-0' }} Bs
-        </span>
       </div>
+    </section>
+  }
 
-      <div class="wf-arrow" aria-hidden="true">➔</div>
-
-      <div class="wf-step">
-        <span class="wf-step-num">2 · BÓVEDA USDT</span>
-        <strong class="wf-step-val accent font-mono">{{ evaluationPlan().totalNetUsdt | number: '1.2-2' }} ₮</strong>
-        <span class="wf-step-sub">Neto post-riel</span>
-      </div>
-
-      <div class="wf-arrow" aria-hidden="true">➔</div>
-
-      <div class="wf-step wf-step-profit">
-        <span class="wf-step-num">3 · GANANCIA NETA</span>
-        @if (evaluationPlan().totalProjectedNetProfitVes !== null) {
-          <strong class="wf-step-val gold font-mono">
-            +{{ evaluationPlan().totalProjectedNetProfitVes | number: '1.2-2' }} Bs
-          </strong>
-          <span class="wf-step-sub font-mono">
-            ROI <strong>+{{ evaluationPlan().averageNetRoiPct | number: '1.2-2' }}%</strong> · {{ viableTicketsCount() }} bancos
+  <!-- CAPA 1 (LIQUID GLASS): SECUENCIADOR DE RÁFAGA MULTIBANCO -->
+  @if (burstQueueActive() && currentBurstTicket(); as burst) {
+    <section class="fx-liquid-glass fx-burst-bar" aria-live="polite">
+      <div class="burst-top">
+        <div class="burst-info">
+          <span class="fx-status-chip is-warn">
+            ⚡ RÁFAGA PASO {{ burstQueueIndex() + 1 }}/{{ viableTickets().length }}
           </span>
-        } @else {
-          <strong class="wf-step-val unavailable font-mono">Sin tasas</strong>
-          <span class="wf-step-sub">Conecta feeds o activa ⚙️ Tasas</span>
-        }
-      </div>
-    </div>
-  </section>
-
-  <!-- ZONA 3: BARRA DE FILTROS Y PARRILLA DE 14 BANCOS (ESTADO Y PRIVADOS) -->
-  <section class="banks-grid-section" aria-label="Parrilla de Entidades Bancarias">
-    <div class="grid-toolbar">
-      <div class="filter-pills" role="tablist">
-        <button
-          type="button"
-          class="filter-pill"
-          role="tab"
-          [attr.aria-selected]="sectorFilter() === 'ALL'"
-          [class.active]="sectorFilter() === 'ALL'"
-          (click)="setSectorFilter('ALL')"
-        >
-          Todos los Bancos ({{ allBanks.length }})
-        </button>
-        <button
-          type="button"
-          class="filter-pill"
-          role="tab"
-          [attr.aria-selected]="sectorFilter() === 'ESTADO'"
-          [class.active]="sectorFilter() === 'ESTADO'"
-          (click)="setSectorFilter('ESTADO')"
-        >
-          🏛️ Banca del Estado ({{ stateBanksCount() }})
-        </button>
-        <button
-          type="button"
-          class="filter-pill"
-          role="tab"
-          [attr.aria-selected]="sectorFilter() === 'PRIVADO'"
-          [class.active]="sectorFilter() === 'PRIVADO'"
-          (click)="setSectorFilter('PRIVADO')"
-        >
-          🏦 Banca Privada ({{ privateBanksCount() }})
-        </button>
-        <button
-          type="button"
-          class="filter-pill"
-          role="tab"
-          [attr.aria-selected]="sectorFilter() === 'VIABLE'"
-          [class.active]="sectorFilter() === 'VIABLE'"
-          (click)="setSectorFilter('VIABLE')"
-        >
-          🟢 Órdenes Listas ({{ viableTicketsCount() }})
-        </button>
-      </div>
-
-      <div class="toolbar-right">
-        <span class="anti-block-legend">
-          🛡️ <strong>Escudo Anti-Rechazo Activo:</strong> Lotes sin centavos + Reserva de comisión.
-        </span>
-        <button
-          type="button"
-          class="btn-burst-trigger"
-          [class.active]="burstQueueActive()"
-          (click)="burstQueueActive() ? stopMorningBurstRound() : startMorningBurstRound()"
-        >
-          @if (burstQueueActive()) {
-            ⏹️ Detener Ráfaga
-          } @else {
-            ⚡ Ráfaga Matutina ({{ viableTicketsCount() }} Bancos)
-          }
-        </button>
-      </div>
-    </div>
-
-    <!-- SECUENCIADOR DE RÁFAGA MATUTINA (COLA ASISTIDA 1-CLIC) -->
-    @if (burstQueueActive() && currentBurstTicket(); as burstTicket) {
-      <div class="burst-sequencer-bar" role="region" aria-label="Secuenciador de Ráfaga Matutina">
-        <div class="burst-step-info">
-          <span class="burst-badge font-mono">
-            PASO {{ burstQueueIndex() + 1 }} / {{ viableTickets().length }}
+          <strong>{{ burst.bank.name }}</strong>
+          <span class="fx-mono gold-val">\${{ burst.recommendedOrderUsd }} USD</span>
+          <span class="fx-mono" style="color: var(--fx-muted)">
+            (−Bs. {{ burst.estimatedVesDebit | number: '1.2-2' }})
           </span>
-          <div class="burst-bank-meta">
-            <strong>{{ burstTicket.bank.name }} ({{ burstTicket.bank.abaCode }})</strong>
-            <span>
-              Lote exacto copiado al portapapeles:
-              <strong class="gold font-mono">${{ burstTicket.recommendedOrderUsd }} USD</strong>
-              ({{ burstTicket.estimatedVesDebit | number: '1.2-2' }} Bs · {{ burstTicket.activeExitRailLabel }})
-            </span>
-          </div>
         </div>
 
-        <div class="burst-actions">
-          <a
-            [href]="burstTicket.bank.portalUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="btn-burst-portal"
-            (click)="launchBankPortal(burstTicket, $event)"
-          >
-            🚀 1. Abrir {{ burstTicket.bank.shortName }} (${{ burstTicket.recommendedOrderUsd }})
-          </a>
+        <div class="burst-shortcuts">
+          <span><kbd>Space</kbd> Copiar</span>
+          <span><kbd>Enter</kbd> Liquidar</span>
+          <span><kbd>E</kbd> Sin Cupo</span>
+          <span><kbd>Esc</kbd> Cerrar</span>
+        </div>
+
+        <div class="burst-btns">
+          <button type="button" class="fx-pill-btn" (click)="launchBankPortal(burst, $event)">
+            🚀 Abrir Portal
+          </button>
+          <button type="button" class="fx-btn-primary" (click)="settleAndAdvanceBurst(burst)">
+            ✓ Pactado & Siguiente
+          </button>
+          <button type="button" class="fx-pill-btn" (click)="skipDepletedAndAdvanceBurst(burst)">
+            🚫 Mesa Seca (30m)
+          </button>
+          <button type="button" class="fx-ghost-btn" (click)="stopMorningBurstRound()">✕</button>
+        </div>
+      </div>
+    </section>
+  }
+
+  <!-- CAPA 2: 4 TARJETAS HERO KPI RADIAL AURA (ESTILO FINANZAS 360) -->
+  <app-fx-kpi-strip
+    [plan]="evaluationPlan()"
+    [viableCount]="viableTicketsCount()"
+    [igtfPct]="telegram.fxIgtfPct()"
+    [simulatorActive]="simulatorMode()"
+    [linkedTransferAccountsCount]="linkedTransferAccountsCount()"
+    [overLimitCount]="accountsService.treasurySummary().overLimitCount"
+    [settledTodayUsd]="totalSettledToday().totalUsd"
+    [settledTodayNetUsdt]="totalSettledToday().totalNetUsdt"
+    [settledTodayOpsCount]="totalSettledToday().opsCount"
+  />
+
+  <!-- PISO BENTO ASIMÉTRICO: MATRIZ INSTITUCIONAL 14 BANCOS (1.88fr) + INSPECTOR ATÓMICO (0.96fr) -->
+  <div class="fx-bento-floor">
+    <section class="fx-content-card fx-matrix-card">
+      <header class="matrix-header">
+        <div>
+          <h1 class="matrix-title">Matriz Institucional Multibanco (14 Entidades SUDEBAN)</h1>
+          <p class="matrix-subtitle">
+            Ordenada por Execution Score · Lotes enteros anti-rechazo · Seleccioná una fila para inspeccionar su cascada
+          </p>
+        </div>
+
+        <div
+          class="fx-seg-capsule"
+          role="tablist"
+          aria-label="Filtrar bancos por sector o viabilidad"
+          (keydown)="onSectorTabKeydown($event)"
+        >
           <button
             type="button"
-            class="btn-burst-settle"
-            (click)="settleAndAdvanceBurst(burstTicket)"
+            role="tab"
+            id="fx-tab-all"
+            aria-controls="fx-matrix-tabpanel"
+            [attr.aria-selected]="sectorFilter() === 'ALL'"
+            class="fx-seg-btn"
+            [class.is-active]="sectorFilter() === 'ALL'"
+            (click)="setSectorFilter('ALL')"
           >
-            ✅ 2. Pacté ➔ Siguiente
+            Todos (14)
           </button>
           <button
             type="button"
-            class="btn-burst-skip"
-            (click)="skipDepletedAndAdvanceBurst(burstTicket)"
+            role="tab"
+            id="fx-tab-viable"
+            aria-controls="fx-matrix-tabpanel"
+            [attr.aria-selected]="sectorFilter() === 'VIABLE'"
+            class="fx-seg-btn"
+            [class.is-active]="sectorFilter() === 'VIABLE'"
+            (click)="setSectorFilter('VIABLE')"
           >
-            🚫 Sin Cupo (30m) ➔ Saltar
+            Viables ({{ viableTicketsCount() }})
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="fx-tab-estado"
+            aria-controls="fx-matrix-tabpanel"
+            [attr.aria-selected]="sectorFilter() === 'ESTADO'"
+            class="fx-seg-btn"
+            [class.is-active]="sectorFilter() === 'ESTADO'"
+            (click)="setSectorFilter('ESTADO')"
+          >
+            Pública ({{ stateBanksCount() }})
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="fx-tab-privado"
+            aria-controls="fx-matrix-tabpanel"
+            [attr.aria-selected]="sectorFilter() === 'PRIVADO'"
+            class="fx-seg-btn"
+            [class.is-active]="sectorFilter() === 'PRIVADO'"
+            (click)="setSectorFilter('PRIVADO')"
+          >
+            Privada ({{ privateBanksCount() }})
           </button>
         </div>
-      </div>
-    }
+      </header>
 
-    <div class="banks-grid">
-      @for (ticket of filteredTickets(); track ticket.bank.id) {
-        <article
-          class="bank-card"
-          [class.card-fluid]="ticket.signalState === 'CONFIRMED_FLUID'"
-          [class.card-depleted]="ticket.signalState === 'COOLDOWN_DEPLETED'"
-          [class.card-blocked]="ticket.sudebanHealth === 'BLOCKED_LIMIT'"
-        >
-          <!-- Card Header -->
-          <div class="bank-card-header">
-            <div class="bank-identity">
-              <span class="bank-aba font-mono">{{ ticket.bank.abaCode }}</span>
-              <div>
-                <h3 class="bank-name">{{ ticket.bank.shortName }}</h3>
-                <span class="bank-mechanism">{{ ticket.bank.mechanismLabel }}</span>
-              </div>
-            </div>
-
-            <div class="bank-badges">
-              <span class="sector-tag" [class.estado]="ticket.bank.sector === 'ESTADO'">
-                {{ ticket.bank.sector === 'ESTADO' ? '🏛️ ESTADO' : '🏦 PRIVADO' }}
-              </span>
-              @if (settledTodayByBank()[ticket.bank.id]; as todayStats) {
-                <span class="settled-today-tag font-mono" title="Pactos BCV registrados hoy en tu libro FIFO">
-                  ✓ Hoy: ${{ todayStats.usd | number: '1.0-2' }} USD ({{ todayStats.count }} op)
-                </span>
-              }
-              <button
-                type="button"
-                class="signal-toggle-btn"
-                [class.fluid]="ticket.signalState === 'CONFIRMED_FLUID'"
-                [class.depleted]="ticket.signalState === 'COOLDOWN_DEPLETED'"
-                (click)="toggleFluidSignal(ticket.bank.id)"
-                title="Clic para alternar estado de fluidez reportada en este banco"
+      <div
+        id="fx-matrix-tabpanel"
+        role="tabpanel"
+        [attr.aria-labelledby]="'fx-tab-' + sectorFilter().toLowerCase()"
+        class="matrix-table-wrap"
+      >
+        <table class="fx-matrix-table fx-tabular">
+          <thead>
+            <tr>
+              <th>Entidad / Ventana VET</th>
+              <th>Estado Liquidez</th>
+              <th>Cuenta Elegible (Aislada)</th>
+              <th>Lote Óptimo</th>
+              <th>Débito Exacto Bs</th>
+              <th>Riel + IGTF</th>
+              <th>PnL Neto</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (ticket of filteredTickets(); track ticket.bank.id) {
+              <tr
+                class="matrix-row"
+                [class.is-selected]="selectedInspectorTicket()?.bank?.id === ticket.bank.id"
+                [class.is-depleted]="ticket.signalState === 'COOLDOWN_DEPLETED'"
+                tabindex="0"
+                (click)="selectBankForInspector(ticket.bank.id)"
+                (keydown.enter)="selectBankForInspector(ticket.bank.id)"
               >
-                @switch (ticket.signalState) {
-                  @case ('CONFIRMED_FLUID') { 🟢 FLUIDEZ ACTIVA }
-                  @case ('WINDOW_OPEN') { 🟢 EN VENTANA }
-                  @case ('COOLDOWN_DEPLETED') { 🔴 SIN CUPO ({{ depletedMinutesRemaining(ticket.bank.id) }}m) }
-                  @default { 🟡 VIGILANCIA }
-                }
-              </button>
-            </div>
-          </div>
+                <td>
+                  <div class="bank-cell">
+                    <span class="bank-avatar" [class.is-state]="ticket.bank.sector === 'ESTADO'">
+                      {{ ticket.bank.shortName.slice(0, 3).toUpperCase() }}
+                    </span>
+                    <div>
+                      <div class="bank-name">{{ ticket.bank.shortName }}</div>
+                      <div class="bank-sub">{{ ticket.bank.typicalWindowLabel }}</div>
+                    </div>
+                  </div>
+                </td>
 
-          <!-- Account & SUDEBAN Health Bar -->
-          <div class="sudeban-bar-wrap">
-            <div class="sudeban-bar-labels">
-              <span>
-                @if (ticket.linkedAccountName) {
-                  🔗 {{ ticket.linkedAccountName }}: <strong>{{ ticket.availableBalanceVes | number: '1.0-0' }} Bs</strong>
-                } @else {
-                  🧪 Simulado: <strong>{{ ticket.availableBalanceVes | number: '1.0-0' }} Bs</strong>
-                  <button type="button" class="btn-inline-link" (click)="quickLinkBankAccount(ticket.bank)">
-                    + Vincular cuenta
+                <td>
+                  <button
+                    type="button"
+                    class="fx-status-chip"
+                    style="cursor: pointer"
+                    [class.is-fluid]="ticket.signalState === 'CONFIRMED_FLUID'"
+                    [class.is-open]="ticket.signalState === 'WINDOW_OPEN' || ticket.signalState === 'STANDBY'"
+                    [class.is-dry]="ticket.signalState === 'COOLDOWN_DEPLETED'"
+                    (click)="$event.stopPropagation(); toggleFluidSignal(ticket.bank.id)"
+                    title="Clic para alternar entre Fluidez Confirmada y Mesa Seca (30m)"
+                  >
+                    @if (ticket.signalState === 'CONFIRMED_FLUID') {
+                      ● Fluido
+                    } @else if (ticket.signalState === 'COOLDOWN_DEPLETED') {
+                      ✕ Seca ({{ depletedMinutesRemaining(ticket.bank.id) }}m)
+                    } @else if (ticket.signalState === 'WINDOW_OPEN') {
+                      ◎ Ventana
+                    } @else {
+                      ○ Espera
+                    }
                   </button>
-                }
-              </span>
-              <span class="sudeban-pct font-mono" [class.warn]="ticket.sudebanHealth === 'WARNING'" [class.danger]="ticket.sudebanHealth === 'BLOCKED_LIMIT'">
-                Cupo SUDEBAN: {{ ticket.consumedDailyLimitPct }}% ({{ ticket.todayTxCount }}/{{ ticket.maxDailyTxCount }} tx)
-              </span>
-            </div>
-            <div class="sudeban-progress-track">
-              <div
-                class="sudeban-progress-fill"
-                [class.warn]="ticket.sudebanHealth === 'WARNING'"
-                [class.danger]="ticket.sudebanHealth === 'BLOCKED_LIMIT'"
-                [style.width.%]="ticket.consumedDailyLimitPct > 100 ? 100 : ticket.consumedDailyLimitPct"
-              ></div>
-            </div>
-          </div>
+                </td>
 
-          <!-- Exact Order Callout ("The Magic Number") -->
-          <div class="magic-lot-box">
-            <div class="lot-main">
-              <span class="lot-label">👉 PEDIR LOTE EXACTO SIN CENTAVOS:</span>
-              <div class="lot-value-row">
-                <strong class="lot-usd font-mono">${{ ticket.recommendedOrderUsd | number: '1.0-0' }} <small>USD</small></strong>
-                <button
-                  type="button"
-                  class="btn-copy-lot"
-                  [disabled]="ticket.recommendedOrderUsd <= 0"
-                  (click)="copyOrderLotUsd(ticket)"
-                >
-                  {{ copiedBankId() === ticket.bank.id ? '✓ Copiado' : '📋 Copiar $' + ticket.recommendedOrderUsd }}
-                </button>
-              </div>
-              <span class="lot-rule-hint">
-                Mínimo ${{ ticket.bank.minLotUsd }} · Múltiplo de ${{ ticket.bank.lotStepUsd }} · Fee banco {{ ticket.bank.bankFxFeePct }}%
-              </span>
-            </div>
-
-            <div class="lot-breakdown font-mono">
-              <div class="bd-row">
-                <span>Débito Exacto en Cuenta:</span>
-                <strong>{{ ticket.estimatedVesDebit | number: '1.2-2' }} Bs</strong>
-              </div>
-              <div class="bd-row">
-                <span>Colchón Anti-Rebote Reservado:</span>
-                <span>{{ ticket.reservedSafetyBufferVes | number: '1.2-2' }} Bs</span>
-              </div>
-              <div class="bd-row rail-selector-row">
-                <label class="rail-select-label" [attr.for]="'rail-' + ticket.bank.id">
-                  Riel Salida:
-                </label>
-                <select
-                  [id]="'rail-' + ticket.bank.id"
-                  class="exit-rail-select font-mono"
-                  [ngModel]="ticket.activeExitRail"
-                  (ngModelChange)="onChangeExitRail(ticket.bank.id, $event)"
-                >
-                  @for (opt of exitRailOptions; track opt.id) {
-                    <option [value]="opt.id">{{ opt.shortLabel }}</option>
+                <td class="fx-mono">
+                  @if (ticket.linkedAccountName) {
+                    <div class="cell-strong">
+                      {{ ticket.linkedAccountName }}
+                      @if (ticket.accountAllocations.length > 1) {
+                        <span class="split-tag">{{ ticket.accountAllocations.length }} ctas</span>
+                      }
+                    </div>
+                    <div class="bank-sub">Bs. {{ ticket.availableBalanceVes | number: '1.0-0' }}</div>
+                  } @else if (simulatorMode()) {
+                    <div class="cell-strong" style="color: var(--fx-gold)">Simulado</div>
+                    <div class="bank-sub">Bs. {{ ticket.availableBalanceVes | number: '1.0-0' }}</div>
+                  } @else {
+                    <div class="bank-sub">Sin cuenta vinc.</div>
                   }
-                </select>
-              </div>
-              <div class="bd-row">
-                <span>Recibes Neto (–{{ ticket.activeExitRailFrictionPct }}%):</span>
-                <strong class="accent">{{ ticket.netUsdtAfterExitRail | number: '1.2-2' }} USDT</strong>
-              </div>
-              <div class="bd-row profit-row">
-                <span>Ganancia Neta P2P:</span>
-                @if (ticket.projectedNetProfitVes !== null) {
-                  <strong class="gold">
-                    +{{ ticket.projectedNetProfitVes | number: '1.2-2' }} Bs (+{{ ticket.projectedNetRoiPct | number: '1.2-2' }}%)
-                  </strong>
-                } @else {
-                  <span>s/d</span>
-                }
-              </div>
-            </div>
-          </div>
+                </td>
 
-          @if (ticket.blockReason) {
-            <div class="ticket-block-banner">
-              ⚠️ {{ ticket.blockReason }}
-            </div>
-          }
+                <td class="fx-mono">
+                  @if (ticket.recommendedOrderUsd > 0) {
+                    <button
+                      type="button"
+                      class="fx-ghost-btn"
+                      style="padding: 0 7px; min-height: 26px; font-weight: 800; color: var(--fx-text)"
+                      (click)="$event.stopPropagation(); copyOrderLotUsd(ticket)"
+                      title="Copiar monto entero exacto al portapapeles"
+                    >
+                      \${{ ticket.recommendedOrderUsd | number: '1.0-0' }}
+                      {{ copiedBankId() === ticket.bank.id ? '✓' : '📋' }}
+                    </button>
+                  } @else {
+                    <span class="bank-sub">—</span>
+                  }
+                </td>
 
-          <!-- Anti-Block Tips Accordion Trigger -->
-          <div class="bank-tip-line">
-            🛡️ <em>{{ ticket.bank.antiBlockTips[0] }}</em>
-          </div>
+                <td class="fx-mono">
+                  @if (ticket.estimatedVesDebit > 0) {
+                    <div>Bs. {{ ticket.estimatedVesDebit | number: '1.2-2' }}</div>
+                    <div class="bank-sub">Fee {{ ticket.effectiveBankFeePct }}%</div>
+                  } @else {
+                    <span class="bank-sub">—</span>
+                  }
+                </td>
 
-          <!-- Action Buttons Row -->
-          <div class="bank-card-actions">
-            <a
-              [href]="ticket.bank.portalUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="btn-portal-launch"
-              [class.cooldown-active]="(wafCooldownRemaining()[ticket.bank.id] ?? 0) > 0"
-              (click)="launchBankPortal(ticket, $event)"
-            >
-              @if ((wafCooldownRemaining()[ticket.bank.id] ?? 0) > 0) {
-                ⏳ Cadencia Anti-WAF: {{ wafCooldownRemaining()[ticket.bank.id] }}s
-              } @else {
-                🚀 Ir a {{ ticket.bank.shortName }}
-              }
-            </a>
+                <td>
+                  <div class="cell-strong">{{ ticket.activeExitRail === 'CASH_WITHDRAWAL_OTC' ? 'Taquilla OTC' : ticket.activeExitRail === 'INTL_DEBIT_CARD' ? 'Tarjeta Intl' : 'P2P Divisas' }}</div>
+                  <div class="bank-sub fx-mono">
+                    IGTF {{ ticket.igtfPct | number: '1.0-1' }}% · {{ ticket.netUsdtAfterExitRail | number: '1.1-1' }} USDT
+                  </div>
+                </td>
 
-            <button
-              type="button"
-              class="btn-settle-fifo"
-              [disabled]="ticket.recommendedOrderUsd <= 0"
-              (click)="settlePurchaseInFifo(ticket)"
-              title="Registra la compra en el libro contable FIFO y descuenta los Bolívares de tu cuenta"
-            >
-              ✅ Ya Pacté ➔ FIFO
-            </button>
+                <td class="fx-mono">
+                  @if (ticket.isViableOrder && ticket.projectedNetProfitVes !== null) {
+                    <div class="accent-val" style="font-weight: 800">
+                      +Bs. {{ ticket.projectedNetProfitVes | number: '1.0-0' }}
+                    </div>
+                    <div class="bank-sub accent-val">
+                      +{{ ticket.projectedNetRoiPct | number: '1.1-1' }}%
+                    </div>
+                  } @else {
+                    <span class="bank-sub">{{ ticket.blockReason ? 'Bloqueado' : 'n/d' }}</span>
+                  }
+                </td>
 
-            <button
-              type="button"
-              class="btn-tg-mini"
-              (click)="pushPlanToTelegram(ticket.bank.id)"
-              title="Enviar orden de este banco a Telegram"
-            >
-              📲
-            </button>
-          </div>
-        </article>
-      }
-    </div>
-  </section>
+                <td>
+                  <div class="row-actions" (click)="$event.stopPropagation()">
+                    <button
+                      type="button"
+                      class="fx-ghost-btn"
+                      (click)="launchBankPortal(ticket, $event)"
+                      [title]="'Abrir ' + ticket.bank.portalUrl"
+                    >
+                      @if ((wafCooldownRemaining()[ticket.bank.id] ?? 0) > 0) {
+                        {{ wafCooldownRemaining()[ticket.bank.id] }}s
+                      } @else {
+                        🔗
+                      }
+                    </button>
+                    <button
+                      type="button"
+                      class="fx-row-btn"
+                      [disabled]="ticket.recommendedOrderUsd <= 0 || (!ticket.linkedAccountId && !simulatorMode())"
+                      (click)="settlePurchaseInFifo(ticket)"
+                    >
+                      Pactar ↵
+                    </button>
+                  </div>
+
+                  @if (settledTodayByBank()[ticket.bank.id]; as doneToday) {
+                    <div class="done-today-tag fx-mono">
+                      Hoy: \${{ doneToday.usd | number: '1.0-0' }} ({{ doneToday.count }})
+                    </div>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- DERECHA: INSPECTOR ATÓMICO Y CASCADA IGTF -->
+    <app-fx-ticket-inspector
+      [ticket]="selectedInspectorTicket()"
+      [exitRailOptions]="exitRailOptions"
+      [cooldownSec]="
+        selectedInspectorTicket()
+          ? (wafCooldownRemaining()[selectedInspectorTicket()!.bank.id] ?? 0)
+          : 0
+      "
+      [simulatorActive]="simulatorMode()"
+      (openPortal)="launchBankPortal($event)"
+      (settleTicket)="settlePurchaseInFifo($event)"
+      (calibrateAccount)="quickLinkBankAccount($event)"
+      (changeExitRail)="onChangeExitRail($event.bankId, $event.railId)"
+    />
+  </div>
+
+  <!-- PIE: LIBRO MAYOR FORENSE SQLITE WAL -->
+  <app-fx-settlement-ledger-card [entries]="telegram.fxSettlementHistory()" />
 </div>

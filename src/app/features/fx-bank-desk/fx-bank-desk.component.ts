@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  HostListener,
   OnDestroy,
   OnInit,
   computed,
@@ -12,10 +13,13 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import {
   VENEZUELAN_FX_BANKS,
+  FX_DESK_MODALITIES,
   FX_EXIT_RAIL_OPTIONS,
+  VEN_DEFAULT_IGTF_PCT,
   evaluateFxBankDeskPlan,
+  evaluateVenezuelanFxWindow,
   getBcvMarketIntelligence,
-  getTodayOperations,
+  getVenezuelaTodayOperations,
   resolveFxInterventionBankId,
   roundMoney,
   selectPrimaryFxBankAccount,
@@ -23,8 +27,9 @@ import {
   type FxBankOrderTicket,
   type FxCapitalAllocationMode,
   type FxDeskEvaluationPlan,
-  type FxInterventionBankId,
+  type FxDeskModality,
   type FxExitRailType,
+  type FxInterventionBankId,
 } from '@p2p/core';
 import { AccountsService } from '../../core/accounts.service';
 import { CotizaveService, describeCotizaveProvenance } from '../../core/cotizave.service';
@@ -32,13 +37,35 @@ import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { TelegramWorkerService } from '../../core/telegram-worker.service';
 import { AudioAlertsService } from '../../core/audio-alerts.service';
 import { ToastService } from '../../core/toast.service';
+import { FxKpiStripComponent } from './components/fx-kpi-strip.component';
+import { FxTicketInspectorComponent } from './components/fx-ticket-inspector.component';
+import { FxSettlementLedgerCardComponent } from './components/fx-settlement-ledger-card.component';
 
-export type FxSectorFilter = 'ALL' | 'ESTADO' | 'PRIVADO' | 'VIABLE';
+export const FX_SECTOR_FILTERS = {
+  ALL: 'ALL',
+  VIABLE: 'VIABLE',
+  ESTADO: 'ESTADO',
+  PRIVADO: 'PRIVADO',
+} as const;
+
+export type FxSectorFilter = (typeof FX_SECTOR_FILTERS)[keyof typeof FX_SECTOR_FILTERS];
+
+function isFxExitRailType(val: string): val is FxExitRailType {
+  return FX_EXIT_RAIL_OPTIONS.some((opt) => opt.id === val);
+}
 
 @Component({
   selector: 'app-fx-bank-desk',
   standalone: true,
-  imports: [CommonModule, FormsModule, DecimalPipe, RouterLink],
+  imports: [
+    CommonModule,
+    FormsModule,
+    DecimalPipe,
+    RouterLink,
+    FxKpiStripComponent,
+    FxTicketInspectorComponent,
+    FxSettlementLedgerCardComponent,
+  ],
   templateUrl: './fx-bank-desk.component.html',
   styleUrls: ['./fx-bank-desk.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -54,10 +81,19 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
 
   readonly allBanks = VENEZUELAN_FX_BANKS;
   readonly exitRailOptions = FX_EXIT_RAIL_OPTIONS;
+  readonly modalities = FX_DESK_MODALITIES;
+
+  readonly modalityOptions: readonly { id: FxDeskModality; label: string }[] = [
+    { id: FX_DESK_MODALITIES.MENUDEO_BCV, label: 'Menudeo BCV (0.25%)' },
+    { id: FX_DESK_MODALITIES.MESA_CAMBIO_PACTO, label: 'Mesa de Cambio (Pacto)' },
+    { id: FX_DESK_MODALITIES.TAQUILLA_EFECTIVO_OTC, label: 'Taquilla Efectivo (0% IGTF)' },
+  ];
 
   // ─── Interactive Cockpit Controls ──────────────────────────────────────
   readonly sectorFilter = signal<FxSectorFilter>('ALL');
   readonly simulatedCapitalVes = signal<number>(120000);
+  readonly simulatorMode = signal<boolean>(false);
+  readonly showSimDrawer = signal<boolean>(false);
   readonly capitalPresetsVes: readonly number[] = [50000, 120000, 250000, 500000];
   readonly showRateOverrides = signal<boolean>(false);
   readonly manualBcvOverride = signal<number | null>(null);
@@ -68,7 +104,7 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
   readonly soundEnabled = signal<boolean>(true);
   readonly isSendingTelegram = signal<boolean>(false);
   readonly copiedBankId = signal<FxInterventionBankId | null>(null);
-  readonly selectedBankGuide = signal<FxBankDeskProfile | null>(null);
+  readonly selectedBankId = signal<FxInterventionBankId | null>(null);
 
   /** Morning Burst Sequential Execution Queue ("Ráfaga Matutina"). */
   readonly burstQueueActive = signal<boolean>(false);
@@ -78,7 +114,7 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
   readonly wafCooldownRemaining = signal<Partial<Record<FxInterventionBankId, number>>>({});
   private wafInterval: ReturnType<typeof setInterval> | null = null;
 
-  // ─── Live & Fallback Rate Resolution ───────────────────────────────────
+  // ─── Live & Fallback Rate Resolution (Executable Taker Sell Bid Priority) ─
   readonly liveBcvRate = computed<number | null>(() => {
     const manual = this.manualBcvOverride();
     if (manual !== null && Number.isFinite(manual) && manual > 0) return manual;
@@ -91,11 +127,11 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     const manual = this.manualP2pOverride();
     if (manual !== null && Number.isFinite(manual) && manual > 0) return manual;
     const depth = this.binance.marketDepth();
-    if (depth?.bestBuyPrice && depth.bestBuyPrice > 0) return roundMoney(depth.bestBuyPrice, 2);
     if (depth?.bestSellPrice && depth.bestSellPrice > 0) return roundMoney(depth.bestSellPrice, 2);
+    if (depth?.bestBuyPrice && depth.bestBuyPrice > 0) return roundMoney(depth.bestBuyPrice, 2);
     const rates = this.cotizave.ratesByMarket();
-    const ask = rates['binance']?.ask ?? rates['binance']?.bid ?? null;
-    return ask && ask > 0 ? roundMoney(ask, 2) : null;
+    const bid = rates['binance']?.bid ?? rates['binance']?.ask ?? null;
+    return bid && bid > 0 ? roundMoney(bid, 2) : null;
   });
 
   readonly bcvProvenanceLabel = computed<string>(() => {
@@ -109,10 +145,8 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     return getBcvMarketIntelligence(p2p, bcv);
   });
 
-  readonly isWindowActive = computed<boolean>(() => {
-    const phase = this.bcvIntelligence().window.phase;
-    return phase === 'INTERVENTION_ACTIVE' || phase === 'PRE_INTERVENTION_COMPRESSION';
-  });
+  readonly fxWindow = computed(() => evaluateVenezuelanFxWindow());
+  readonly isWindowActive = computed<boolean>(() => this.fxWindow().isWindowOpen);
 
   readonly capitalAllocationMode = signal<FxCapitalAllocationMode>('PER_BANK');
   readonly isRefreshingFeeds = signal(false);
@@ -123,7 +157,10 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     return evaluateFxBankDeskPlan({
       bcvOfficialRateVes: this.liveBcvRate(),
       p2pSellRateVes: this.liveP2pRate(),
+      modality: this.telegram.fxModality(),
+      igtfPct: this.telegram.fxIgtfPct(),
       simulatedCapitalVes: this.simulatedCapitalVes(),
+      useSimulatedCapital: this.simulatorMode(),
       capitalAllocationMode: this.capitalAllocationMode(),
       accounts: this.accountsService.accounts(),
       usages: this.accountsService.usages(),
@@ -134,6 +171,23 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
       exitRailOverrides: this.telegram.fxExitRailOverrides(),
     });
   });
+
+  readonly selectedInspectorTicket = computed<FxBankOrderTicket | null>(() => {
+    const tickets = this.evaluationPlan().tickets;
+    const explicitId = this.selectedBankId();
+    if (explicitId) {
+      const found = tickets.find((t) => t.bank.id === explicitId);
+      if (found) return found;
+    }
+    return tickets[0] ?? null;
+  });
+
+  readonly linkedTransferAccountsCount = computed<number>(
+    () =>
+      this.accountsService
+        .accounts()
+        .filter((a) => a.status !== 'DISABLED' && a.rail === 'TRANSFERENCIA').length,
+  );
 
   readonly feedFreshnessLabel = computed<string>(() => {
     const bcvTs = this.cotizave.lastFetched();
@@ -149,18 +203,23 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     return `BCV ${fmt(bcvTs)} · P2P ${fmt(p2pTs)}`;
   });
 
-  readonly settledTodayByBank = computed<Record<string, { usd: number; count: number }>>(() => {
+  readonly settledTodayByBank = computed<
+    Record<string, { usd: number; netUsdt: number; count: number }>
+  >(() => {
     this.ledgerVersion();
     this.accountsService.usages();
     const ops = this.accountsService.rawOperations();
-    const todayOps = getTodayOperations(ops);
+    const todayOps = getVenezuelaTodayOperations(ops);
     const accounts = this.accountsService.accounts();
-    const summary: Record<string, { usd: number; count: number }> = {};
+    const summary: Record<string, { usd: number; netUsdt: number; count: number }> = {};
 
     for (const op of todayOps) {
       if (op.type !== 'buy' || !op.merchantNote?.startsWith('MESA_BCV:')) continue;
-      const rawTag = op.merchantNote.slice('MESA_BCV:'.length).split('(')[0].trim();
-      let bankId = resolveFxInterventionBankId(rawTag);
+      const bodyAfterPrefix = op.merchantNote.slice('MESA_BCV:'.length);
+      const usdMatch = bodyAfterPrefix.match(/:USD=([0-9]+(?:\.[0-9]+)?)/);
+      const bankPart = bodyAfterPrefix.split(':USD=')[0].split('(')[0].trim();
+
+      let bankId = resolveFxInterventionBankId(bankPart);
       if (!bankId && op.bankAccountId) {
         const linked = accounts.find((a) => a.id === op.bankAccountId);
         if (linked) {
@@ -169,9 +228,11 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
       }
       if (!bankId) continue;
 
-      const prev = summary[bankId] ?? { usd: 0, count: 0 };
+      const purchasedUsd = usdMatch ? Number.parseFloat(usdMatch[1]) : op.usdtAmount;
+      const prev = summary[bankId] ?? { usd: 0, netUsdt: 0, count: 0 };
       summary[bankId] = {
-        usd: roundMoney(prev.usd + op.usdtAmount, 2),
+        usd: roundMoney(prev.usd + (Number.isFinite(purchasedUsd) ? purchasedUsd : op.usdtAmount), 2),
+        netUsdt: roundMoney(prev.netUsdt + op.usdtAmount, 2),
         count: prev.count + 1,
       };
     }
@@ -179,14 +240,19 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     return summary;
   });
 
-  readonly totalSettledToday = computed<{ totalUsd: number; opsCount: number }>(() => {
+  readonly totalSettledToday = computed<{
+    totalUsd: number;
+    totalNetUsdt: number;
+    opsCount: number;
+  }>(() => {
     const entries = Object.values(this.settledTodayByBank());
     return entries.reduce(
       (acc, cur) => ({
         totalUsd: roundMoney(acc.totalUsd + cur.usd, 2),
+        totalNetUsdt: roundMoney(acc.totalNetUsdt + cur.netUsdt, 2),
         opsCount: acc.opsCount + cur.count,
       }),
-      { totalUsd: 0, opsCount: 0 },
+      { totalUsd: 0, totalNetUsdt: 0, opsCount: 0 },
     );
   });
 
@@ -222,6 +288,7 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     void this.cotizave.refreshIfStale().catch(() => {});
+    void this.telegram.refreshFxSettlementsFromSqlite?.().catch(() => {});
     if (!this.binance.marketDepth()) {
       void this.binance.fetchMarketDepth('USDT', 'VES', true).catch(() => {});
     }
@@ -248,14 +315,76 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     }
   }
 
+  @HostListener('window:keydown', ['$event'])
+  handleBurstKeyboardShortcuts(event: KeyboardEvent): void {
+    if (!this.burstQueueActive()) return;
+    const target = event.target as HTMLElement | null;
+    const tag = target?.tagName?.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable) {
+      return;
+    }
+    const burst = this.currentBurstTicket();
+    if (!burst) return;
+
+    if (event.code === 'Space') {
+      event.preventDefault();
+      this.copyOrderLotUsd(burst);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      this.settleAndAdvanceBurst(burst);
+    } else if (event.key === 'e' || event.key === 'E') {
+      event.preventDefault();
+      this.skipDepletedAndAdvanceBurst(burst);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      this.stopMorningBurstRound();
+    }
+  }
+
+  setModality(modality: FxDeskModality): void {
+    this.telegram.setFxModality(modality);
+  }
+
+  toggleIgtfExemption(): void {
+    const next = this.telegram.fxIgtfPct() > 0 ? 0 : VEN_DEFAULT_IGTF_PCT;
+    this.telegram.setFxIgtfPct(next);
+  }
+
+  toggleSound(): void {
+    this.soundEnabled.update((v) => !v);
+  }
+
+  toggleSimulatorMode(): void {
+    const next = !this.simulatorMode();
+    this.simulatorMode.set(next);
+    if (next) this.showSimDrawer.set(true);
+  }
+
+  selectBankForInspector(bankId: FxInterventionBankId): void {
+    this.selectedBankId.set(bankId);
+  }
+
   setSectorFilter(filter: FxSectorFilter): void {
     this.sectorFilter.set(filter);
+  }
+
+  onSectorTabKeydown(event: KeyboardEvent): void {
+    const order: readonly FxSectorFilter[] = ['ALL', 'VIABLE', 'ESTADO', 'PRIVADO'];
+    const idx = order.indexOf(this.sectorFilter());
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      this.sectorFilter.set(order[(idx + 1) % order.length]);
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      this.sectorFilter.set(order[(idx - 1 + order.length) % order.length]);
+    }
   }
 
   useTotalTreasuryBalance(): void {
     const total = this.accountsService.treasurySummary().totalBalanceVes;
     if (total > 0) {
       this.simulatedCapitalVes.set(Math.round(total));
+      this.simulatorMode.set(true);
       this.toast.info(
         `Simulador ajustado a tu liquidez total en cuentas: Bs. ${total.toLocaleString('es-VE')}`,
         '🏛️ Tesorería Sincronizada',
@@ -265,7 +394,7 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
 
   applyDemoRatesIfOffline(): void {
     if (this.liveBcvRate() === null) this.manualBcvOverride.set(62.45);
-    if (this.liveP2pRate() === null) this.manualP2pOverride.set(84.2);
+    if (this.liveP2pRate() === null) this.manualP2pOverride.set(84.1);
     this.toast.info(
       'Tasas de referencia activadas en modo contingencia. Puedes editarlas arriba en cualquier momento.',
       '⚡ Contingencia Activada',
@@ -280,9 +409,7 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
 
   copyOrderLotUsd(ticket: FxBankOrderTicket): void {
     const amountStr = String(ticket.recommendedOrderUsd);
-    navigator.clipboard?.writeText(amountStr).catch(() => {
-      /* ignore clipboard error */
-    });
+    navigator.clipboard?.writeText(amountStr).catch(() => {});
     this.copiedBankId.set(ticket.bank.id);
     setTimeout(() => {
       if (this.copiedBankId() === ticket.bank.id) {
@@ -306,17 +433,12 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // If invoked programmatically without a native <a target="_blank"> click event,
-    // trigger window.open BEFORE any async clipboard or signal mutations so the
-    // browser/Electron user-activation token is never consumed beforehand.
-    if (!event && typeof window !== 'undefined') {
-      window.open(ticket.bank.portalUrl, '_blank');
+    if (typeof window !== 'undefined') {
+      window.open(ticket.bank.portalUrl, '_blank', 'noopener,noreferrer');
     }
 
     if (ticket.recommendedOrderUsd > 0) {
-      navigator.clipboard?.writeText(String(ticket.recommendedOrderUsd)).catch(() => {
-        /* ignore */
-      });
+      navigator.clipboard?.writeText(String(ticket.recommendedOrderUsd)).catch(() => {});
     }
 
     this.wafCooldownRemaining.update((curr) => ({
@@ -393,6 +515,12 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
       ticket.bank.id,
       ticket.recommendedOrderUsd,
       bcv,
+      {
+        modality: this.telegram.fxModality(),
+        igtfPct: this.telegram.fxIgtfPct(),
+        channel: 'DESKTOP_UI',
+        allowUnlinkedSimulation: this.simulatorMode(),
+      },
     );
     if (res) {
       this.ledgerVersion.update((v) => v + 1);
@@ -400,12 +528,12 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
         this.audioAlerts.playOpportunityAlert();
       }
       this.toast.success(
-        `Pacto asentado en contabilidad FIFO (${res.summary}). Saldo bancario actualizado.`,
+        `Pacto asentado en contabilidad FIFO y SQLite (${res.summary}).`,
         '✅ Compra Registrada en FIFO',
       );
     } else {
       this.toast.warn(
-        'No se pudo registrar la compra en FIFO. Verificá que la tasa BCV esté activa y el monto sea válido.',
+        'Bloqueado: verificá tasa BCV activa y contar con una cuenta TRANSFERENCIA vinculada con saldo suficiente.',
         '⚠️ Pacto No Registrado',
       );
     }
@@ -452,7 +580,7 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
       const res = await this.telegram.sendFxDeskPlanAlert(this.evaluationPlan(), bankId);
       if (res.ok) {
         this.toast.success(
-          'Alerta interactiva con deep-links y botones FIFO enviada a tu Telegram.',
+          'Alerta interactiva con botones firmados de 1 uso enviada a tu Telegram privado.',
           '📲 Despachado a Telegram Sentinel',
         );
       } else {
@@ -464,9 +592,10 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
   }
 
   onChangeExitRail(bankId: FxInterventionBankId, railId: string): void {
-    this.telegram.setFxExitRailOverride(bankId, railId as FxExitRailType);
+    if (!isFxExitRailType(railId)) return;
+    this.telegram.setFxExitRailOverride(bankId, railId);
     this.toast.info(
-      `Riel de salida actualizado para ${bankId}. Ganancia neta recalculada.`,
+      `Riel de salida actualizado para ${bankId}. Ganancia e IGTF recalculados.`,
       '🔄 Riel de Liquidación Actualizado',
     );
   }
@@ -481,7 +610,7 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     const list = this.viableTickets();
     if (list.length === 0) {
       this.toast.warn(
-        'Activa tasas o asigna capital para tener al menos un banco viable en la cola.',
+        'Activa tasas o vincula capital en cuentas TRANSFERENCIA para tener bancos viables en la cola.',
         '⚡ Ráfaga sin Bancos Listos',
       );
       return;
@@ -489,8 +618,11 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     this.burstQueueIndex.set(0);
     this.burstQueueActive.set(true);
     const first = list[0];
-    if (first && first.recommendedOrderUsd > 0) {
-      this.copyOrderLotUsd(first);
+    if (first) {
+      this.selectedBankId.set(first.bank.id);
+      if (first.recommendedOrderUsd > 0) {
+        this.copyOrderLotUsd(first);
+      }
     }
   }
 
@@ -512,8 +644,11 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     }
     this.burstQueueIndex.set(nextIdx);
     const nextTicket = list[nextIdx];
-    if (nextTicket && nextTicket.recommendedOrderUsd > 0) {
-      this.copyOrderLotUsd(nextTicket);
+    if (nextTicket) {
+      this.selectedBankId.set(nextTicket.bank.id);
+      if (nextTicket.recommendedOrderUsd > 0) {
+        this.copyOrderLotUsd(nextTicket);
+      }
     }
   }
 
@@ -536,8 +671,11 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     const idx = Math.min(this.burstQueueIndex(), list.length - 1);
     this.burstQueueIndex.set(idx);
     const current = list[idx];
-    if (current && current.recommendedOrderUsd > 0) {
-      this.copyOrderLotUsd(current);
+    if (current) {
+      this.selectedBankId.set(current.bank.id);
+      if (current.recommendedOrderUsd > 0) {
+        this.copyOrderLotUsd(current);
+      }
     }
   }
 

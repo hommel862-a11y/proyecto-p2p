@@ -1,0 +1,379 @@
+// =============================================================================
+// MESA CAMBIARIA BCV v2.0 — APPLE PRO SPATIAL LIQUID GLASS TOKENS (4 THEMES)
+// Zero hardcoded hex: inherits apple-dark (#000000 OLED / #111116), dark,
+// light (WCAG AA/AAA >= 5.4:1), and neon-pink from src/styles.scss.
+//
+// Strict Apple HIG 2-Layer Material Discipline (liquid-glass.md):
+//   1) Functional Layer (.fx-liquid-glass) -> Floating Command Dock & Burst Bar ONLY.
+//   2) Content Layer (.fx-content-card / .fx-kpi-aura) -> Opaque var(--panel), zero blur.
+// =============================================================================
+
+:host {
+  --fx-bg-0: var(--bg-0);
+  --fx-bg-1: var(--bg-1);
+  --fx-panel: var(--panel);
+  --fx-panel-2: var(--panel-2);
+  --fx-glass-bg: color-mix(in srgb, var(--panel) 78%, transparent);
+  --fx-line: var(--line);
+  --fx-line-strong: var(--line-strong);
+  --fx-text: var(--text);
+  --fx-muted: var(--muted);
+  --fx-gold: var(--gold);
+  --fx-accent: var(--accent);
+  --fx-accent-2: var(--accent-2);
+  --fx-warn: var(--warn);
+  --fx-danger: var(--danger);
+  --fx-violet: color-mix(in srgb, var(--accent-2) 54%, var(--danger) 46%);
+  --fx-pill-active-bg: var(--text);
+  --fx-pill-active-fg: var(--bg-0);
+  --fx-radius: var(--radius);
+  --fx-radius-lg: var(--radius-lg);
+  --fx-blur: var(--blur-panel);
+  --fx-shadow: var(--shadow);
+
+  display: block;
+  width: 100%;
+  min-width: 0;
+  color: var(--fx-text);
+}
+
+.fx-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.fx-mono {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+// Layer 1: Floating Functional Glass (Command Dock & Burst Bar ONLY)
+.fx-liquid-glass {
+  background: var(--fx-glass-bg);
+  border: 1px solid var(--fx-line-strong);
+  border-radius: var(--fx-radius-lg);
+  backdrop-filter: blur(var(--fx-blur)) saturate(1.45);
+  -webkit-backdrop-filter: blur(var(--fx-blur)) saturate(1.45);
+  box-shadow:
+    var(--fx-shadow),
+    inset 0 1px 0 color-mix(in srgb, var(--fx-text) 10%, transparent);
+}
+
+// Layer 2: Opaque Elevated Content Card (Zero backdrop-filter — zero CPU lag)
+.fx-content-card {
+  background: var(--fx-panel);
+  border: 1px solid var(--fx-line);
+  border-radius: var(--fx-radius-lg);
+  box-shadow: 0 10px 26px -14px color-mix(in srgb, var(--fx-bg-0) 52%, transparent);
+  transition: border-color 160ms ease;
+
+  &:hover {
+    border-color: var(--fx-line-strong);
+  }
+}
+
+// Finanzas 360 Hero KPI Card with Localized Corner Radial Aura
+.fx-kpi-aura {
+  position: relative;
+  overflow: hidden;
+  background: var(--fx-panel);
+  border: 1px solid var(--fx-line);
+  border-radius: var(--fx-radius-lg);
+  padding: 14px 16px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 160ms ease;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      circle at 88% 12%,
+      var(--fx-kpi-glow, transparent),
+      transparent 62%
+    );
+  }
+
+  &.tone-gold {
+    --fx-kpi-glow: color-mix(in srgb, var(--fx-gold) 24%, transparent);
+    border-color: color-mix(in srgb, var(--fx-gold) 30%, var(--fx-line));
+  }
+
+  &.tone-emerald {
+    --fx-kpi-glow: color-mix(in srgb, var(--fx-accent) 24%, transparent);
+    border-color: color-mix(in srgb, var(--fx-accent) 30%, var(--fx-line));
+  }
+
+  &.tone-violet {
+    --fx-kpi-glow: color-mix(in srgb, var(--fx-violet) 24%, transparent);
+    border-color: color-mix(in srgb, var(--fx-violet) 30%, var(--fx-line));
+  }
+
+  &.tone-cyan {
+    --fx-kpi-glow: color-mix(in srgb, var(--fx-accent-2) 24%, transparent);
+    border-color: color-mix(in srgb, var(--fx-accent-2) 30%, var(--fx-line));
+  }
+}
+
+// Segmented Capsule & Buttons
+.fx-seg-capsule {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fx-panel-2) 88%, transparent);
+  border: 1px solid var(--fx-line);
+}
+
+.fx-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--fx-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+
+  &:hover:not(.is-active) {
+    color: var(--fx-text);
+    background: color-mix(in srgb, var(--fx-text) 6%, transparent);
+  }
+
+  &.is-active {
+    background: var(--fx-pill-active-bg);
+    color: var(--fx-pill-active-fg);
+    font-weight: 700;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fx-accent-2);
+    outline-offset: 2px;
+  }
+}
+
+.fx-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--fx-line-strong);
+  background: var(--fx-panel-2);
+  box-shadow: none;
+  color: var(--fx-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color 140ms ease, background-color 140ms ease;
+
+  &:hover:not(:disabled) {
+    border-color: var(--fx-gold);
+    background: color-mix(in srgb, var(--fx-gold) 10%, var(--fx-panel-2));
+  }
+
+  &.is-active {
+    border-color: color-mix(in srgb, var(--fx-accent) 50%, var(--fx-line-strong));
+    background: color-mix(in srgb, var(--fx-accent) 14%, var(--fx-panel-2));
+    color: var(--fx-accent);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fx-accent-2);
+    outline-offset: 2px;
+  }
+}
+
+.fx-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 11px;
+  border: 1px solid color-mix(in srgb, var(--fx-gold) 70%, var(--fx-text));
+  background: var(--fx-gold);
+  color: var(--fx-bg-0);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--fx-gold) 26%, transparent);
+  font-size: 0.77rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: filter 140ms ease, transform 140ms ease;
+
+  &:hover:not(:disabled) {
+    filter: brightness(1.07);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fx-accent-2);
+    outline-offset: 2px;
+  }
+}
+
+.fx-row-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--fx-accent) 36%, var(--fx-line));
+  background: color-mix(in srgb, var(--fx-accent) 14%, var(--fx-panel-2));
+  box-shadow: none;
+  color: var(--fx-accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--fx-accent) 24%, var(--fx-panel-2));
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fx-accent-2);
+    outline-offset: 2px;
+  }
+}
+
+.fx-ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--fx-line);
+  background: transparent;
+  box-shadow: none;
+  color: var(--fx-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--fx-text);
+    border-color: var(--fx-line-strong);
+    background: var(--fx-panel-2);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fx-accent-2);
+    outline-offset: 2px;
+  }
+}
+
+// Status Chips (Color + Symbol, never color alone — accessibility.md)
+.fx-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.69rem;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid var(--fx-line);
+
+  &.is-fluid {
+    background: color-mix(in srgb, var(--fx-accent) 15%, transparent);
+    color: var(--fx-accent);
+    border-color: color-mix(in srgb, var(--fx-accent) 34%, transparent);
+  }
+
+  &.is-open {
+    background: color-mix(in srgb, var(--fx-accent-2) 15%, transparent);
+    color: var(--fx-accent-2);
+    border-color: color-mix(in srgb, var(--fx-accent-2) 34%, transparent);
+  }
+
+  &.is-warn {
+    background: color-mix(in srgb, var(--fx-warn) 15%, transparent);
+    color: var(--fx-warn);
+    border-color: color-mix(in srgb, var(--fx-warn) 34%, transparent);
+  }
+
+  &.is-dry {
+    background: color-mix(in srgb, var(--fx-danger) 14%, transparent);
+    color: var(--fx-danger);
+    border-color: color-mix(in srgb, var(--fx-danger) 32%, transparent);
+  }
+}
+
+// =============================================================================
+// APPLE HIG ACCESSIBILITY & MOBILE ERGONOMICS
+// =============================================================================
+
+@media (prefers-reduced-transparency: reduce) {
+  .fx-liquid-glass {
+    background: var(--fx-panel);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .fx-liquid-glass,
+  .fx-content-card,
+  .fx-kpi-aura {
+    border-width: 1.5px;
+    border-color: var(--fx-text);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .fx-seg-btn,
+  .fx-pill-btn,
+  .fx-btn-primary,
+  .fx-row-btn,
+  .fx-ghost-btn {
+    min-height: 44px;
+    padding: 0 14px;
+  }
+}
