@@ -198,10 +198,14 @@ describe('Copilot (2-Mode Workbench & Governance Dashboard)', () => {
   });
 
   it('sanitizes HTML in renderMarkdown to prevent XSS', () => {
-    const safe = component.renderMarkdown('<script>alert(1)</script>**Seguro**');
+    const safe = component.renderMarkdown(
+      '<script>alert(1)</script>**Seguro** [Click](javascript:alert(1)) [Ad](https://c2c.binance.com/es-LA/adv?code=123)',
+    );
     const htmlStr = String((safe as any).changingThisBreaksApplicationSecurity || safe);
     expect(htmlStr).not.toContain('<script>');
     expect(htmlStr).toContain('&lt;script&gt;');
     expect(htmlStr).toContain('<strong>Seguro</strong>');
+    expect(htmlStr).not.toContain('href="javascript:');
+    expect(htmlStr).toContain('href="https://c2c.binance.com/es-LA/adv?code=123"');
   });
 });

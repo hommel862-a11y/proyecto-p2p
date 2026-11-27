@@ -26,6 +26,20 @@ export type FetchBinanceP2pFn = (
   options?: { signal?: AbortSignal },
 ) => Promise<unknown>;
 
+const BINANCE_DEEP_LINK_ID_RE = /^[A-Za-z0-9_-]{3,64}$/;
+
+function buildAlphaAdUrl(advNo?: string): string | undefined {
+  const clean = advNo?.trim() ?? '';
+  if (!BINANCE_DEEP_LINK_ID_RE.test(clean)) return undefined;
+  return `https://c2c.binance.com/es-LA/adv?code=${encodeURIComponent(clean)}`;
+}
+
+function buildAlphaAdvertiserUrl(advertiserNo?: string): string | undefined {
+  const clean = advertiserNo?.trim() ?? '';
+  if (!BINANCE_DEEP_LINK_ID_RE.test(clean)) return undefined;
+  return `https://p2p.binance.com/es-LA/advertiserDetail?advertiserNo=${encodeURIComponent(clean)}`;
+}
+
 const MIN_QUALIFIED_FINISH_RATE_PCT = 90;
 const MIN_QUALIFIED_ORDER_COUNT = 10;
 const MAX_MEDIAN_DEVIATION_RATIO = 0.3;
@@ -208,12 +222,35 @@ export class AlphaWatcher {
       this.lastError = null;
       this.lastErrorAt = null;
 
-      const bestBuy = buyOffers[0]?.price;
-      const bestSell = sellOffers[0]?.price;
+      const bestBuyOffer = buyOffers[0];
+      const bestSellOffer = sellOffers[0];
+      const bestBuy = bestBuyOffer?.price;
+      const bestSell = bestSellOffer?.price;
 
       if (!bestBuy || !bestSell || bestSell <= bestBuy) {
         return; // Spread is negative or zero (no maker/taker gap)
       }
+
+      const buyAdUrl = buildAlphaAdUrl(bestBuyOffer?.advNo);
+      const sellAdUrl = buildAlphaAdUrl(bestSellOffer?.advNo);
+      const buyAdvertiserUrl = buildAlphaAdvertiserUrl(bestBuyOffer?.advertiserNo);
+      const sellAdvertiserUrl = buildAlphaAdvertiserUrl(bestSellOffer?.advertiserNo);
+      const executionLinks = {
+        ...(bestBuyOffer?.advNo ? { buyAdvNo: bestBuyOffer.advNo } : {}),
+        ...(bestBuyOffer?.advertiserNo ? { buyAdvertiserNo: bestBuyOffer.advertiserNo } : {}),
+        ...(buyAdUrl ? { buyAdUrl } : {}),
+        ...(buyAdvertiserUrl ? { buyAdvertiserUrl } : {}),
+        ...(bestSellOffer?.advNo ? { sellAdvNo: bestSellOffer.advNo } : {}),
+        ...(bestSellOffer?.advertiserNo ? { sellAdvertiserNo: bestSellOffer.advertiserNo } : {}),
+        ...(sellAdUrl ? { sellAdUrl } : {}),
+        ...(sellAdvertiserUrl ? { sellAdvertiserUrl } : {}),
+      };
+      const rationaleLinks = [
+        buyAdUrl ? `[Abrir Compra](${buyAdUrl})` : null,
+        sellAdUrl ? `[Abrir Venta](${sellAdUrl})` : null,
+      ]
+        .filter((x): x is string => Boolean(x))
+        .join(' · ');
 
       // Calculate gross and net spread deducting canonical Maker fee (or 0.25% STANDARD fallback)
       const commissionPct = this.config.merchantLevel
@@ -236,7 +273,9 @@ export class AlphaWatcher {
           expectedProfitUsdt: Number(((ALPHA_TICKET_USDT * netSpreadPct) / 100).toFixed(2)),
           riskLevel: 'LOW',
           assignedOperatorName: 'Centinela Autónomo',
-          rationale: `El vigilante en segundo plano detectó un spread neto de ${netSpreadPct}% (Compra: ${bestBuy} VES, Venta: ${bestSell} VES) superando el umbral de ${this.config.minNetSpreadPct}%.`,
+          rationale:
+            `El vigilante en segundo plano detectó un spread neto de ${netSpreadPct}% (Compra: ${bestBuy} VES, Venta: ${bestSell} VES) superando el umbral de ${this.config.minNetSpreadPct}%.` +
+            (rationaleLinks ? ` Enlaces directos: ${rationaleLinks}` : ''),
           status: 'PROPOSED',
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -285,6 +324,7 @@ export class AlphaWatcher {
             plan,
             detectedAt: Date.now(),
             persisted: !isVetoed,
+            executionLinks,
             riskVerdict: {
               status: verdict.status,
               riskScore: verdict.riskScore,
@@ -304,9 +344,10 @@ export class AlphaWatcher {
               body: verdict.vetoReason ?? 'Criterios de seguridad institucional no superados.',
             }).show();
           } else {
+            const adHint = bestBuyOffer?.advNo ? ` · Ad #${bestBuyOffer.advNo}` : '';
             new Notification({
               title: `🚨 Oportunidad P2P Detectada (+${netSpreadPct}%)`,
-              body: `Spread neto viable: Compra @ ${bestBuy} | Venta @ ${bestSell}. Click para ver plan en Copiloto.`,
+              body: `Spread neto viable: Compra @ ${bestBuy} | Venta @ ${bestSell}${adHint}. Click para ver plan en Copiloto.`,
             }).show();
           }
         }

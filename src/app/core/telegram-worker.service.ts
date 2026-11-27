@@ -19,6 +19,8 @@ import {
   escapeMarkdownV2,
   formatRadarTelegramMessage,
   formatRadarAltaDemandaTelegramMessage,
+  buildRadarExecutionKeyboard,
+  buildHighDemandExecutionButtons,
   formatMacroTelegramMessage,
   formatBacktestTelegramMessage,
   formatRepriceTelegramMessage,
@@ -1075,7 +1077,7 @@ export class TelegramWorkerService implements OnDestroy {
           (notes.length > 0
             ? `\nℹ️ ${notes.map((note) => escapeMarkdownV2(note)).join('\nℹ️ ')}`
             : '');
-        await this.sendTelegramMessage(token, chatId, msg);
+        await this.sendTelegramMessage(token, chatId, msg, buildRadarExecutionKeyboard(rows));
         this.addLog({
           time: timeStr,
           command: dispatch.command ?? '/radar',
@@ -1108,21 +1110,23 @@ export class TelegramWorkerService implements OnDestroy {
         const msg = formatRadarAltaDemandaTelegramMessage(scan, params.bank);
 
         // Build interactive action keyboard if there's a recommended tier
-        let replyMarkup: TelegramInlineKeyboardMarkup | undefined = undefined;
+        const keyboardRows: TelegramInlineKeyboardMarkup['inline_keyboard'] = [];
         if (scan.bestOpportunityTier && scan.bestOpportunityTier.isActionable) {
           const buyP = scan.bestOpportunityTier.suggestedBuyPrice;
           const sellP = scan.bestOpportunityTier.suggestedSellPrice;
-          replyMarkup = {
-            inline_keyboard: [
-              [
-                {
-                  text: `⚡ Reprice Auto (Buy ${buyP} / Sell ${sellP})`,
-                  callback_data: `REPRICE_CONFIRM:${buyP.toFixed(2)}:${sellP.toFixed(2)}`,
-                },
-              ],
-            ],
-          };
+          keyboardRows.push([
+            {
+              text: `⚡ Reprice Auto (Buy ${buyP} / Sell ${sellP})`,
+              callback_data: `REPRICE_CONFIRM:${buyP.toFixed(2)}:${sellP.toFixed(2)}`,
+            },
+          ]);
         }
+        const deepLinkBtns = buildHighDemandExecutionButtons(scan);
+        if (deepLinkBtns.length > 0) {
+          keyboardRows.push(deepLinkBtns);
+        }
+        const replyMarkup: TelegramInlineKeyboardMarkup | undefined =
+          keyboardRows.length > 0 ? { inline_keyboard: keyboardRows } : undefined;
 
         await this.sendTelegramMessage(token, chatId, msg, replyMarkup);
         this.addLog({
@@ -1644,6 +1648,8 @@ export class TelegramWorkerService implements OnDestroy {
         volumeUsdt,
         spreadPct,
         merchantName: ask.merchantName,
+        ...(ask.advNo ? { advNo: ask.advNo } : {}),
+        ...(ask.advertiserNo ? { advertiserNo: ask.advertiserNo } : {}),
       });
     }
 

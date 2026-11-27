@@ -34,6 +34,10 @@ import {
   escapeMarkdownV2,
   formatRadarTelegramMessage,
   formatRadarAltaDemandaTelegramMessage,
+  buildRadarExecutionKeyboard,
+  buildHighDemandExecutionButtons,
+  resolveTelegramAdDeepLink,
+  parseBinanceP2pItems,
   formatMacroTelegramMessage,
   formatBacktestTelegramMessage,
   formatRepriceTelegramMessage,
@@ -244,27 +248,7 @@ async function fetchBinanceSide(
     const json = (await res.json()) as { data?: Array<{ adv: Record<string, unknown>; advertiser: Record<string, unknown> }> };
     if (!json.data || !Array.isArray(json.data)) return [];
 
-    return json.data.map((item) => {
-      const adv = item.adv;
-      const advr = item.advertiser;
-      return {
-        advNo: String(adv['advNo'] || ''),
-        price: Number(adv['price']) || 0,
-        surplusAmount: Number(adv['surplusAmount']) || 0,
-        minSingleTransAmount: Number(adv['minSingleTransAmount']) || 0,
-        maxSingleTransAmount: Number(adv['maxSingleTransAmount']) || 0,
-        tradeType,
-        asset,
-        fiatUnit: fiat,
-        payMethods: Array.isArray(adv['tradeMethods'])
-          ? adv['tradeMethods'].map((m: any) => m.tradeMethodName || m.identifier)
-          : [],
-        merchantName: String(advr['nickName'] || 'Anónimo'),
-        merchantOrders: Number(advr['monthOrderCount']) || 0,
-        merchantFinishRate: (Number(advr['monthFinishRate']) || 0) * 100,
-        isMerchant: advr['userType'] === 'merchant',
-      };
-    });
+    return parseBinanceP2pItems(json.data as Parameters<typeof parseBinanceP2pItems>[0]);
   } catch (err) {
     console.error(`[Daemon] Error fetching Binance ${tradeType}:`, err);
     return [];
@@ -1027,6 +1011,8 @@ Si algún dato no aparece, usa null o cadena vacía. Devuelve ÚNICAMENTE el JSO
         break;
       }
       const params: RadarScanParams = (dispatch.params as RadarScanParams) || {};
+      const topBuyOffer = depth.buyOffers[0];
+      const topSellOffer = depth.sellOffers[0];
       const rows: RadarGapRow[] = [
         {
           bank: 'Banesco',
@@ -1034,6 +1020,8 @@ Si algún dato no aparece, usa null o cadena vacía. Devuelve ÚNICAMENTE el JSO
           volumeUsdt: 1250,
           spreadPct: depth.spreadPct,
           maxTc: 20,
+          ...(topBuyOffer?.advNo ? { advNo: topBuyOffer.advNo } : {}),
+          ...(topBuyOffer?.advertiserNo ? { advertiserNo: topBuyOffer.advertiserNo } : {}),
         },
         {
           bank: 'BDV',
@@ -1041,10 +1029,12 @@ Si algún dato no aparece, usa null o cadena vacía. Devuelve ÚNICAMENTE el JSO
           volumeUsdt: 2400,
           spreadPct: depth.spreadPct,
           maxTc: 20,
+          ...(topSellOffer?.advNo ? { advNo: topSellOffer.advNo } : {}),
+          ...(topSellOffer?.advertiserNo ? { advertiserNo: topSellOffer.advertiserNo } : {}),
         },
       ];
       const msg = formatRadarTelegramMessage(rows, params);
-      await sendTelegramMessage(BOT_TOKEN, chatId, msg);
+      await sendTelegramMessage(BOT_TOKEN, chatId, msg, buildRadarExecutionKeyboard(rows));
       break;
     }
 
@@ -1055,7 +1045,9 @@ Si algún dato no aparece, usa null o cadena vacía. Devuelve ÚNICAMENTE el JSO
         stepVes: 0.01,
       });
       const msg = formatRadarAltaDemandaTelegramMessage(scan);
-      await sendTelegramMessage(BOT_TOKEN, chatId, msg);
+      const btns = buildHighDemandExecutionButtons(scan);
+      const kb = btns.length > 0 ? { inline_keyboard: [btns] } : undefined;
+      await sendTelegramMessage(BOT_TOKEN, chatId, msg, kb);
       break;
     }
 
@@ -1391,15 +1383,33 @@ async function startAlphaWatcher(): Promise<void> {
       // Proactive Alert when spread meets Golden Rule and throttle by 10 minutes
       if (netSpread >= MIN_NET_SPREAD_PCT && now - lastAlertTimestamp > 600_000) {
         lastAlertTimestamp = now;
+        const buyAdUrl = resolveTelegramAdDeepLink(depth.buyOffers[0]?.advNo);
+        const sellAdUrl = resolveTelegramAdDeepLink(depth.sellOffers[0]?.advNo);
+        const linkLines = [
+          buyAdUrl ? `• *Ad Compra:* \`${buyAdUrl}\`` : '',
+          sellAdUrl ? `• *Ad Venta:* \`${sellAdUrl}\`` : '',
+        ]
+          .filter(Boolean)
+          .join('\n');
+        const alertButtons = [
+          buyAdUrl ? { text: '⚡ Abrir Compra', url: buyAdUrl } : null,
+          sellAdUrl ? { text: '⚡ Abrir Venta', url: sellAdUrl } : null,
+        ].filter((b): b is { text: string; url: string } => Boolean(b));
         const alertMsg =
           `⚡ *OPORTUNIDAD DE ARBITRAJE DETECTADA POR CENTINELA VPS*\n\n` +
           `• *Spread Neto Estimado:* \`${netSpread.toFixed(2)}%\` \\(Regla de Oro \\>= ${MIN_NET_SPREAD_PCT.toFixed(2)}%\\)\n` +
-          `• *Compra (BUY):* \`${depth.bestBuyPrice.toFixed(2)}\` VES\n` +
-          `• *Venta (SELL):* \`${depth.bestSellPrice.toFixed(2)}\` VES\n` +
-          `• *Ruta:* Banesco / Pago Móvil\n\n` +
-          `_Enviá /heatmap para consultar la estacionalidad horaria o /status para libros en vivo\\._`;
+          `• *Compra \\(BUY\\):* \`${depth.bestBuyPrice.toFixed(2)}\` VES\n` +
+          `• *Venta \\(SELL\\):* \`${depth.bestSellPrice.toFixed(2)}\` VES\n` +
+          `• *Ruta:* Banesco / Pago Móvil\n` +
+          (linkLines ? `${linkLines}\n` : '') +
+          `\n_Enviá /heatmap para consultar la estacionalidad horaria o /status para libros en vivo\\._`;
 
-        await sendTelegramMessage(BOT_TOKEN, AUTHORIZED_CHAT_ID, alertMsg);
+        await sendTelegramMessage(
+          BOT_TOKEN,
+          AUTHORIZED_CHAT_ID,
+          alertMsg,
+          alertButtons.length > 0 ? { inline_keyboard: [alertButtons] } : undefined,
+        );
         console.log(`[Daemon] Alerta proactiva enviada: Spread Neto ${netSpread.toFixed(2)}%`);
       }
     } catch (err) {

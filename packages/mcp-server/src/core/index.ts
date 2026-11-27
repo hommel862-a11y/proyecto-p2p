@@ -886,8 +886,30 @@ const ORDERBOOK_CACHE_TTL_MS = 15_000;
 const ORDERBOOK_FETCH_TIMEOUT_MS = 10_000;
 const MAX_BINANCE_ROWS = 20;
 
+const BINANCE_EXECUTION_ID_RE = /^[A-Za-z0-9_-]{3,64}$/;
+
+export function buildBinanceAdDeepLinkUrl(advNo: unknown, locale = 'es-LA'): string | undefined {
+  if (typeof advNo !== 'string' && typeof advNo !== 'number') return undefined;
+  const clean = String(advNo).trim();
+  if (!BINANCE_EXECUTION_ID_RE.test(clean)) return undefined;
+  return `https://c2c.binance.com/${locale}/adv?code=${encodeURIComponent(clean)}`;
+}
+
+export function buildBinanceAdvertiserUrl(
+  advertiserNo: unknown,
+  locale = 'es-LA',
+): string | undefined {
+  if (typeof advertiserNo !== 'string') return undefined;
+  const clean = advertiserNo.trim();
+  if (!BINANCE_EXECUTION_ID_RE.test(clean)) return undefined;
+  return `https://p2p.binance.com/${locale}/advertiserDetail?advertiserNo=${encodeURIComponent(clean)}`;
+}
+
 export interface BinanceP2POffer {
   advNo: string;
+  advertiserNo?: string;
+  adUrl?: string;
+  advertiserUrl?: string;
   merchantName: string;
   price: number;
   availableCrypto: number;
@@ -944,6 +966,7 @@ interface RawBinanceC2cItem {
     maxSingleTransAmount?: unknown;
   };
   advertiser?: {
+    userNo?: unknown;
     nickName?: unknown;
     monthFinishRate?: unknown;
     monthOrderCount?: unknown;
@@ -997,8 +1020,19 @@ function parseBinanceC2cOffers(rawPayload: unknown): {
     const monthOrderCount =
       Number.isFinite(ordersRaw) && ordersRaw >= 0 ? Math.trunc(ordersRaw) : 0;
 
+    const advNo = String(item?.adv?.advNo ?? '').trim();
+    const advertiserNo =
+      typeof item?.advertiser?.userNo === 'string' && item.advertiser.userNo.trim().length > 0
+        ? item.advertiser.userNo.trim()
+        : undefined;
+    const adUrl = buildBinanceAdDeepLinkUrl(advNo);
+    const advertiserUrl = buildBinanceAdvertiserUrl(advertiserNo);
+
     offers.push({
-      advNo: String(item?.adv?.advNo ?? ''),
+      advNo,
+      ...(advertiserNo ? { advertiserNo } : {}),
+      ...(adUrl ? { adUrl } : {}),
+      ...(advertiserUrl ? { advertiserUrl } : {}),
       merchantName: String(item?.advertiser?.nickName ?? 'Anonymous'),
       price: roundMoney(price, 2),
       availableCrypto,
@@ -2794,6 +2828,7 @@ function compareOpportunitiesByNetSpread(
 
 export interface P2pOrderbookAdItem {
   advId: string;
+  advertiserNo?: string;
   merchantName: string;
   orderType: 'BUY' | 'SELL';
   price: number;
@@ -2806,6 +2841,9 @@ export interface P2pOrderbookAdItem {
 
 export interface SnipedOpportunityAlert {
   advId: string;
+  advertiserNo?: string;
+  adUrl?: string;
+  advertiserUrl?: string;
   merchantName: string;
   orderType: 'BUY' | 'SELL';
   adPrice: number;
@@ -2900,8 +2938,14 @@ export function evaluateSnipingOpportunity(
     riskRationale = 'Sin métodos de pago reconocidos explícitos.';
   }
 
+  const adUrl = buildBinanceAdDeepLinkUrl(ad.advId);
+  const advertiserUrl = buildBinanceAdvertiserUrl(ad.advertiserNo);
+
   return {
     advId: ad.advId,
+    ...(ad.advertiserNo ? { advertiserNo: ad.advertiserNo } : {}),
+    ...(adUrl ? { adUrl } : {}),
+    ...(advertiserUrl ? { advertiserUrl } : {}),
     merchantName: ad.merchantName,
     orderType: ad.orderType,
     adPrice: ad.price,

@@ -376,6 +376,13 @@ describe('AlphaWatcher — fetchBinanceP2pShared, filtro de calidad, conversión
     const plan = (db.saveStrategyPlan as ReturnType<typeof vi.fn>).mock.calls[0][0] as StrategyPlanRecord;
     // Qualified best buy = 88.00, qualified best sell = 89.35 -> 1.28% net spread (0.25% STANDARD fee)
     expect(plan.expectedNetSpreadPct).toBe(1.28);
+    expect(plan.rationale).toContain('https://c2c.binance.com/es-LA/adv?code=good-1');
+    expect(plan.rationale).toContain('https://c2c.binance.com/es-LA/adv?code=good-s1');
+    const ipcPayload = send.mock.calls.find(
+      (c) => c[0] === 'copilot:alpha-opportunity-detected',
+    )?.[1] as { executionLinks?: { buyAdUrl?: string; sellAdUrl?: string } };
+    expect(ipcPayload?.executionLinks?.buyAdUrl).toBe('https://c2c.binance.com/es-LA/adv?code=good-1');
+    expect(ipcPayload?.executionLinks?.sellAdUrl).toBe('https://c2c.binance.com/es-LA/adv?code=good-s1');
   });
 
   it('convierte el volumen y límite de tesorería VES a USDT usando la tasa viva antes del Gatekeeper', async () => {

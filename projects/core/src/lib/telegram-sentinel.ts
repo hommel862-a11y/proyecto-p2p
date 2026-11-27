@@ -461,6 +461,10 @@ export interface RadarGapRow {
   volumeUsdt: number;
   spreadPct: number;
   merchantName?: string;
+  advNo?: string;
+  advertiserNo?: string;
+  adUrl?: string;
+  advertiserUrl?: string;
 }
 
 /** Filters echoed back in the radar report so the operator sees what was applied. */
@@ -531,6 +535,64 @@ function formatCodeSpan(value: string): string {
   return escapeMarkdownV2(safe);
 }
 
+const BINANCE_LINK_ID_RE = /^[A-Za-z0-9_-]{3,64}$/;
+
+export function resolveTelegramAdDeepLink(advNo?: string, explicitUrl?: string): string | undefined {
+  if (typeof explicitUrl === 'string' && explicitUrl.startsWith('https://')) {
+    return explicitUrl.trim();
+  }
+  const clean = advNo?.trim() ?? '';
+  if (!BINANCE_LINK_ID_RE.test(clean)) return undefined;
+  return `https://c2c.binance.com/es-LA/adv?code=${encodeURIComponent(clean)}`;
+}
+
+export function resolveTelegramAdvertiserDeepLink(
+  advertiserNo?: string,
+  explicitUrl?: string,
+): string | undefined {
+  if (typeof explicitUrl === 'string' && explicitUrl.startsWith('https://')) {
+    return explicitUrl.trim();
+  }
+  const clean = advertiserNo?.trim() ?? '';
+  if (!BINANCE_LINK_ID_RE.test(clean)) return undefined;
+  return `https://p2p.binance.com/es-LA/advertiserDetail?advertiserNo=${encodeURIComponent(clean)}`;
+}
+
+function formatUrlCodeSpan(url: string): string {
+  return url.replace(/[`\\]/g, '');
+}
+
+export function buildRadarExecutionKeyboard(
+  rows: readonly RadarGapRow[],
+): TelegramInlineKeyboardMarkup | undefined {
+  const buttons: TelegramInlineKeyboardButton[] = [];
+  for (const row of rows.slice(0, 3)) {
+    const adUrl = resolveTelegramAdDeepLink(row.advNo, row.adUrl);
+    if (adUrl) {
+      buttons.push({ text: `⚡ Abrir ${row.bank}`, url: adUrl });
+    }
+  }
+  if (buttons.length === 0) return undefined;
+  return { inline_keyboard: [buttons] };
+}
+
+export function buildHighDemandExecutionButtons(
+  scan: import('./market-scanner').HighDemandScanResult,
+): TelegramInlineKeyboardButton[] {
+  const best = scan.bestOpportunityTier;
+  if (!best) return [];
+  const buttons: TelegramInlineKeyboardButton[] = [];
+  const buyUrl = resolveTelegramAdDeepLink(best.bestCompetitorBuyAdvNo);
+  const sellUrl = resolveTelegramAdDeepLink(best.bestCompetitorSellAdvNo);
+  if (buyUrl) {
+    buttons.push({ text: '⚡ Abrir Compra Top', url: buyUrl });
+  }
+  if (sellUrl) {
+    buttons.push({ text: '⚡ Abrir Venta Top', url: sellUrl });
+  }
+  return buttons;
+}
+
 /**
  * Formats the gap radar: ranked listing, top gap highlighted, filters echoed back.
  */
@@ -572,11 +634,18 @@ ${header}
       const merchantTag = row.merchantName
         ? `\n   • Vendedor: \`${formatCodeSpan(row.merchantName)}\``
         : '';
+      const adUrl = resolveTelegramAdDeepLink(row.advNo, row.adUrl);
+      const advUrl = resolveTelegramAdvertiserDeepLink(row.advertiserNo, row.advertiserUrl);
+      const linkLine = adUrl
+        ? `\n   • Anuncio: \`${formatUrlCodeSpan(adUrl)}\``
+        : advUrl
+          ? `\n   • Perfil: \`${formatUrlCodeSpan(advUrl)}\``
+          : '';
       return `${index + 1}\\. *${formatCodeSpan(bank)}*${marker}
    • Precio: \`${formatMetric(row.price)}\`${merchantTag}
    • Tope TC: \`${formatCount(row.maxTc)}\`
    • Volumen: \`${formatMetric(row.volumeUsdt, 0)} USDT\`
-   • Spread: \`${formatMetric(row.spreadPct)}%\``;
+   • Spread: \`${formatMetric(row.spreadPct)}%\`${linkLine}`;
     })
     .join('\n\n');
 
@@ -618,12 +687,19 @@ ${header}
         : ` \\(Comp\\.: ${formatMetric(t.bestCompetitorSellPrice)}\\)`;
       const netSpreadSign = t.netSpreadPct >= 0 ? '+' : '';
 
+      const buyUrl = resolveTelegramAdDeepLink(t.bestCompetitorBuyAdvNo);
+      const sellUrl = resolveTelegramAdDeepLink(t.bestCompetitorSellAdvNo);
+      const linksTag = [
+        buyUrl ? `\n   • Link Compra: \`${formatUrlCodeSpan(buyUrl)}\`` : '',
+        sellUrl ? `\n   • Link Venta: \`${formatUrlCodeSpan(sellUrl)}\`` : '',
+      ].join('');
+
       return `${icon} *Tramo: ${t.tierUsdt.toLocaleString('en-US')} USDT* \\(≈ ${formatMetric(t.tierVes)} Bs\\)${bestTag}
    • Compra Maker: \`${formatPlainMetric(t.suggestedBuyPrice)} Bs\`${buyCompTag}
    • Venta Maker: \`${formatPlainMetric(t.suggestedSellPrice)} Bs\`${sellCompTag}
    • Spread Bruto: \`${formatPlainMetric(t.grossSpreadPct)}%\` \\(Δ ${formatMetric(t.grossSpreadVes)} Bs\\)
    • ⚡ *Margen Neto Real:* \`${netSpreadSign}${formatPlainMetric(t.netSpreadPct)}%\` \\(Neto: \`${formatPlainMetric(t.netProfitUsdtPerCycle)} USDT\`\\)
-   • Liquidez Calificada: \`${t.qualifiedBuyOffersCount} buys / ${t.qualifiedSellOffersCount} sells\``;
+   • Liquidez Calificada: \`${t.qualifiedBuyOffersCount} buys / ${t.qualifiedSellOffersCount} sells\`${linksTag}`;
     })
     .join('\n\n');
 

@@ -10,6 +10,7 @@ import { AnalyzeOrderbookPressureInputSchema } from '../schemas/index.js';
 
 interface MockBinanceLevel {
   advNo: string;
+  advertiserNo?: string;
   merchant: string;
   price: number;
   availableCrypto: number;
@@ -31,6 +32,7 @@ function buildBinanceC2cPayload(levels: MockBinanceLevel[], code = '000000') {
         maxSingleTransAmount: String(lvl.maxFiat ?? Math.round(lvl.availableCrypto * lvl.price)),
       },
       advertiser: {
+        ...(lvl.advertiserNo ? { userNo: lvl.advertiserNo } : {}),
         nickName: lvl.merchant,
         monthFinishRate: lvl.finishRate ?? 0.99,
         monthOrderCount: lvl.orderCount ?? 250,
@@ -78,12 +80,14 @@ describe('MCP Microstructure Live — sin mocks estáticos 79.2/79.8 ni 15000/12
 
       const asks: MockBinanceLevel[] = Array.from({ length: 20 }, (_, i) => ({
         advNo: `ASK-${i + 1}`,
+        advertiserNo: `user-ask-${i + 1}`,
         merchant: `AskMerchant_${i + 1}`,
         price: Number((90.1 + i * 0.05).toFixed(2)),
         availableCrypto: 1000,
       }));
       const bids: MockBinanceLevel[] = Array.from({ length: 20 }, (_, i) => ({
         advNo: `BID-${i + 1}`,
+        advertiserNo: `user-bid-${i + 1}`,
         merchant: `BidMerchant_${i + 1}`,
         price: Number((88.9 - i * 0.05).toFixed(2)),
         availableCrypto: 800,
@@ -99,6 +103,11 @@ describe('MCP Microstructure Live — sin mocks estáticos 79.2/79.8 ni 15000/12
       });
 
       expect(first.provenance).toBe('LIVE');
+      expect(first.sellOffers[0]?.advertiserNo).toBe('user-ask-1');
+      expect(first.sellOffers[0]?.adUrl).toBe('https://c2c.binance.com/es-LA/adv?code=ASK-1');
+      expect(first.sellOffers[0]?.advertiserUrl).toBe(
+        'https://p2p.binance.com/es-LA/advertiserDetail?advertiserNo=user-ask-1',
+      );
       expect(first.actionable).toBe(true);
       expect(first.topBuyPrice).toBe(88.9);
       expect(first.topSellPrice).toBe(90.1);
@@ -343,6 +352,38 @@ describe('MCP Microstructure Live — sin mocks estáticos 79.2/79.8 ni 15000/12
       expect(res.marketRegime).toBe('UNAVAILABLE');
       expect(JSON.stringify(res)).not.toContain('15000');
       expect(JSON.stringify(res)).not.toContain('12000');
+    });
+  });
+
+  describe('audit_distressed_liquidity_sniper deep-links', () => {
+    it('attaches direct adUrl and advertiserUrl on sniped distressed opportunities', async () => {
+      const { auditDistressedLiquiditySniperTool } = await import('./audit_distressed_liquidity_sniper.js');
+      const res = auditDistressedLiquiditySniperTool.execute({
+        ads: [
+          {
+            advId: '11218246497340923904',
+            advertiserNo: 's8415f1294ebc335a98b50b6b5b7c5dea',
+            merchantName: 'PanicSeller',
+            orderType: 'SELL',
+            price: 88.0,
+            availableAmountCrypto: 500,
+            minLimitFiat: 1000,
+            maxLimitFiat: 44000,
+            paymentMethods: ['Banesco'],
+          },
+        ],
+        fairMarketRate: 92.0,
+        minDislocationPct: 1.0,
+        maxTakerFeePct: 0.1,
+      });
+
+      expect(res.snipingOpportunitiesCount).toBe(1);
+      expect(res.snipingOpportunities[0]?.adUrl).toBe(
+        'https://c2c.binance.com/es-LA/adv?code=11218246497340923904',
+      );
+      expect(res.snipingOpportunities[0]?.advertiserUrl).toBe(
+        'https://p2p.binance.com/es-LA/advertiserDetail?advertiserNo=s8415f1294ebc335a98b50b6b5b7c5dea',
+      );
     });
   });
 });
