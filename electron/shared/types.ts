@@ -581,6 +581,39 @@ export interface P2PIpcChannels {
     request: BinanceSyncOrdersRequest | undefined;
     response: BinanceSyncedC2cOrderDto[];
   };
+  'p2p:binance-merchant-sapi': {
+    request: BinanceMerchantSapiRequest;
+    response: BinanceMerchantSapiResult;
+  };
+}
+
+export type BinanceMerchantSapiAction = 'LIST_ADS' | 'UPDATE_AD' | 'POST_AD' | 'UPDATE_STATUS';
+
+export interface BinanceMerchantSapiRequest {
+  action: BinanceMerchantSapiAction;
+  payload?: Record<string, unknown>;
+}
+
+export type BinanceMerchantSapiErrorCode =
+  | 'KILLSWITCH_ACTIVE'
+  | 'MERCHANT_TIER_REQUIRED_FOR_WRITE_SAPI'
+  | 'CREDENTIALS_MISSING'
+  | 'INVALID_REQUEST'
+  | 'PROXY_TUNNEL_ERROR'
+  | 'HTTP_ERROR'
+  | 'BINANCE_API_ERROR'
+  | 'NETWORK_ERROR';
+
+export interface BinanceMerchantSapiResult {
+  ok: boolean;
+  action: BinanceMerchantSapiAction;
+  endpoint: string;
+  code?: BinanceMerchantSapiErrorCode | string;
+  statusCode?: number;
+  merchantRef?: string;
+  data?: unknown;
+  error?: string;
+  viaProxy?: boolean;
 }
 
 export type BinanceMerchantLevelDto = 'STANDARD' | 'BRONZE' | 'SILVER' | 'GOLD';
@@ -1376,6 +1409,7 @@ export interface ElectronAPI {
     saveConfig(req: BinanceVaultSaveRequest): Promise<BinanceVaultStatusDto>;
     clearConfig(): Promise<BinanceVaultStatusDto>;
     syncOrders(req?: BinanceSyncOrdersRequest): Promise<BinanceSyncedC2cOrderDto[]>;
+    invokeMerchantSapi(req: BinanceMerchantSapiRequest): Promise<BinanceMerchantSapiResult>;
   };
 }
 

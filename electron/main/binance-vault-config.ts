@@ -109,9 +109,14 @@ export function redactSensitiveSecrets(
   secrets: ReadonlyArray<string | null | undefined> = [],
 ): string {
   let out = text;
-  // Strip any inline URL userinfo (user:pass@) and HMAC signatures first
+  // Strip any inline URL userinfo (user:pass@), signatures, and auth headers (plain or JSON-quoted)
   out = out.replace(/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)([^@\s/]+)@/g, '$1[redacted]@');
-  out = out.replace(/([?&]signature=)[a-fA-F0-9]+/g, '$1[redacted]');
+  out = out.replace(/(\bsignature=)[a-fA-F0-9]+/gi, '$1[redacted]');
+  out = out.replace(/(["']?x-mbx-apikey["']?\s*[:=]\s*["']?)[^\s"',}]+/gi, '$1[redacted]');
+  out = out.replace(
+    /(["']?proxy-authorization["']?\s*[:=]\s*["']?(?:basic\s+)?)[^\s"',}]+/gi,
+    '$1[redacted]',
+  );
   for (const s of secrets) {
     if (typeof s === 'string' && s.trim().length >= 4) {
       out = out.split(s.trim()).join('[redacted]');
@@ -394,7 +399,7 @@ export async function syncBinanceC2cOrdersFromVault(
       return await response.json();
     } catch (err) {
       const rawMsg = err instanceof Error ? err.message : String(err);
-      throw new Error(redactSensitiveSecrets(rawMsg, [apiKey, apiSecret]), { cause: err });
+      throw new Error(redactSensitiveSecrets(rawMsg, [apiKey, apiSecret]));
     }
   };
 

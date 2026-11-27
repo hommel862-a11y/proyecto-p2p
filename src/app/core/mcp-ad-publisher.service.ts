@@ -2,6 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { McpService } from './mcp.service';
 import { ToastService } from './toast.service';
 import { DecisionJournalService } from './decision-journal.service';
+import { BinanceAccountProfileService } from './binance-account-profile.service';
 import {
   registerRepricerPublisher,
   unregisterRepricerPublisher,
@@ -9,6 +10,10 @@ import {
   type RepricerPublishRequest,
 } from './binance-repricer.service';
 import type { DecisionSide } from '@p2p/core';
+import type {
+  BinanceMerchantSapiRequest,
+  BinanceMerchantSapiResult,
+} from '../../../electron/shared/types';
 
 export interface McpPublisherConfig {
   dryRun?: boolean;
@@ -86,6 +91,7 @@ interface PublishOutcome {
 export class McpAdPublisherService implements RepricerAdPublisher {
   private readonly mcp = inject(McpService);
   private readonly toast = inject(ToastService);
+  private readonly accountProfile = inject(BinanceAccountProfileService, { optional: true });
 
   /**
    * Journal de resultados. OpcIONAL a propósito, y por la misma razón que en el
@@ -159,6 +165,87 @@ export class McpAdPublisherService implements RepricerAdPublisher {
     return !this.isDryRun() && this.mcp.hasNativeTransport();
   }
 
+  private getMerchantSapiInvoker():
+    | ((req: BinanceMerchantSapiRequest) => Promise<BinanceMerchantSapiResult>)
+    | null {
+    if (typeof window === 'undefined') return null;
+    const fn = (
+      window as {
+        electron?: {
+          binanceVault?: {
+            invokeMerchantSapi?: (
+              req: BinanceMerchantSapiRequest,
+            ) => Promise<BinanceMerchantSapiResult>;
+          };
+        };
+      }
+    ).electron?.binanceVault?.invokeMerchantSapi;
+    return typeof fn === 'function' ? fn : null;
+  }
+
+  private hasVerifiedMerchantSapi(): boolean {
+    return (
+      !this.isDryRun() &&
+      this.exchange() === 'BINANCE_P2P' &&
+      Boolean(this.accountProfile?.canWriteMerchantApi()) &&
+      this.getMerchantSapiInvoker() !== null
+    );
+  }
+
+  private async publishSideWithOptionalMerchantSapi(params: {
+    readonly side: DecisionSide;
+    readonly adId: string;
+    readonly newPrice: number;
+    readonly mcpData: PublishToolResult | null;
+    readonly decisionId: number | undefined;
+  }): Promise<{ ok: boolean; data: PublishToolResult | null }> {
+    const invoker = this.hasVerifiedMerchantSapi() ? this.getMerchantSapiInvoker() : null;
+    if (!invoker) {
+      return { ok: true, data: params.mcpData };
+    }
+
+    const sapiRes = await invoker({
+      action: 'UPDATE_AD',
+      payload: {
+        advNo: params.adId,
+        price: params.newPrice,
+        side: params.side,
+      },
+    });
+
+    if (!sapiRes.ok || !sapiRes.merchantRef) {
+      const err = sapiRes.error || 'Binance Merchant SAPI rechazó la actualización del anuncio.';
+      this.lastRejectionError.set(err);
+      this.toast.error(err, 'Binance Merchant SAPI');
+      await this.recordPublishAttempt({
+        side: params.side,
+        decisionId: params.decisionId,
+        success: false,
+        detail: `Rechazo Binance Merchant SAPI: ${err}`,
+        outcome: {
+          merchantRef: null,
+          merchantConfirmed: false,
+          localReceipt: params.mcpData?.auditTrail?.signature ?? null,
+        },
+      });
+      return { ok: false, data: null };
+    }
+
+    return {
+      ok: true,
+      data: {
+        ...(params.mcpData ?? {}),
+        merchantConfirmed: true,
+        simulated: false,
+        auditTrail: {
+          ...(params.mcpData?.auditTrail ?? {}),
+          signature: params.mcpData?.auditTrail?.signature ?? sapiRes.merchantRef,
+          merchantRef: sapiRes.merchantRef,
+        },
+      },
+    };
+  }
+
   /**
    * Enables the MCP Ad Publisher and registers it in the repricer engine.
    * This officially transitions BinanceRepricerService into PUBLISHING mode.
@@ -183,11 +270,13 @@ export class McpAdPublisherService implements RepricerAdPublisher {
       unregisterRepricerPublisher();
     }
 
-    const mode = registrable
-      ? 'DESPACHO MCP (sin API merchant)'
-      : this.isDryRun()
-        ? 'SIMULACIÓN (Dry-Run)'
-        : 'SIMULACIÓN (sin puente MCP nativo)';
+    const mode = this.hasVerifiedMerchantSapi()
+      ? 'ESCRITURA MERCHANT SAPI FIRMADA'
+      : registrable
+        ? 'DESPACHO MCP (sin API merchant)'
+        : this.isDryRun()
+          ? 'SIMULACIÓN (Dry-Run)'
+          : 'SIMULACIÓN (sin puente MCP nativo)';
     this.toast.success(
       `Publicador MCP activado en modo ${mode} con guardarraíles anti-fat-finger (${this.maxDeviationPct()}% máx desvío).`,
       'P2P Ad Automaker MCP',
@@ -263,10 +352,21 @@ export class McpAdPublisherService implements RepricerAdPublisher {
           return false;
         }
 
+        const buySapi = await this.publishSideWithOptionalMerchantSapi({
+          side: 'BUY',
+          adId: this.buyAdId(),
+          newPrice: request.buyPrice,
+          mcpData: buyData,
+          decisionId: request.decisionIds?.['BUY'],
+        });
+        if (!buySapi.ok) {
+          return false;
+        }
+
         // Qué se puede afirmar de esta respuesta. Se calcula UNA vez y se pasa
         // al journal, para que la etiqueta del origen, el `externalRef` y la
         // señal de UI no puedan discrepar entre sí.
-        const buyOutcome = this.judgeResponse(buyData);
+        const buyOutcome = this.judgeResponse(buySapi.data);
         if (buyOutcome.merchantConfirmed) {
           this.lastPublishedSignature.set(buyOutcome.merchantRef);
         }
@@ -309,7 +409,18 @@ export class McpAdPublisherService implements RepricerAdPublisher {
           return false;
         }
 
-        const sellOutcome = this.judgeResponse(sellData);
+        const sellSapi = await this.publishSideWithOptionalMerchantSapi({
+          side: 'SELL',
+          adId: this.sellAdId(),
+          newPrice: request.sellPrice,
+          mcpData: sellData,
+          decisionId: request.decisionIds?.['SELL'],
+        });
+        if (!sellSapi.ok) {
+          return false;
+        }
+
+        const sellOutcome = this.judgeResponse(sellSapi.data);
         if (sellOutcome.merchantConfirmed) {
           this.lastPublishedSignature.set(sellOutcome.merchantRef);
         }

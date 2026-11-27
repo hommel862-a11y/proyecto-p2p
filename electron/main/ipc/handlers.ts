@@ -6,6 +6,8 @@ import {
   ARM_WORKSPACES,
   type BinanceDockOpenRequest,
   type BinanceDockStateDto,
+  type BinanceMerchantSapiRequest,
+  type BinanceMerchantSapiResult,
   type BinanceSyncOrdersRequest,
   type BinanceSyncedC2cOrderDto,
   type BinanceVaultSaveRequest,
@@ -63,6 +65,7 @@ import {
   saveBinanceVaultConfig,
   syncBinanceC2cOrdersFromVault,
 } from '../binance-vault-config';
+import { executeBinanceMerchantSapi } from '../binance-merchant-sapi';
 import { ClipboardWatcherService } from '../services/clipboard-watcher';
 import { createNodeExecutor, resolveAppRoot, runBacktest } from '../services/backtest-runner';
 import {
@@ -2149,6 +2152,20 @@ export function registerIpcHandlers(): void {
     ): Promise<BinanceSyncedC2cOrderDto[]> => {
       return syncBinanceC2cOrdersFromVault(db, req, {
         fetchImpl: (url, init) => net.fetch(url, init),
+      });
+    },
+  );
+
+  ipcMain.removeHandler('p2p:binance-merchant-sapi');
+  ipcMain.handle(
+    'p2p:binance-merchant-sapi',
+    async (
+      _event: IpcMainInvokeEvent,
+      req: BinanceMerchantSapiRequest,
+    ): Promise<BinanceMerchantSapiResult> => {
+      return executeBinanceMerchantSapi(db, req, {
+        fetchImpl: (url, init) => net.fetch(url, init),
+        isKillswitchActive: () => killswitchState.isTriggered,
       });
     },
   );

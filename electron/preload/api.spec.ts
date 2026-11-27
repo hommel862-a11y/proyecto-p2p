@@ -734,6 +734,7 @@ describe('Electron preload bridge (secure IPC)', () => {
     await api.binanceVault.saveConfig({ merchantLevel: 'GOLD', apiKey: 'k', apiSecret: 's' });
     await api.binanceVault.clearConfig();
     await api.binanceVault.syncOrders({ rows: 50 });
+    await api.binanceVault.invokeMerchantSapi({ action: 'UPDATE_AD', payload: { advNo: '123', price: 93 } });
 
     expect(calls).toEqual([
       { channel: 'p2p:binance-config-get', args: [] },
@@ -743,6 +744,10 @@ describe('Electron preload bridge (secure IPC)', () => {
       },
       { channel: 'p2p:binance-config-clear', args: [] },
       { channel: 'p2p:binance-sync-orders', args: [{ rows: 50 }] },
+      {
+        channel: 'p2p:binance-merchant-sapi',
+        args: [{ action: 'UPDATE_AD', payload: { advNo: '123', price: 93 } }],
+      },
     ]);
   });
 });
