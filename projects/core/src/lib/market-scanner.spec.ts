@@ -179,4 +179,42 @@ describe('Market Scanner: Radar de Alta Demanda (Core)', () => {
     expect(tier1k?.isActionable).toBe(true);
     expect(tier1k?.netSpreadPct).toBeGreaterThan(0.5);
   });
+
+  it('preserves leading competitor advNo and advertiserNo on TierOpportunityRow', () => {
+    const depth: BinanceP2pMarketDepth = {
+      asset: 'USDT',
+      fiat: 'VES',
+      bestBuyPrice: 79.45,
+      bestSellPrice: 78.4,
+      spreadVes: -1.05,
+      spreadPct: -1.32,
+      updatedAt: new Date().toISOString(),
+      buyOffers: [
+        {
+          ...mockOffer(79.45, 5000, 300000, 98, 400, 'Banesco'),
+          advNo: '11218246497340923904',
+          advertiserNo: 'usrSellLeader1',
+        },
+      ],
+      sellOffers: [
+        {
+          ...mockOffer(78.4, 5000, 300000, 98, 400, 'Banesco'),
+          advNo: '11218246497340923999',
+          advertiserNo: 'usrBuyLeader1',
+        },
+      ],
+    };
+
+    const result = computeHighDemandScan(depth, {
+      merchantLevel: 'STANDARD',
+      bankFilter: 'Banesco',
+      bookOrientation: 'BINANCE_TAKER',
+    });
+
+    const tier1k = result.tiers.find((t) => t.tierUsdt === 1000);
+    expect(tier1k?.bestCompetitorBuyAdvNo).toBe('11218246497340923999');
+    expect(tier1k?.bestCompetitorBuyAdvertiserNo).toBe('usrBuyLeader1');
+    expect(tier1k?.bestCompetitorSellAdvNo).toBe('11218246497340923904');
+    expect(tier1k?.bestCompetitorSellAdvertiserNo).toBe('usrSellLeader1');
+  });
 });

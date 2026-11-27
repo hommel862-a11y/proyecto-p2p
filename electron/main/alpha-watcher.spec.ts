@@ -120,7 +120,7 @@ describe('AlphaWatcher — veto institucional antes de persistir (ODD T3 / C1)',
     const persisted = (db.saveStrategyPlan as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as StrategyPlanRecord;
     expect(persisted.status).toBe('PROPOSED');
-    expect(persisted.expectedNetSpreadPct).toBe(1.18);
+    expect(persisted.expectedNetSpreadPct).toBe(1.28);
 
     const payload = send.mock.calls[0] as [string, Record<string, unknown>];
     expect(payload[0]).toBe('copilot:alpha-opportunity-detected');
@@ -195,10 +195,10 @@ describe('AlphaWatcher — veto institucional antes de persistir (ODD T3 / C1)',
   });
 
   it('VETEA por regla de oro cuando el umbral operativo queda bajo el mínimo institucional', async () => {
-    // 88.00 -> 88.66 is a 0.40% net spread: above the (mis)configured 0.30% watcher
-    // threshold, below the 0.50% institutional floor.
+    // 88.00 -> 88.58 is a 0.41% net spread (with 0.25% STANDARD fee): above the (mis)configured
+    // 0.30% watcher threshold, below the 0.50% institutional floor.
     setTreasurySnapshot(buildSnapshot());
-    stubOrderbook('88.00', '88.66');
+    stubOrderbook('88.00', '88.58');
 
     const watcher = buildWatcher();
     watcher.setConfig({ minNetSpreadPct: 0.3 });
@@ -374,8 +374,8 @@ describe('AlphaWatcher — fetchBinanceP2pShared, filtro de calidad, conversión
     expect(fetchMock).not.toHaveBeenCalled();
     expect(db.saveStrategyPlan).toHaveBeenCalledTimes(1);
     const plan = (db.saveStrategyPlan as ReturnType<typeof vi.fn>).mock.calls[0][0] as StrategyPlanRecord;
-    // Qualified best buy = 88.00, qualified best sell = 89.35 -> 1.18% net spread
-    expect(plan.expectedNetSpreadPct).toBe(1.18);
+    // Qualified best buy = 88.00, qualified best sell = 89.35 -> 1.28% net spread (0.25% STANDARD fee)
+    expect(plan.expectedNetSpreadPct).toBe(1.28);
   });
 
   it('convierte el volumen y límite de tesorería VES a USDT usando la tasa viva antes del Gatekeeper', async () => {

@@ -30,8 +30,8 @@ const MIN_QUALIFIED_FINISH_RATE_PCT = 90;
 const MIN_QUALIFIED_ORDER_COUNT = 10;
 const MAX_MEDIAN_DEVIATION_RATIO = 0.3;
 
-/** Default round-trip/single-leg fallback commission in %, overridden when `merchantLevel` is set. */
-const BINANCE_P2P_COMMISSION_PCT = 0.35;
+/** Default single-leg Maker fallback commission in % (`STANDARD`), overridden when `merchantLevel` is set. */
+const BINANCE_P2P_COMMISSION_PCT = 0.25;
 const ALPHA_MAKER_FEE_PCT: Record<'STANDARD' | 'BRONZE' | 'SILVER' | 'GOLD', number> = {
   STANDARD: 0.25,
   BRONZE: 0.2,
@@ -215,7 +215,7 @@ export class AlphaWatcher {
         return; // Spread is negative or zero (no maker/taker gap)
       }
 
-      // Calculate gross and net spread deducting canonical Maker fee (or 0.35% default fallback)
+      // Calculate gross and net spread deducting canonical Maker fee (or 0.25% STANDARD fallback)
       const commissionPct = this.config.merchantLevel
         ? ALPHA_MAKER_FEE_PCT[this.config.merchantLevel]
         : BINANCE_P2P_COMMISSION_PCT;
@@ -249,6 +249,7 @@ export class AlphaWatcher {
           grossSpreadPct,
           netSpreadPct,
           liveMidRateVes,
+          commissionPct,
         );
         const isVetoed = verdict.status === 'VETOED';
 
@@ -350,6 +351,7 @@ export class AlphaWatcher {
     grossSpreadPct: number,
     netSpreadPct: number,
     liveRateVesPerUsdt: number,
+    commissionPct: number,
   ): RiskVerdict {
     const snapshot = getTreasurySnapshot();
     const treasuryContext: TreasuryRiskContext | null = snapshot
@@ -370,7 +372,7 @@ export class AlphaWatcher {
       rationale: plan.rationale,
       mathematicalValidation: {
         grossSpreadPct,
-        estimatedFeesPct: BINANCE_P2P_COMMISSION_PCT,
+        estimatedFeesPct: commissionPct,
         netSpreadPct,
         meetsGoldenRule: netSpreadPct >= GOLDEN_RULE_MIN_NET_SPREAD_PCT,
       },

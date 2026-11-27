@@ -1387,7 +1387,7 @@ export class TelegramWorkerService implements OnDestroy {
               buyPrice: p.bestBuyPrice,
               sellPrice: p.bestSellPrice,
               grossSpreadPct: gross,
-              netSpreadPct: gross - 0.35,
+              netSpreadPct: gross - 0.25,
             };
           });
         const matrix = computeHeatmapMatrix(ticks);

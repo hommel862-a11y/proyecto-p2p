@@ -458,13 +458,14 @@ export function buildCleanRadarBook(
   const merchantWallPct =
     marketWindow.length > 0 ? Math.round((merchantCount / marketWindow.length) * 100) : 0;
 
-  // Canonical MakerMerchantLevel fee parity (when provided), preserving legacy 5-arg tier behavior
+  // Canonical MakerMerchantLevel fee parity. Without an explicit level the legacy tier maps to
+  // the canonical schedule: UNVERIFIED = STANDARD (0.25%), VERIFIED = BRONZE entry tier (0.20%).
   const merchantLevel = options?.merchantLevel;
   const makerFeePct = merchantLevel
     ? RADAR_MERCHANT_LEVEL_FEE_PCT[merchantLevel]
     : userTier === 'VERIFIED'
-      ? 0.10
-      : 0.20;
+      ? RADAR_MERCHANT_LEVEL_FEE_PCT.BRONZE
+      : RADAR_MERCHANT_LEVEL_FEE_PCT.STANDARD;
   const takerFeePct = 0.0;
   const isHybridEligible = merchantLevel ? merchantLevel === 'STANDARD' : userTier === 'UNVERIFIED';
 

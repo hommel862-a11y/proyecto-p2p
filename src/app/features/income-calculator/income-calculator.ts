@@ -21,6 +21,7 @@ import {
   computeFifoAccounting,
   computeDashboard,
   VENEZUELAN_BANK_FEES,
+  MAKER_FEE_RATES,
   type BankCode,
   type P2PRole,
   type ArbitrageCycleResult,
@@ -204,17 +205,7 @@ export class IncomeCalculator implements OnInit, OnDestroy {
   );
 
   readonly makerFeeRate = computed<number>(() => {
-    switch (this.merchantLevel()) {
-      case 'GOLD':
-        return 0.00125;
-      case 'SILVER':
-        return 0.00175;
-      case 'BRONZE':
-        return 0.002;
-      case 'STANDARD':
-      default:
-        return 0.0025;
-    }
+    return MAKER_FEE_RATES[this.merchantLevel()] ?? MAKER_FEE_RATES.STANDARD;
   });
 
   readonly makerFeePct = computed<number>(() => Number((this.makerFeeRate() * 100).toFixed(3)));

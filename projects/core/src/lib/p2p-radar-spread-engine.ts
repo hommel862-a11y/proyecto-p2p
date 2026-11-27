@@ -65,6 +65,14 @@ export interface ArbitrageRoute {
   readonly optimalHybridNetProfitUsdt?: number;
   readonly sourceMerchantWallPct?: number;
   readonly targetMerchantWallPct?: number;
+  /** Top clean ad of the SELL leg (operator sells USDT into it) for 1-click execution. */
+  readonly sellLegAdvNo?: string;
+  readonly sellLegAdvertiserNo?: string;
+  readonly sellLegNickName?: string;
+  /** Top clean ad of the BUY leg (operator buys USDT from it) for 1-click execution. */
+  readonly buyLegAdvNo?: string;
+  readonly buyLegAdvertiserNo?: string;
+  readonly buyLegNickName?: string;
 }
 
 export interface MatrixScanOptions {
@@ -90,12 +98,12 @@ export interface MatrixScanResult {
 }
 
 /**
- * Standard Maker fee percentages by user tier.
- * Verified Merchants typically get preferred 0.20%, unverified standard is 0.35%.
+ * Legacy tier fallback (used only when no MakerMerchantLevel is supplied), aligned with the
+ * canonical MAKER_FEE_RATES: UNVERIFIED = STANDARD (0.25%), VERIFIED = BRONZE entry tier (0.20%).
  */
 export const DEFAULT_MAKER_FEES_PCT: Record<P2PUserTier, number> = {
-  VERIFIED: 0.2,
-  UNVERIFIED: 0.35,
+  VERIFIED: Math.round(MAKER_FEE_RATES.BRONZE * 100000) / 1000,
+  UNVERIFIED: Math.round(MAKER_FEE_RATES.STANDARD * 100000) / 1000,
 };
 
 /**
@@ -276,8 +284,16 @@ export function scanArbitrageMatrix(
   }
   const bankList = Array.from(bankSet);
 
-  const sellLegs = new Map<string, { price: number; coveragePct: number; merchantWallPct?: number }>();
-  const buyLegs = new Map<string, { price: number; coveragePct: number; merchantWallPct?: number }>();
+  type LegQuote = {
+    price: number;
+    coveragePct: number;
+    merchantWallPct?: number;
+    advNo?: string;
+    advertiserNo?: string;
+    nickName?: string;
+  };
+  const sellLegs = new Map<string, LegQuote>();
+  const buyLegs = new Map<string, LegQuote>();
 
   for (const bank of bankList) {
     const sellBook = radarBooks.get(`${bank}_SELL`);
@@ -285,10 +301,14 @@ export function scanArbitrageMatrix(
       const capQuote = computeExecutableCapitalPrice(sellBook.cleanOffers, capitalUsdt);
       const price = capQuote.executablePrice ?? sellBook.effectiveTopPrice;
       if (price != null && Number.isFinite(price) && price > 0) {
+        const top = sellBook.cleanOffers[0];
         sellLegs.set(bank, {
           price,
           coveragePct: capQuote.executablePrice != null ? capQuote.coveragePct : 100,
           merchantWallPct: sellBook.merchantWallPct,
+          advNo: top?.advNo,
+          advertiserNo: top?.advertiserNo,
+          nickName: top?.nickName,
         });
       }
     }
@@ -298,10 +318,14 @@ export function scanArbitrageMatrix(
       const capQuote = computeExecutableCapitalPrice(buyBook.cleanOffers, capitalUsdt);
       const price = capQuote.executablePrice ?? buyBook.effectiveTopPrice;
       if (price != null && Number.isFinite(price) && price > 0) {
+        const top = buyBook.cleanOffers[0];
         buyLegs.set(bank, {
           price,
           coveragePct: capQuote.executablePrice != null ? capQuote.coveragePct : 100,
           merchantWallPct: buyBook.merchantWallPct,
+          advNo: top?.advNo,
+          advertiserNo: top?.advertiserNo,
+          nickName: top?.nickName,
         });
       }
     }
@@ -371,6 +395,12 @@ export function scanArbitrageMatrix(
         optimalHybridNetProfitUsdt: bestCandidate.netProfitUsdt,
         sourceMerchantWallPct: sellLeg.merchantWallPct,
         targetMerchantWallPct: buyLeg.merchantWallPct,
+        sellLegAdvNo: sellLeg.advNo,
+        sellLegAdvertiserNo: sellLeg.advertiserNo,
+        sellLegNickName: sellLeg.nickName,
+        buyLegAdvNo: buyLeg.advNo,
+        buyLegAdvertiserNo: buyLeg.advertiserNo,
+        buyLegNickName: buyLeg.nickName,
       });
     }
   }
